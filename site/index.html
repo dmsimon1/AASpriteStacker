@@ -5,12 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <title>AASpriteStacker — The First Fully Anti-Aliased Sprite-Stacking Engine</title>
-  <meta name="description" content="The first fully anti-aliased sprite-stacking engine. AASpriteStacker solves rotation aliasing—keeping crisp pixel art at any angle, from classic 2.5D isometric to full 6-DOF." />
+  <meta name="description" content="MIT open-source, zero-dependency WebGL2 sprite-stacking engine. AASpriteStacker solves rotation aliasing—keeping crisp pixel art at any angle, from classic 2.5D isometric to full 6-DOF." />
   <meta property="og:title" content="AASpriteStacker — The First Fully Anti-Aliased Sprite-Stacking Engine" />
-  <meta property="og:description" content="AASpriteStacker solves rotation aliasing—keeping crisp pixel art at any angle, from classic 2.5D isometric to full 6-DOF." />
-  <meta property="og:image" content="https://aasprite.com/assets/skystack-chase-8bit.png" />
+  <meta property="og:description" content="MIT open-source, zero-dependency sprite-stacking engine for WebGL2, Godot 4 & Unity URP. Zero rotation shimmer and intact 1px details from 2.5D isometric to full 6-DOF." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://aasprite.com/assets/og-card.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Side-by-side comparison of Classic No AA vs AASpriteStacker 8x RGSS anti-aliased sprite stacking" />
   <meta property="og:url" content="https://aasprite.com/" />
   <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://aasprite.com/assets/og-card.png" />
   <link rel="stylesheet" href="/assets/styles.css" />
 </head>
 <body>
@@ -34,8 +39,12 @@
           <div class="hero-actions">
             <a class="btn btn-primary" href="/play/">Play 6-DOF Demo →</a>
             <a class="btn" href="/studio/">Open 4-View Studio</a>
+            <a class="btn btn-gh" href="https://github.com/dmsimon1/AASpriteStacker" target="_blank" rel="noopener">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+              GitHub
+            </a>
             <span class="proof-inline">
-              <strong>−58%</strong> shimmer · <strong>0.00 px</strong> drift · <strong>0</strong> runtime deps
+              <strong>MIT Open Source</strong> · <strong>−58%</strong> shimmer · <strong>0</strong> runtime deps
             </span>
           </div>
         </header>
@@ -225,6 +234,7 @@
           <div class="code-tabs">
             <div class="tab-list" role="tablist">
               <button class="tab-btn" role="tab" data-code-tab="sdk" aria-selected="true" type="button">WebGL2 SDK (@aastack/core)</button>
+              <button class="tab-btn" role="tab" data-code-tab="clone" aria-selected="false" type="button">Clone &amp; Run (MIT)</button>
               <button class="tab-btn" role="tab" data-code-tab="cli" aria-selected="false" type="button">4-View PNG → AA Slices CLI</button>
             </div>
             <button class="dock-btn" id="copyCodeBtn" type="button">Copy</button>
@@ -251,6 +261,15 @@ world.applyPatch([
 renderer.setQuality("ultra", world);
 renderer.render(world);</code></pre>
 
+          <pre class="code-panel" data-code-panel="clone"><code># Clone the MIT open-source monorepo (zero runtime dependencies):
+git clone https://github.com/dmsimon1/AASpriteStacker.git
+cd AASpriteStacker
+npm install &amp;&amp; npm run build &amp;&amp; npm run dev:serve
+
+# Open locally:
+#   http://127.0.0.1:8765/examples/minimal-2d/   (2.5D Iso &amp; Oblique Overlay)
+#   http://127.0.0.1:8765/examples/flight-6dof/  (SkyStack 6-DOF Flight Demo)</code></pre>
+
           <pre class="code-panel" data-code-panel="cli"><code># Convert a 4-view orthographic sprite sheet (Front / Right / Back / Left) into edge-dilated AA slices + 3D SDF:
 .venv/bin/python skills/aa-sprite-stacking/scripts/aa_views_to_slices.py \
   views.png out/slices.png \
@@ -260,8 +279,15 @@ renderer.render(world);</code></pre>
   --html out/viewer.html</code></pre>
         </div>
 
+        <div class="oss-bar">
+          <a class="btn btn-primary btn-sm" href="https://github.com/dmsimon1/AASpriteStacker" target="_blank" rel="noopener">View Source on GitHub ↗</a>
+          <a class="btn btn-sm" href="/iso/">Try 2.5D Iso Overlay →</a>
+          <a class="btn btn-sm" href="/shaders/godot4/aa_sprite_stack.gdshader">Godot 4 Shader</a>
+          <a class="btn btn-sm" href="/shaders/unity-urp/AASpriteStack.shader">Unity URP Shader</a>
+        </div>
+
         <p class="ecosystem-note">
-          Also includes standalone Godot 4 &amp; Unity URP reference shaders (<a href="/docs/architecture/">Architecture Docs</a>),
+          MIT licensed &amp; zero runtime dependencies. Includes standalone Godot 4 &amp; Unity URP shaders (<a href="/docs/architecture/">Architecture Docs</a>),
           a live <a href="/iso/">2.5D Isometric &amp; Oblique Overlay</a> starter (<code>examples/minimal-2d/</code>), and an optional local MCP bridge for AI coding agents
           (<a href="/docs/ai-integration/">AI &amp; MCP Guide</a> · <a href="/llms-full.txt"><code>llms-full.txt</code></a>).
         </p>

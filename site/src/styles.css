@@ -61,6 +61,12 @@ img { max-width: 100%; height: auto; display: block; }
   box-shadow: 0 10px 28px rgba(56, 189, 248, 0.40);
 }
 .btn-sm { min-height: 36px; padding: 7px 14px; font-size: 13px; border-radius: 8px; }
+.btn-gh { gap: 7px; }
+.btn-gh svg { width: 15px; height: 15px; fill: currentColor; flex: none; }
+.oss-bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 10px; margin-top: 18px;
+}
 
 /* Hero Section — Commanding Centered Typography Above Wide Live A/B Showcase */
 .hero { padding: 30px 0 44px; }
@@ -106,6 +112,9 @@ img { max-width: 100%; height: auto; display: block; }
 .proof-inline {
   margin-left: 4px;
   font: 500 12.5px/1.2 var(--mono); color: var(--text-muted);
+}
+@media (max-width: 440px) {
+  .proof-inline { margin-left: 0; font-size: 11.5px; }
 }
 .proof-inline strong { color: #e2e8f0; font-weight: 700; }
 

@@ -75,6 +75,17 @@ const GLOBAL_NAV_CSS = `<style id="aa-global-nav-css">
   .aa-glink[aria-current="page"] {
     color: #67e8f9; background: rgba(56, 189, 248, 0.14);
   }
+  .aa-ggh {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px;
+    color: #e2e8f0; background: rgba(148, 163, 184, 0.10);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    text-decoration: none; font-weight: 700; font-size: 12.5px; white-space: nowrap; margin-left: 2px;
+    transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+  }
+  .aa-ggh:hover { color: #ffffff; background: rgba(56, 189, 248, 0.16); border-color: rgba(56, 189, 248, 0.48); text-decoration: none; }
+  .aa-ggh svg { width: 15px; height: 15px; fill: currentColor; flex: none; }
+  .aa-gstars { font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #67e8f9; display: none; }
+  .aa-gstars.loaded { display: inline; }
   .aa-gcta {
     display: inline-flex; align-items: center; padding: 7px 12px; border-radius: 8px;
     background: linear-gradient(135deg, #0ea5e9, #2563eb); color: #ffffff !important;
@@ -86,15 +97,21 @@ const GLOBAL_NAV_CSS = `<style id="aa-global-nav-css">
   @media (max-width: 720px) {
     .aa-ghide-sm { display: none !important; }
     .aa-glink { padding: 6px 8px; font-size: 12.5px; }
+    .aa-ggh { padding: 6px 7px; }
     .aa-gbrand span.aa-gtitle { font-size: 14px; }
   }
   @media (max-width: 440px) {
     .aa-gbrand span.aa-gtitle { display: none; }
-    .aa-gnav-inner { padding: 0 8px; gap: 6px; }
+    .aa-gnav-inner { padding: 0 8px; gap: 4px; }
     .aa-glinks { gap: 2px; }
-    .aa-glink { padding: 5px 6px; font-size: 11.5px; }
+    .aa-glink { padding: 5px 5.5px; font-size: 11px; }
+    .aa-ggh { padding: 5px 6px; margin-left: 1px; }
   }
 </style>`;
+
+const GH_ICON_SVG = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>`;
+
+const GH_STARS_SCRIPT = `<script>(function(){var els=document.querySelectorAll("[data-aa-stars]");if(!els.length)return;var k="aa_gh_stars_v1",now=Date.now();function show(n){if(!(n>0))return;var t="★ "+n;els.forEach(function(e){e.textContent=t;e.classList.add("loaded");});}try{var c=JSON.parse(sessionStorage.getItem(k)||"null");if(c&&now-c.t<18e5){show(c.n);return;}}catch(e){}fetch("https://api.github.com/repos/dmsimon1/AASpriteStacker").then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&typeof d.stargazers_count==="number"){try{sessionStorage.setItem(k,JSON.stringify({n:d.stargazers_count,t:now}));}catch(e){}show(d.stargazers_count);}}).catch(function(){});})();</script>`;
 
 function renderGlobalNav(active, fullbleed = false) {
   const cur = (k) => (active === k ? ` aria-current="page"` : "");
@@ -111,10 +128,10 @@ function renderGlobalNav(active, fullbleed = false) {
       <a class="aa-glink" href="/play/"${cur("play")}>6-DOF Demo</a>
       <a class="aa-glink" href="/studio/"${cur("studio")}>Studio</a>
       <a class="aa-glink" href="/docs/"${cur("docs")}>Docs</a>
-      <a class="aa-glink aa-ghide-sm" href="https://github.com/dmsimon1/AASpriteStacker" target="_blank" rel="noopener">GitHub</a>
+      <a class="aa-ggh" href="https://github.com/dmsimon1/AASpriteStacker" target="_blank" rel="noopener" aria-label="AASpriteStacker open-source repository on GitHub">${GH_ICON_SVG}<span class="aa-ghide-sm">GitHub</span><span class="aa-gstars aa-ghide-sm" data-aa-stars></span></a>
     </div>
   </div>
-</nav>`;
+</nav>${GH_STARS_SCRIPT}`;
 }
 
 const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#g)"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#04111f" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-weight="800" font-size="28">AA</text></svg>`;
