@@ -271,6 +271,24 @@ Be sure your CSS sets `touch-action: none` on the stage container, `viewport-fit
 
 ---
 
-## 6. Using the Shaders in Godot 4 or Unity URP
+## 6. Connecting a Frontier Coding Agent Live (`?bridge=1`)
+
+To let **Antigravity, Claude Code, Cursor, Codex, or Gemini CLI** patch your live browser scene, hot-swap blueprints, and inspect 2×2 PNG contact sheets with zero production overhead, lazy-load `@aastack/bridge/client` only when `?bridge=1` is present:
+
+```ts
+if (new URLSearchParams(window.location.search).get("bridge") === "1") {
+  const { connectDevBridge } = await import("@aastack/bridge/client");
+  connectDevBridge(
+    { world, renderer, onSyncUI: () => syncUI() },
+    { title: "My AASpriteStacker Game" },
+  );
+}
+```
+
+Then register `packages/mcp/dist/server.js` in your MCP config and open your page with `?bridge=1`. See [`docs/ai-integration.md`](ai-integration.md) for the full 18-tool reference and security boundaries.
+
+---
+
+## 7. Using the Shaders in Godot 4 or Unity URP
 
 See [`skills/aa-sprite-stacking/references/engines.md`](../skills/aa-sprite-stacking/references/engines.md) for drop-in single-draw-call RGSS Voxel DDA and 3D SDF shaders for **Godot 4**, **Unity URP**, **WebGL2**, and **Canvas 2D**.

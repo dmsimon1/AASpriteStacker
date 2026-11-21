@@ -1,7 +1,7 @@
 # AASpriteStacker (`@aastack/*`)
 
 > **An AI-first, mobile-friendly, anti-aliased 6-DOF & 2.5D sprite-stacking engine SDK.**  
-> Zero polygons. Zero runtime dependencies. ~29 KB gzipped full 6-DOF flight demo. Built for game engineers and frontier coding agents.
+> Zero polygons. Zero runtime dependencies. ~30.7 KB gzipped full 6-DOF flight demo (`0` dev-bridge bytes when off). Built for game engineers and frontier coding agents.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![WebGL2 ES 3.00](https://img.shields.io/badge/Renderer-WebGL2%20ES%203.00-0ea5e9.svg)](docs/architecture.md)
@@ -67,13 +67,15 @@ skills/
     scripts/viewer.html             # Zero-install Browser Look-Dev & A/B AA Studio
 docs/
   architecture.md                   # Deep dive: math, 3D EDT, 4-pass WebGL2 pipeline, RenderStyle, mobile DRS
-  getting-started.md                # Complete developer handbook & asset pipelines
-  api-reference.md                  # Full API docs for @aastack/core, @aastack/blueprint, @aastack/mcp
-  flight-demo.md                    # Walkthrough of the SkyStack 6-DOF flight demo
-  ai-integration.md                 # Iterative agent hooks, MCP setup, and llms-full.txt guide
+  getting-started.md                # Complete developer handbook & all 4 asset pipelines
+  api-reference.md                  # Full API docs for @aastack/core, @aastack/blueprint, @aastack/bridge, @aastack/mcp
+  flight-demo.md                    # Walkthrough of the SkyStack 6-DOF flight demo & ?bridge=1 co-editing
+  ai-integration.md                 # Live MCP bridge, 3D geometric linter, 2×2 visual capture & security boundaries
 tests/
-  core.test.mjs                     # Node test suite (6-DOF math, CSG, .vox, SceneIR, undo/redo, voxel raycast)
-  test_aa_stacker.py                # Python suite (0.00px cardinal wobble, 1px post persistence, shimmer RMS)
+  core.test.mjs                     # 6-DOF math, Blueprint CSG, .vox parser, SceneIR, undo/redo, 3D voxel raycast
+  bridge.test.mjs                   # JSON Schema validators, vendor adapters, 3D geometric linter, security boundaries
+  mcp-bridge.test.mjs               # End-to-end Leader+Follower @aastack/mcp <-> WS Relay <-> Browser Bridge test
+  test_aa_stacker.py                # Python AA carving suite (0.00px cardinal wobble, 1px post persistence, shimmer RMS)
 ```
 
 ---
@@ -153,20 +155,53 @@ function frame(dt: number) {
 frame(1 / 60);
 ```
 
+### 4. Co-Build Live with a Frontier Coding Agent (`@aastack/mcp` + `@aastack/bridge`)
+
+Connect **Antigravity, Claude Code, Cursor, Codex, or Gemini CLI** directly to your running WebGL2 browser canvas for multi-turn visual iteration—no one-shotting required:
+
+```json
+{
+  "mcpServers": {
+    "aastack": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/AASpriteStacker/packages/mcp/dist/server.js"]
+    }
+  }
+}
+```
+
+Open any app wired with `@aastack/bridge/client` using `?bridge=1`:
+
+```text
+http://127.0.0.1:8765/examples/flight-6dof/index.html?bridge=1
+```
+
+A subtle **"Agent Live"** pill appears with a live status dot, edit toast, and **1-click `Undo`**. Your agent can now hot-swap blueprints live with zero reload (guarded by the 3D floating-voxel & socket linter), patch `SceneIR`, capture **2×2 labeled PNG contact sheets** directly into its vision encoder, and export clean Git-diffable `.blueprint.json` / `.scene.json` files when you like the result.
+
+![Live 2×2 Contact Sheet Captured via @aastack/mcp](docs/assets/mcp-capture-2x2.png)
+
+*(Building a custom LLM app or BYOK UI? `@aastack/bridge/schemas` also exports `toGeminiFunctionDeclarations()`, `toAnthropicTools()`, and `toOpenAITools()` over the exact same `executeEngineTool()` contract.)*
+
+### 5. Bring Your Own Assets (4 Pipelines) or Export Shaders
+- **Declarative JSON/TS CSG Blueprints (`@aastack/blueprint`):** `box`, `sphere`, `ellipsoid`, `capsule`, `wedge`, `torus`, `paint`, `subtract`, `mirrorX`, `emissive`, named `sockets`.
+- **MagicaVoxel `.vox` (`parseVox`)** & **classic `slices.png` strips (`loadSliceStripPixels`)** — zero-dependency browser loaders.
+- **4-View Orthographic PNG Carver CLI:** `.venv/bin/python skills/aa-sprite-stacking/scripts/aa_views_to_slices.py views.png slices.png --slices 36 --sdf sdf.png --preview check.png --html viewer.html`.
+- **Godot 4 & Unity URP:** Copy drop-in single-draw-call RGSS DDA & 3D SDF shaders from [`skills/aa-sprite-stacking/references/engines.md`](skills/aa-sprite-stacking/references/engines.md).
+
 ---
 
 ## Documentation Hub
 
 | Document | What It Covers |
 | --- | --- |
-| [**Getting Started**](docs/getting-started.md) | Installing workspaces, building your first 6-DOF or 2.5D scene, Blueprint CSG authoring, `.vox` & `slices.png` ingest, 4-view Python carving CLI, mobile touch setup |
+| [**Getting Started**](docs/getting-started.md) | Installing workspaces, building your first 6-DOF or 2.5D scene, Blueprint CSG authoring, `.vox` & `slices.png` ingest, 4-view Python carving CLI, mobile touch & `?bridge=1` setup |
 | [**Architecture & How It Works**](docs/architecture.md) | First-principles anti-aliasing math, coordinate spaces, `O(N)` 3D EDT, 4-pass WebGL2 pipeline, 16-bit packed JFA outlines, `RenderStyle` shaders, 1:1 CPU/GPU heightfield, mobile DRS |
-| [**API Reference**](docs/api-reference.md) | Complete TypeScript API for `@aastack/core`, `@aastack/blueprint`, and `@aastack/mcp` |
-| [**SkyStack 6-DOF Demo Guide**](docs/flight-demo.md) | Controls, camera rigs, semantic socket attachments, style-aware 16-bit Cockpit HUD, live `window.__AASTACK__` console scripting, bundle budget |
-| [**AI-First Hooks & MCP Guide**](docs/ai-integration.md) | Iterative SceneIR patching, time-travel replay, visual QA introspection, connecting `@aastack/mcp` to Claude Code / Cursor / Antigravity / Codex, and [`llms-full.txt`](llms-full.txt) |
+| [**API Reference**](docs/api-reference.md) | Complete TypeScript API for `@aastack/core`, `@aastack/blueprint`, `@aastack/bridge`, and `@aastack/mcp` |
+| [**SkyStack 6-DOF Demo Guide**](docs/flight-demo.md) | Controls, camera rigs, semantic socket attachments, style-aware 16-bit Cockpit HUD, `?bridge=1` co-editing, live `window.__AASTACK__` console scripting, bundle budget |
+| [**AI-First Hooks & Live MCP Bridge**](docs/ai-integration.md) | Live localhost WS relay, 18 MCP tools, 3D floating-voxel & socket linter, 2×2 PNG visual capture, security boundaries, and [`llms-full.txt`](llms-full.txt) |
 | [**Godot 4 & Unity URP Shaders**](skills/aa-sprite-stacking/references/engines.md) | Drop-in single-draw-call RGSS DDA & 3D SDF shaders for external engines |
 | [**Contributing**](CONTRIBUTING.md) | Invariants, dev workflow, testing & visual QA standards, PR checklist |
-| [**Roadmap**](ROADMAP.md) | Path to `v0.1.0` (including the Frontier LLM Integration & Interface layer) and beyond |
+| [**Roadmap**](ROADMAP.md) | Completed milestones & final release-prep checklist for `v0.1.0` and `v0.2.0+` |
 
 ### Package READMEs
 - [`packages/core/README.md`](packages/core/README.md)
@@ -182,7 +217,7 @@ frame(1 / 60);
 | Metric | Measured Result |
 | --- | --- |
 | **Desktop 6-DOF Demo (`2560×1600`, `8×` RGSS)** | `120 fps` (`0.1 ms` CPU frame time, `30–40` draw calls, `0` WebGL errors) |
-| **Full Demo Bundle (`examples/flight-6dof/bundle.js`)** | `29.3 KB` gzipped (`90 KB` minified JS — includes `@aastack/core`, `@aastack/blueprint`, 4 styles, terrain, 6-DOF physics, 16-bit cockpit HUD, mobile touch) |
+| **Full Demo Initial Load (`examples/flight-6dof`)** | `30.7 KB` gzipped (`0` bytes of dev-bridge/linter loaded unless `?bridge=1` is active; lazy bridge chunk `8.5 KB` gz) |
 | **Temporal Rotation Shimmer (1° delta RMS)** | **−50.3%** in AA Voxel DDA (`4.83 → 2.40`), **−58.0%** in AA Smooth SDF (`4.83 → 2.03`) |
 | **Cardinal Rotation Drift (`0°/90°/180°/270°`)** | `0.00 px` on even-sized voxel sprites |
 | **1px Thin Post Persistence (360° sweep)** | `0` blink/dropout frames in AA modes |
