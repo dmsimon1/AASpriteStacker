@@ -32,7 +32,7 @@ import {
   RIBBON_VS,
   TERRAIN_FS,
 } from "./shaders.js";
-import type { AAMode, EngineTelemetry, QualityTier, Vec3, VolumeAsset } from "./types.js";
+import type { AAMode, EngineTelemetry, QualityTier, RenderStyle, Vec3, VolumeAsset } from "./types.js";
 
 export interface RendererOptions {
   quality?: QualityTier;
@@ -59,6 +59,19 @@ function aaModeToInt(m: AAMode): number {
   if (m === "smooth-sdf") return 2;
   if (m === "bandlimited") return 3;
   return 1; // voxel-dda
+}
+
+function styleToInt(s: RenderStyle): number {
+  if (s === "hd-2d") return 1;
+  if (s === "smooth-toy") return 2;
+  if (s === "retro-raw") return 3;
+  return 0; // arcade-8bit
+}
+
+function defaultAAModeForStyle(s: RenderStyle, fallback: AAMode): AAMode {
+  if (s === "retro-raw") return "legacy";
+  if (s === "smooth-toy") return "smooth-sdf";
+  return fallback;
 }
 
 function shadeStyleToInt(s: string): number {
@@ -373,9 +386,11 @@ export class AASpriteRenderer {
       shCount++;
     }
 
+    const styleInt = styleToInt(doc.style ?? "arcade-8bit");
+    const effectiveMode = defaultAAModeForStyle(doc.style ?? "arcade-8bit", doc.aaMode);
     const splitX = doc.splitCompare.enabled ? doc.splitCompare.splitX : -1.0;
-    const leftMode = doc.splitCompare.enabled ? doc.splitCompare.leftMode : doc.aaMode;
-    const rightMode = doc.splitCompare.enabled ? doc.splitCompare.rightMode : doc.aaMode;
+    const leftMode = doc.splitCompare.enabled ? doc.splitCompare.leftMode : effectiveMode;
+    const rightMode = doc.splitCompare.enabled ? doc.splitCompare.rightMode : effectiveMode;
 
     let drawCalls = 0;
     gl.viewport(0, 0, cw, ch);
@@ -402,6 +417,7 @@ export class AASpriteRenderer {
     gl.uniform3fv(tp.u.uSunDir, sunDir);
     gl.uniform1f(tp.u.uTimeOfDay, doc.lighting.timeOfDay);
     gl.uniform1f(tp.u.uFogDensity, doc.lighting.fogDensity);
+    gl.uniform1i(tp.u.uStyle, styleInt);
     gl.uniform1i(tp.u.uTerrainEnabled, doc.terrain.enabled ? 1 : 0);
     gl.uniform1f(tp.u.uSeed, doc.terrain.seed);
     gl.uniform1f(tp.u.uMaxHeight, doc.terrain.maxHeight);
@@ -448,6 +464,7 @@ export class AASpriteRenderer {
     gl.uniformMatrix4fv(ep.u.uViewProj, false, viewProj);
     gl.uniformMatrix4fv(ep.u.uInvViewProj, false, invViewProj);
     gl.uniform1f(ep.u.uSplitX, splitX);
+    gl.uniform1i(ep.u.uStyle, styleInt);
     gl.uniform1i(ep.u.uShadeStyle, shadeStyleToInt(doc.lighting.shadeStyle));
     gl.uniform3fv(ep.u.uSunDir, sunDir);
     gl.uniform1f(ep.u.uTimeOfDay, doc.lighting.timeOfDay);
@@ -485,8 +502,8 @@ export class AASpriteRenderer {
       const isHero = ent.tag === "player" || dist < 48;
       const entSamples = isHero ? maxSamples : dist < 120 ? Math.min(maxSamples, 4) : 1;
 
-      const mA = aaModeToInt(doc.splitCompare.enabled ? leftMode : ent.aaMode ?? doc.aaMode);
-      const mB = aaModeToInt(doc.splitCompare.enabled ? rightMode : ent.aaMode ?? doc.aaMode);
+      const mA = aaModeToInt(doc.splitCompare.enabled ? leftMode : ent.aaMode ?? effectiveMode);
+      const mB = aaModeToInt(doc.splitCompare.enabled ? rightMode : ent.aaMode ?? effectiveMode);
 
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_3D, gpuTex.albedo); gl.uniform1i(ep.u.uAlbedoTex, 0);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D, gpuTex.sdf);    gl.uniform1i(ep.u.uSdfTex, 1);
@@ -618,6 +635,7 @@ export class AASpriteRenderer {
     const nightW = Math.max(0, (doc.lighting.timeOfDay - 0.48) / 0.52);
     gl.uniform3f(cp.u.uOutlineSrgb, 0.08 * (1 - nightW * 0.6), 0.10 * (1 - nightW * 0.6), 0.14 * (1 - nightW * 0.4));
     gl.uniform1f(cp.u.uBloomStrength, 0.75 + nightW * 0.85);
+    gl.uniform1i(cp.u.uStyle, styleInt);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     drawCalls++;
 

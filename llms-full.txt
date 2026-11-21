@@ -17,7 +17,8 @@ const renderer = new AASpriteRenderer(canvas, { quality: "auto", adaptiveDpr: tr
 
 world.registerAsset(compileBlueprint(createFighterJetBlueprint("jet-asset")));
 world.applyPatch([
-  { op: "set", path: "aaMode", value: "voxel-dda" }, // "voxel-dda" | "smooth-sdf" | "legacy"
+  { op: "set", path: "style", value: "arcade-8bit" }, // "arcade-8bit" | "hd-2d" | "smooth-toy" | "retro-raw"
+  { op: "set", path: "aaMode", value: "voxel-dda" },  // "voxel-dda" | "smooth-sdf" | "legacy"
   { op: "spawn", entity: { id: "jet", assetId: "jet-asset", pos: [0, 30, 0], rot: [0, 0, 0, 1], scale: 1, outline: true, castShadow: true, tag: "player" } },
 ]);
 

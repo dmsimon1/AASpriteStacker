@@ -22,7 +22,7 @@ import {
   vec3Lerp,
   vec3Scale,
 } from "@aastack/core";
-import type { AAMode, CameraMode, RibbonPoint, Vec3 } from "@aastack/core";
+import type { AAMode, CameraMode, RenderStyle, RibbonPoint, Vec3 } from "@aastack/core";
 import {
   compileBlueprint,
   createCloudBlueprint,
@@ -43,7 +43,7 @@ const statsBar = document.getElementById("statsBar") as HTMLElement;
 const hintBar = document.getElementById("hintBar") as HTMLElement;
 
 const camBtn = document.getElementById("camBtn") as HTMLButtonElement;
-const modeBtn = document.getElementById("modeBtn") as HTMLButtonElement;
+const styleBtn = document.getElementById("styleBtn") as HTMLButtonElement;
 const splitBtn = document.getElementById("splitBtn") as HTMLButtonElement;
 const todBtn = document.getElementById("todBtn") as HTMLButtonElement;
 const inspectorBtn = document.getElementById("inspectorBtn") as HTMLButtonElement;
@@ -75,6 +75,11 @@ world.registerAsset(gateAsset);
 // 3. Populate SceneIR via surgical declarative patches
 world.applyPatch(
   [
+    {
+      op: "set",
+      path: "style",
+      value: "arcade-8bit",
+    },
     {
       op: "set",
       path: "aaMode",
@@ -188,6 +193,7 @@ const flight = {
   barrelDir: 1,
   speed: 36,
   thrusting: false,
+  forceThrust: false,
   camMode: "chase" as CameraMode,
   camPosSmooth: [0, 38, 22] as Vec3,
   camTargetSmooth: [0, 30, -20] as Vec3,
@@ -198,8 +204,10 @@ const flight = {
 
 const trailL: RibbonPoint[] = [];
 const trailR: RibbonPoint[] = [];
-const plumeL: RibbonPoint[] = [];
-const plumeR: RibbonPoint[] = [];
+const plumeOuterL: RibbonPoint[] = [];
+const plumeOuterR: RibbonPoint[] = [];
+const plumeCoreL: RibbonPoint[] = [];
+const plumeCoreR: RibbonPoint[] = [];
 
 // Pointer (mouse) + Keyboard + Multi-Touch Mobile Inputs
 const input = {
@@ -231,16 +239,46 @@ function cycleCamera(): void {
   syncControlsUI();
 }
 
-const AA_CYCLE: AAMode[] = ["voxel-dda", "smooth-sdf", "legacy"];
-function cycleAAMode(): void {
-  const cur = world.doc.splitCompare.enabled ? world.doc.splitCompare.rightMode : world.doc.aaMode;
-  const next = AA_CYCLE[(AA_CYCLE.indexOf(cur) + 1) % AA_CYCLE.length];
+const STYLE_CYCLE: RenderStyle[] = ["arcade-8bit", "hd-2d", "smooth-toy", "retro-raw"];
+const AA_STYLES: RenderStyle[] = ["arcade-8bit", "hd-2d", "smooth-toy"];
+
+function aaModeForStyle(s: RenderStyle): AAMode {
+  if (s === "retro-raw") return "legacy";
+  if (s === "smooth-toy") return "smooth-sdf";
+  return "voxel-dda";
+}
+
+function labelForStyle(s: RenderStyle): string {
+  if (s === "hd-2d") return "HD-2D";
+  if (s === "smooth-toy") return "Smooth Toy";
+  if (s === "retro-raw") return "Retro 1×";
+  return "8-Bit AA";
+}
+
+function applyRenderStyle(next: RenderStyle): void {
+  const mode = aaModeForStyle(next);
   if (world.doc.splitCompare.enabled) {
-    world.applyPatch([{ op: "set", path: "splitCompare.rightMode", value: next }]);
+    const rightStyle = next === "retro-raw" ? "arcade-8bit" : next;
+    const rightMode = aaModeForStyle(rightStyle);
+    world.applyPatch([
+      { op: "set", path: "style", value: rightStyle },
+      { op: "set", path: "aaMode", value: rightMode },
+      { op: "set", path: "splitCompare.rightMode", value: rightMode },
+    ]);
   } else {
-    world.applyPatch([{ op: "set", path: "aaMode", value: next }]);
+    world.applyPatch([
+      { op: "set", path: "style", value: next },
+      { op: "set", path: "aaMode", value: mode },
+    ]);
   }
   syncControlsUI();
+}
+
+function cycleRenderStyle(): void {
+  const list = world.doc.splitCompare.enabled ? AA_STYLES : STYLE_CYCLE;
+  const cur = world.doc.style ?? "arcade-8bit";
+  const next = list[(list.indexOf(cur) + 1) % list.length];
+  applyRenderStyle(next);
 }
 
 const TOD_PRESETS = [
@@ -257,51 +295,51 @@ function cycleTimeOfDay(): void {
 
 function toggleSplitCompare(): void {
   const next = !world.doc.splitCompare.enabled;
-  world.applyPatch([
-    {
-      op: "set",
-      path: "splitCompare",
-      value: {
-        enabled: next,
-        splitX: world.doc.splitCompare.splitX || 0.5,
-        leftMode: "legacy",
-        rightMode: world.doc.aaMode === "legacy" ? "voxel-dda" : world.doc.aaMode,
-      },
+  const activeStyle = world.doc.style === "retro-raw" ? "arcade-8bit" : world.doc.style;
+  const rightMode = aaModeForStyle(activeStyle);
+  const ops: Parameters<SceneWorld["applyPatch"]>[0] = [];
+  if (next && world.doc.style === "retro-raw") {
+    ops.push({ op: "set", path: "style", value: "arcade-8bit" });
+    ops.push({ op: "set", path: "aaMode", value: "voxel-dda" });
+  }
+  ops.push({
+    op: "set",
+    path: "splitCompare",
+    value: {
+      enabled: next,
+      splitX: world.doc.splitCompare.splitX || 0.5,
+      leftMode: "legacy",
+      rightMode,
     },
-  ]);
+  });
+  world.applyPatch(ops);
   syncControlsUI();
-}
-
-function labelForMode(m: AAMode): string {
-  if (m === "legacy") return "Legacy 1×";
-  if (m === "smooth-sdf") return "AA Smooth SDF";
-  return "AA Voxel DDA";
 }
 
 function syncControlsUI(): void {
   const camLabels: Record<string, string> = { overhead: "Overhead", chase: "Chase", cockpit: "Cockpit" };
   camBtn.textContent = `Cam: ${camLabels[flight.camMode] ?? flight.camMode}`;
 
-  const activeMode = world.doc.splitCompare.enabled ? world.doc.splitCompare.rightMode : world.doc.aaMode;
-  modeBtn.textContent = labelForMode(activeMode);
+  const activeStyle = world.doc.style ?? "arcade-8bit";
+  styleBtn.textContent = `Style: ${labelForStyle(activeStyle)}`;
   splitBtn.setAttribute("aria-pressed", String(world.doc.splitCompare.enabled));
   todBtn.textContent = TOD_PRESETS[todIdx].label;
 
   splitOverlay.classList.toggle("visible", world.doc.splitCompare.enabled);
   splitHandle.style.left = `${(world.doc.splitCompare.splitX * 100).toFixed(1)}%`;
-  tagLeft.textContent = labelForMode(world.doc.splitCompare.leftMode);
-  tagRight.textContent = `${labelForMode(world.doc.splitCompare.rightMode)} · ${world.doc.samples}×`;
+  tagLeft.textContent = "Retro 1×";
+  tagRight.textContent = `${labelForStyle(activeStyle)} · ${world.doc.samples}×`;
 
   stage.classList.toggle("cockpit-mode", flight.camMode === "cockpit");
   const isCompact = renderer.isMobile || window.innerWidth < 760;
   if (isCompact) {
     hintBar.textContent = "Drag left to steer · BOOST · ROLL · CAM";
   } else if (flight.camMode === "overhead") {
-    hintBar.textContent = "Move mouse / WASD to steer · Click: barrel roll · Hold Space/Shift: thrust · V: Chase view";
+    hintBar.textContent = "Mouse / WASD to steer · Click: roll · Shift: boost · M: style · V: Chase";
   } else if (flight.camMode === "chase") {
-    hintBar.textContent = "Point / WASD to turn, climb & dive · Click: roll · Hold mouse/Shift: thrusters · V: Cockpit";
+    hintBar.textContent = "Point / WASD to fly · Click: roll · Hold mouse/Shift: boost · M: style · V: Cockpit";
   } else {
-    hintBar.textContent = "Cockpit View · Point / WASD to fly · Click: roll · Hold mouse/Shift: thrusters · V: Overhead";
+    hintBar.textContent = "Cockpit · Point / WASD to fly · Click: roll · Hold mouse/Shift: boost · M: style · V: Overhead";
   }
 }
 
@@ -339,9 +377,12 @@ window.addEventListener("keydown", (e) => {
     triggerBarrelRoll();
   } else if (e.code === "KeyC") {
     toggleSplitCompare();
+  } else if (e.code === "KeyM") {
+    cycleRenderStyle();
   }
 });
 window.addEventListener("keyup", (e) => input.keys.delete(e.code));
+window.addEventListener("resize", syncControlsUI);
 
 // Split-Screen Curtain Dragging (works for both mouse & touch!)
 let draggingSplit = false;
@@ -363,7 +404,7 @@ splitHandle.addEventListener("pointerup", () => {
 
 // UI Buttons + Mobile Touch Action Buttons
 camBtn.addEventListener("click", cycleCamera);
-modeBtn.addEventListener("click", cycleAAMode);
+styleBtn.addEventListener("click", cycleRenderStyle);
 splitBtn.addEventListener("click", toggleSplitCompare);
 todBtn.addEventListener("click", cycleTimeOfDay);
 
@@ -429,6 +470,7 @@ function stepSimulation(dt: number): void {
   }
 
   flight.thrusting =
+    flight.forceThrust ||
     touchCtrl.state.thrust ||
     input.mouseDown ||
     input.keys.has("ShiftLeft") ||
@@ -527,32 +569,50 @@ function stepSimulation(dt: number): void {
     }
   };
 
-  updateTrail(trailL, wL, 0.45, flight.thrusting ? 0.52 : 0.34, 72);
-  updateTrail(trailR, wR, 0.45, flight.thrusting ? 0.52 : 0.34, 72);
+  updateTrail(trailL, wL, 0.44, flight.thrusting ? 0.54 : 0.36, 76);
+  updateTrail(trailR, wR, 0.44, flight.thrusting ? 0.54 : 0.36, 76);
 
-  if (flight.thrusting && tL && tR) {
-    const flicker = 0.85 + Math.sin(world.doc.time * 48) * 0.25;
-    const backTailL = vec3Add(tL, vec3Scale(forward, -6.5 * flicker));
-    const backTailR = vec3Add(tR, vec3Scale(forward, -6.5 * flicker));
-    plumeL.length = 0;
-    plumeR.length = 0;
+  // Fiery multi-layer twin thruster flames (lively burn at cruise + blazing roaring jet on afterburner!)
+  if (tL && tR && flight.camMode !== "cockpit") {
+    const fA = 0.88 + Math.sin(world.doc.time * 52) * 0.18 + Math.cos(world.doc.time * 87) * 0.08;
+    const fB = 0.88 + Math.cos(world.doc.time * 58) * 0.18 + Math.sin(world.doc.time * 79) * 0.08;
+    const outerLen = flight.thrusting ? 7.8 : 2.9;
+    const coreLen = flight.thrusting ? 4.6 : 1.7;
+    const outerW = flight.thrusting ? 1.15 : 0.68;
+    const coreW = flight.thrusting ? 0.68 : 0.38;
+
+    const tailOuterL = vec3Add(tL, vec3Scale(forward, -outerLen * fA));
+    const tailOuterR = vec3Add(tR, vec3Scale(forward, -outerLen * fB));
+    const tailCoreL = vec3Add(tL, vec3Scale(forward, -coreLen * fA));
+    const tailCoreR = vec3Add(tR, vec3Scale(forward, -coreLen * fB));
+
+    plumeOuterL.length = 0;
+    plumeOuterR.length = 0;
+    plumeCoreL.length = 0;
+    plumeCoreR.length = 0;
     for (let k = 0; k < 5; k++) {
       const f = k / 4;
-      plumeL.push({ pos: vec3Lerp(tL, backTailL, f), age: f * 0.9, width: 0.95 * (1 - f * 0.65) });
-      plumeR.push({ pos: vec3Lerp(tR, backTailR, f), age: f * 0.9, width: 0.95 * (1 - f * 0.65) });
+      plumeOuterL.push({ pos: vec3Lerp(tL, tailOuterL, f), age: f * 0.88, width: outerW * (1 - f * 0.62) });
+      plumeOuterR.push({ pos: vec3Lerp(tR, tailOuterR, f), age: f * 0.88, width: outerW * (1 - f * 0.62) });
+      plumeCoreL.push({ pos: vec3Lerp(tL, tailCoreL, f), age: f * 0.82, width: coreW * (1 - f * 0.7) });
+      plumeCoreR.push({ pos: vec3Lerp(tR, tailCoreR, f), age: f * 0.82, width: coreW * (1 - f * 0.7) });
     }
   } else {
-    plumeL.length = 0;
-    plumeR.length = 0;
+    plumeOuterL.length = 0;
+    plumeOuterR.length = 0;
+    plumeCoreL.length = 0;
+    plumeCoreR.length = 0;
   }
 
   world.doc.ribbons = [
-    { id: "contrail-l", points: trailL, color: [242, 248, 255], alpha: 0.68, emissive: false },
-    { id: "contrail-r", points: trailR, color: [242, 248, 255], alpha: 0.68, emissive: false },
-    ...(plumeL.length > 1
+    { id: "contrail-l", points: trailL, color: [248, 252, 255], alpha: 0.78, emissive: false },
+    { id: "contrail-r", points: trailR, color: [248, 252, 255], alpha: 0.78, emissive: false },
+    ...(plumeOuterL.length > 1
       ? [
-          { id: "plume-l", points: plumeL, color: [255, 188, 62] as [number, number, number], alpha: 0.95, emissive: true },
-          { id: "plume-r", points: plumeR, color: [255, 188, 62] as [number, number, number], alpha: 0.95, emissive: true },
+          { id: "plume-outer-l", points: plumeOuterL, color: [255, 96, 26] as [number, number, number], alpha: 0.96, emissive: true },
+          { id: "plume-outer-r", points: plumeOuterR, color: [255, 96, 26] as [number, number, number], alpha: 0.96, emissive: true },
+          { id: "plume-core-l", points: plumeCoreL, color: [255, 240, 128] as [number, number, number], alpha: 0.98, emissive: true },
+          { id: "plume-core-r", points: plumeCoreR, color: [255, 240, 128] as [number, number, number], alpha: 0.98, emissive: true },
         ]
       : []),
   ];
@@ -589,7 +649,59 @@ function stepSimulation(dt: number): void {
   cam.up = flight.camUpSmooth;
 }
 
-// 6. Diegetic Anti-Aliased Cockpit HUD Overlay (Cockpit Mode)
+// 6. Diegetic Style-Aware 16-Bit Arcade / HD Cockpit HUD Overlay (Cockpit Mode)
+function drawAnalogDial(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  frac: number,
+  label: string,
+  warn = false,
+): void {
+  // Metallic outer bezel + dark CRT face
+  ctx.fillStyle = "#313b4f";
+  ctx.beginPath();
+  ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#0a111a";
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Graduated tick marks around upper 250° arc
+  const startA = Math.PI * 0.78;
+  const sweepA = Math.PI * 1.44;
+  for (let i = 0; i <= 8; i++) {
+    const a = startA + (i / 8) * sweepA;
+    const inner = i % 2 === 0 ? r - 5 : r - 3;
+    ctx.strokeStyle = i >= 7 ? "#ff5a36" : "#7dd3fc";
+    ctx.lineWidth = i % 2 === 0 ? 1.5 : 1;
+    ctx.beginPath();
+    ctx.moveTo(x + Math.cos(a) * inner, y + Math.sin(a) * inner);
+    ctx.lineTo(x + Math.cos(a) * (r - 1.2), y + Math.sin(a) * (r - 1.2));
+    ctx.stroke();
+  }
+
+  // Glowing arcade orange needle
+  const nA = startA + clamp(frac, 0, 1) * sweepA;
+  ctx.strokeStyle = warn ? "#ff3b1f" : "#ff8a24";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + Math.cos(nA) * (r - 4), y + Math.sin(nA) * (r - 4));
+  ctx.stroke();
+  ctx.fillStyle = "#e2e8f0";
+  ctx.beginPath();
+  ctx.arc(x, y, 2.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "700 8px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(label, x, y + r * 0.66);
+}
+
 function drawCockpitHud(): void {
   const rect = stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -607,142 +719,414 @@ function drawCockpitHud(): void {
   const cw = rect.width;
   const ch = rect.height;
   const cx = cw * 0.5;
-  const cy = ch * 0.44;
+  const cy = ch * 0.42;
   const compact = cw < 640;
+  const isArcade = world.doc.style === "arcade-8bit" || world.doc.style === "retro-raw";
+  const hudCol = isArcade ? "rgba(74, 255, 198, 0.88)" : "rgba(116, 245, 224, 0.78)";
+  const hudDim = isArcade ? "rgba(74, 255, 198, 0.34)" : "rgba(116, 245, 224, 0.25)";
 
-  // Translucent cyan-green HUD glass reticle & dynamic pitch/roll artificial horizon
+  // 1. Translucent HUD Glass Visor + Top Compass Strip
+  const visorW = compact ? 190 : 280;
+  const visorH = compact ? 132 : 176;
+  hudCtx.fillStyle = isArcade ? "rgba(18, 92, 86, 0.10)" : "rgba(38, 120, 128, 0.08)";
+  hudCtx.strokeStyle = hudDim;
+  hudCtx.lineWidth = 1.5;
+  hudCtx.beginPath();
+  hudCtx.moveTo(cx - visorW * 0.44, cy - visorH * 0.52);
+  hudCtx.lineTo(cx + visorW * 0.44, cy - visorH * 0.52);
+  hudCtx.lineTo(cx + visorW * 0.5, cy + visorH * 0.48);
+  hudCtx.lineTo(cx - visorW * 0.5, cy + visorH * 0.48);
+  hudCtx.closePath();
+  hudCtx.fill();
+  hudCtx.stroke();
+
+  // Dynamic heading compass ribbon across top of HUD glass
+  const headingDeg = (((-flight.yaw * 180) / Math.PI) % 360 + 360) % 360;
+  const compY = cy - visorH * 0.38;
   hudCtx.save();
-  hudCtx.translate(cx, cy);
-  hudCtx.rotate(-flight.bank);
-  hudCtx.strokeStyle = "rgba(105, 250, 220, 0.72)";
-  hudCtx.fillStyle = "rgba(105, 250, 220, 0.85)";
-  hudCtx.lineWidth = 1.6;
-  const pShift = flight.pitch * 120;
-  for (let i = -2; i <= 2; i++) {
-    const y = pShift + i * 28;
-    const len = i === 0 ? 52 : 24;
+  hudCtx.beginPath();
+  hudCtx.rect(cx - visorW * 0.38, compY - 14, visorW * 0.76, 24);
+  hudCtx.clip();
+  hudCtx.strokeStyle = hudCol;
+  hudCtx.fillStyle = hudCol;
+  hudCtx.lineWidth = 1.3;
+  hudCtx.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  hudCtx.textAlign = "center";
+  const cardinals: Record<number, string> = { 0: "N", 90: "E", 180: "S", 270: "W" };
+  for (let d = -60; d <= 60; d += 15) {
+    const tickDeg = Math.round((headingDeg + d) / 15) * 15;
+    const normDeg = ((tickDeg % 360) + 360) % 360;
+    const dx = ((tickDeg - headingDeg) / 60) * (visorW * 0.36);
+    const tx = cx + dx;
     hudCtx.beginPath();
-    hudCtx.moveTo(-len - 18, y); hudCtx.lineTo(-18, y);
-    hudCtx.moveTo(18, y); hudCtx.lineTo(len + 18, y);
+    hudCtx.moveTo(tx, compY + 2);
+    hudCtx.lineTo(tx, compY + (normDeg % 45 === 0 ? 8 : 5));
+    hudCtx.stroke();
+    if (normDeg % 45 === 0) {
+      hudCtx.fillText(cardinals[normDeg] ?? String(normDeg).padStart(3, "0"), tx, compY - 1);
+    }
+  }
+  hudCtx.restore();
+  // Compass center caret
+  hudCtx.fillStyle = "#ff8a24";
+  hudCtx.beginPath();
+  hudCtx.moveTo(cx, compY + 9);
+  hudCtx.lineTo(cx - 4, compY + 14);
+  hudCtx.lineTo(cx + 4, compY + 14);
+  hudCtx.closePath();
+  hudCtx.fill();
+
+  // Dynamic pitch/roll artificial horizon ladder
+  hudCtx.save();
+  hudCtx.beginPath();
+  hudCtx.rect(cx - visorW * 0.44, cy - visorH * 0.28, visorW * 0.88, visorH * 0.72);
+  hudCtx.clip();
+  hudCtx.translate(cx, cy + 4);
+  hudCtx.rotate(-flight.bank);
+  hudCtx.strokeStyle = hudCol;
+  hudCtx.fillStyle = hudCol;
+  hudCtx.lineWidth = isArcade ? 2.0 : 1.6;
+  const pShift = flight.pitch * 130;
+  for (let i = -2; i <= 2; i++) {
+    const y = pShift + i * 26;
+    const len = i === 0 ? 48 : 22;
+    hudCtx.beginPath();
+    hudCtx.moveTo(-len - 18, y);
+    hudCtx.lineTo(-18, y);
+    if (i !== 0) {
+      hudCtx.lineTo(-18, y + (i > 0 ? -5 : 5));
+    }
+    hudCtx.moveTo(18, y);
+    hudCtx.lineTo(len + 18, y);
+    if (i !== 0) {
+      hudCtx.moveTo(18, y);
+      hudCtx.lineTo(18, y + (i > 0 ? -5 : 5));
+    }
     hudCtx.stroke();
   }
   hudCtx.restore();
 
-  // Center boresight & numeric speed/altitude tapes
-  hudCtx.strokeStyle = "rgba(105, 250, 220, 0.88)";
-  hudCtx.lineWidth = 1.8;
+  // Center boresight reticle + Speed/Alt numeric readouts
+  hudCtx.save();
+  hudCtx.shadowColor = "rgba(2, 24, 34, 0.65)";
+  hudCtx.shadowBlur = 3;
+  hudCtx.strokeStyle = hudCol;
+  hudCtx.lineWidth = 2;
   hudCtx.beginPath();
-  hudCtx.arc(cx, cy, 10, 0, Math.PI * 2);
-  hudCtx.moveTo(cx - 22, cy); hudCtx.lineTo(cx - 12, cy);
-  hudCtx.moveTo(cx + 12, cy); hudCtx.lineTo(cx + 22, cy);
+  hudCtx.arc(cx, cy + 4, 9, 0, Math.PI * 2);
+  hudCtx.moveTo(cx - 22, cy + 4);
+  hudCtx.lineTo(cx - 12, cy + 4);
+  hudCtx.moveTo(cx + 12, cy + 4);
+  hudCtx.lineTo(cx + 22, cy + 4);
   hudCtx.stroke();
 
-  hudCtx.font = `600 ${compact ? 11 : 13}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-  hudCtx.fillStyle = "rgba(120, 255, 225, 0.9)";
+  hudCtx.font = `700 ${compact ? 11 : 13}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  hudCtx.fillStyle = hudCol;
   hudCtx.textAlign = "right";
-  hudCtx.fillText(`SPD ${Math.round(flight.speed * 11)}`, cx - (compact ? 72 : 120), cy + 4);
+  hudCtx.fillText(`SPD ${Math.round(flight.speed * 11)}`, cx - (compact ? 64 : 104), cy + 8);
   hudCtx.textAlign = "left";
-  hudCtx.fillText(`ALT ${Math.round(flight.pos[1] * 42)}`, cx + (compact ? 72 : 120), cy + 4);
+  hudCtx.fillText(`ALT ${Math.round(flight.pos[1] * 42)}`, cx + (compact ? 64 : 104), cy + 8);
+  hudCtx.restore();
 
-  // Curved canopy arch frame
-  hudCtx.strokeStyle = "#1c222e";
-  hudCtx.lineWidth = compact ? 14 : 22;
+  // 2. Curved Beveled Canopy Arch with Racing Orange Trim & Bolts
+  const archR = Math.max(cw, ch) * 0.66;
+  const archCy = ch * 0.99;
+  hudCtx.strokeStyle = "#161c28";
+  hudCtx.lineWidth = compact ? 16 : 26;
   hudCtx.beginPath();
-  hudCtx.arc(cx, ch * 0.98, Math.max(cw, ch) * 0.66, Math.PI * 1.12, Math.PI * 1.88);
+  hudCtx.arc(cx, archCy, archR, Math.PI * 1.1, Math.PI * 1.9);
   hudCtx.stroke();
-  hudCtx.strokeStyle = "#e84a30";
-  hudCtx.lineWidth = 3;
+  hudCtx.strokeStyle = "#334155";
+  hudCtx.lineWidth = 2;
   hudCtx.beginPath();
-  hudCtx.arc(cx, ch * 0.98, Math.max(cw, ch) * 0.66 - (compact ? 8 : 12), Math.PI * 1.24, Math.PI * 1.76);
+  hudCtx.arc(cx, archCy, archR - (compact ? 7 : 11), Math.PI * 1.12, Math.PI * 1.88);
+  hudCtx.stroke();
+  hudCtx.strokeStyle = "#ff542e";
+  hudCtx.lineWidth = isArcade ? 4 : 3;
+  hudCtx.beginPath();
+  hudCtx.arc(cx, archCy, archR - (compact ? 9 : 14), Math.PI * 1.24, Math.PI * 1.76);
   hudCtx.stroke();
 
-  // Bottom instrument dashboard (scaled cleanly for both mobile & desktop!)
-  const dashH = compact ? 86 : 118;
+  // 3. Chunky 16-Bit Beveled Instrument Console Dashboard
+  const dashH = compact ? 96 : 138;
   const dashY = ch - dashH;
-  hudCtx.fillStyle = "#1d2432";
+  const consoleGrad = hudCtx.createLinearGradient(0, dashY, 0, ch);
+  consoleGrad.addColorStop(0, "#2b3549");
+  consoleGrad.addColorStop(0.16, "#1f2737");
+  consoleGrad.addColorStop(1, "#121722");
+  hudCtx.fillStyle = consoleGrad;
   hudCtx.beginPath();
   hudCtx.moveTo(0, ch);
-  hudCtx.lineTo(0, dashY + 18);
-  hudCtx.lineTo(cw * 0.16, dashY);
-  hudCtx.lineTo(cw * 0.84, dashY);
-  hudCtx.lineTo(cw, dashY + 18);
+  hudCtx.lineTo(0, dashY + 20);
+  hudCtx.lineTo(cw * 0.14, dashY);
+  hudCtx.lineTo(cw * 0.86, dashY);
+  hudCtx.lineTo(cw, dashY + 20);
   hudCtx.lineTo(cw, ch);
   hudCtx.closePath();
   hudCtx.fill();
-  hudCtx.strokeStyle = "#364158";
-  hudCtx.lineWidth = 2;
+
+  // Crisp top metallic bevel highlight + rivets
+  hudCtx.strokeStyle = "#4b5a78";
+  hudCtx.lineWidth = 2.5;
+  hudCtx.stroke();
+  hudCtx.strokeStyle = "#0b0f18";
+  hudCtx.lineWidth = 1.5;
+  hudCtx.beginPath();
+  hudCtx.moveTo(cw * 0.14 + 4, dashY + 5);
+  hudCtx.lineTo(cw * 0.86 - 4, dashY + 5);
   hudCtx.stroke();
 
-  // Center Attitude Ball (live pitch + bank!)
-  const ballR = compact ? 28 : 38;
-  const ballY = dashY + dashH * 0.52;
+  // Rivet bolts along console rim
+  const rivetXs = compact
+    ? [cw * 0.18, cw * 0.34, cw * 0.66, cw * 0.82]
+    : [cw * 0.17, cw * 0.29, cw * 0.42, cw * 0.58, cw * 0.71, cw * 0.83];
+  for (const rx of rivetXs) {
+    hudCtx.fillStyle = "#5b6d8f";
+    hudCtx.beginPath();
+    hudCtx.arc(rx, dashY + 10, 2.2, 0, Math.PI * 2);
+    hudCtx.fill();
+  }
+
+  // 4. Center Attitude Ball (Artificial Horizon) + Orange Aircraft Wing Chevron
+  const ballR = compact ? 28 : 39;
+  const ballY = dashY + (compact ? 45 : 54);
+  hudCtx.fillStyle = "#3a4760";
+  hudCtx.beginPath();
+  hudCtx.arc(cx, ballY, ballR + 4, 0, Math.PI * 2);
+  hudCtx.fill();
+
   hudCtx.save();
   hudCtx.beginPath();
   hudCtx.arc(cx, ballY, ballR, 0, Math.PI * 2);
   hudCtx.clip();
   hudCtx.translate(cx, ballY);
   hudCtx.rotate(-flight.bank);
-  const hy = flight.pitch * ballR * 1.1;
-  hudCtx.fillStyle = "#3385d6";
+  const hy = flight.pitch * ballR * 1.15;
+  hudCtx.fillStyle = isArcade ? "#1d8cf8" : "#3385d6";
   hudCtx.fillRect(-ballR * 2, -ballR * 2, ballR * 4, ballR * 2 + hy);
-  hudCtx.fillStyle = "#9c6838";
+  hudCtx.fillStyle = isArcade ? "#b86b28" : "#9c6838";
   hudCtx.fillRect(-ballR * 2, hy, ballR * 4, ballR * 2);
-  hudCtx.strokeStyle = "#fff";
-  hudCtx.lineWidth = 1.5;
+  hudCtx.strokeStyle = "#f8fafc";
+  hudCtx.lineWidth = 1.8;
   hudCtx.beginPath();
-  hudCtx.moveTo(-ballR, hy); hudCtx.lineTo(ballR, hy);
+  hudCtx.moveTo(-ballR, hy);
+  hudCtx.lineTo(ballR, hy);
   hudCtx.stroke();
+  hudCtx.strokeStyle = "rgba(255,255,255,0.55)";
+  hudCtx.lineWidth = 1.2;
+  for (const off of [-14, -7, 7, 14]) {
+    hudCtx.beginPath();
+    hudCtx.moveTo(-10, hy + off);
+    hudCtx.lineTo(10, hy + off);
+    hudCtx.stroke();
+  }
   hudCtx.restore();
-  hudCtx.strokeStyle = "#64748b";
-  hudCtx.lineWidth = 2.5;
+
+  // Fixed center orange aircraft symbol over horizon ball
+  hudCtx.strokeStyle = "#ff7824";
+  hudCtx.lineWidth = 2.6;
   hudCtx.beginPath();
-  hudCtx.arc(cx, ballY, ballR, 0, Math.PI * 2);
+  hudCtx.moveTo(cx - 18, ballY);
+  hudCtx.lineTo(cx - 6, ballY);
+  hudCtx.lineTo(cx, ballY + 5);
+  hudCtx.lineTo(cx + 6, ballY);
+  hudCtx.lineTo(cx + 18, ballY);
   hudCtx.stroke();
 
-  // Left live Terrain Radar Minimap (reads exact CPU/GPU-matched heightfield!)
-  if (!compact) {
-    const radS = 78;
-    const rx = cx - 186;
-    const ry = dashY + 20;
-    hudCtx.fillStyle = "#081c16";
-    hudCtx.fillRect(rx, ry, radS, radS);
-    const grid = 15;
-    const cell = radS / grid;
-    const cYaw = Math.cos(flight.yaw), sYaw = Math.sin(flight.yaw);
-    for (let gy = 0; gy < grid; gy++) {
-      for (let gx = 0; gx < grid; gx++) {
-        const lx = (gx - 7) * 14;
-        const lz = (gy - 7) * 14;
-        const wx = flight.pos[0] + lx * cYaw + lz * sYaw;
-        const wz = flight.pos[2] - lx * sYaw + lz * cYaw;
-        const th = world.sampleTerrainHeight(wx, wz);
-        if (th > 0.2) {
-          hudCtx.fillStyle = th > 6 ? "#34d399" : "#10b981";
-          hudCtx.fillRect(rx + gx * cell, ry + gy * cell, cell + 0.4, cell + 0.4);
-        }
+  // 5. Left Live Rotating Green CRT Terrain Radar Minimap (29x29 desktop, 17x17 mobile!)
+  const radS = compact ? 64 : 98;
+  const rx = compact ? cx - ballR - radS - 18 : cx - 284;
+  const ry = dashY + (compact ? 18 : 24);
+  hudCtx.fillStyle = "#334155";
+  hudCtx.fillRect(rx - 3, ry - 3, radS + 6, radS + 6);
+  hudCtx.fillStyle = "#041a12";
+  hudCtx.fillRect(rx, ry, radS, radS);
+
+  const grid = compact ? 15 : 27;
+  const cell = radS / grid;
+  const halfG = (grid - 1) * 0.5;
+  const stepW = compact ? 14 : 9.5;
+  const cYaw = Math.cos(flight.yaw);
+  const sYaw = Math.sin(flight.yaw);
+  for (let gy = 0; gy < grid; gy++) {
+    for (let gx = 0; gx < grid; gx++) {
+      const lx = (gx - halfG) * stepW;
+      const lz = (gy - halfG) * stepW;
+      const wx = flight.pos[0] + lx * cYaw + lz * sYaw;
+      const wz = flight.pos[2] - lx * sYaw + lz * cYaw;
+      const th = world.sampleTerrainHeight(wx, wz);
+      if (th > 0.15) {
+        hudCtx.fillStyle = th > 9 ? "#6ee7b7" : th > 4 ? "#34d399" : "#059669";
+        hudCtx.fillRect(rx + gx * cell, ry + gy * cell, cell + 0.35, cell + 0.35);
       }
     }
-    hudCtx.strokeStyle = "rgba(52, 211, 153, 0.45)";
-    hudCtx.lineWidth = 1;
-    hudCtx.strokeRect(rx, ry, radS, radS);
-    hudCtx.fillStyle = "#fbbf24";
-    hudCtx.fillRect(rx + radS * 0.5 - 2, ry + radS * 0.5 - 2, 4, 4);
-
-    // Right thruster & gate status MFD
-    const mx = cx + 108;
-    hudCtx.fillStyle = "#081c16";
-    hudCtx.fillRect(mx, ry, radS, radS);
-    hudCtx.strokeStyle = "rgba(52, 211, 153, 0.45)";
-    hudCtx.strokeRect(mx, ry, radS, radS);
-    hudCtx.fillStyle = "#34d399";
-    hudCtx.font = "600 11px ui-monospace, SFMono-Regular, Menlo, monospace";
-    hudCtx.fillText(`GATES ${flight.score}`, mx + 8, ry + 20);
-    hudCtx.fillText(flight.thrusting ? "AB: ON" : "AB: IDLE", mx + 8, ry + 38);
-    // Thruster bar
-    const barH = flight.thrusting ? 46 : 22;
-    hudCtx.fillStyle = flight.thrusting ? "#f59e0b" : "#10b981";
-    hudCtx.fillRect(mx + 56, ry + 68 - barH, 12, barH);
   }
+  // Radar range ring + rotating sweep line
+  const radCx = rx + radS * 0.5;
+  const radCy = ry + radS * 0.5;
+  hudCtx.strokeStyle = "rgba(52, 211, 153, 0.32)";
+  hudCtx.lineWidth = 1;
+  hudCtx.beginPath();
+  hudCtx.arc(radCx, radCy, radS * 0.34, 0, Math.PI * 2);
+  hudCtx.moveTo(rx, radCy);
+  hudCtx.lineTo(rx + radS, radCy);
+  hudCtx.moveTo(radCx, ry);
+  hudCtx.lineTo(radCx, ry + radS);
+  hudCtx.stroke();
+
+  const sweepAng = (world.doc.time * 2.4) % (Math.PI * 2);
+  hudCtx.strokeStyle = "rgba(110, 255, 200, 0.65)";
+  hudCtx.lineWidth = 1.5;
+  hudCtx.beginPath();
+  hudCtx.moveTo(radCx, radCy);
+  hudCtx.lineTo(radCx + Math.cos(sweepAng) * radS * 0.46, radCy + Math.sin(sweepAng) * radS * 0.46);
+  hudCtx.stroke();
+
+  // Plot nearby sky-gate blips on radar
+  hudCtx.fillStyle = "#38bdf8";
+  for (let i = 0; i < gateCoords.length; i++) {
+    const g = world.getEntity(`gate-${i}`);
+    if (!g) continue;
+    const dx = g.pos[0] - flight.pos[0];
+    const dz = g.pos[2] - flight.pos[2];
+    const lx = dx * cYaw - dz * sYaw;
+    const lz = dx * sYaw + dz * cYaw;
+    const px = radCx + (lx / (halfG * stepW)) * (radS * 0.48);
+    const py = radCy + (lz / (halfG * stepW)) * (radS * 0.48);
+    if (px > rx + 3 && px < rx + radS - 3 && py > ry + 3 && py < ry + radS - 3) {
+      hudCtx.fillRect(px - 2, py - 2, 4, 4);
+    }
+  }
+  // Yellow player chevron in center of radar
+  hudCtx.fillStyle = "#fde047";
+  hudCtx.beginPath();
+  hudCtx.moveTo(radCx, radCy - 4);
+  hudCtx.lineTo(radCx - 3.5, radCy + 3.5);
+  hudCtx.lineTo(radCx + 3.5, radCy + 3.5);
+  hudCtx.closePath();
+  hudCtx.fill();
+
+  // 6. Four Analog Dials + Toggle Switches + Status LEDs (Desktop & Tablet >= 640px)
+  if (!compact) {
+    const dialR = 23;
+    const spdFrac = clamp((flight.speed - 20) / 52, 0, 1);
+    const altFrac = clamp(flight.pos[1] / 62, 0, 1);
+    const thrFrac = flight.thrusting ? 0.94 : 0.42;
+    const bankFrac = clamp(0.5 + flight.bank * 0.45, 0, 1);
+
+    drawAnalogDial(hudCtx, cx - 140, dashY + 46, dialR, spdFrac, "SPD", flight.thrusting);
+    drawAnalogDial(hudCtx, cx - 82, dashY + 46, dialR, altFrac, "ALT", flight.pos[1] < 10);
+    drawAnalogDial(hudCtx, cx + 82, dashY + 46, dialR, thrFrac, "THR", flight.thrusting);
+    drawAnalogDial(hudCtx, cx + 140, dashY + 46, dialR, bankFrac, "BNK", false);
+
+    // Chunky toggle switches & glowing AB warning lamp beneath dials
+    const swY = dashY + 94;
+    for (let s = 0; s < 3; s++) {
+      const sx = cx - 148 + s * 28;
+      hudCtx.fillStyle = "#0f172a";
+      hudCtx.fillRect(sx - 6, swY - 8, 12, 18);
+      hudCtx.fillStyle = s === 0 && flight.thrusting ? "#ff542e" : "#cbd5e1";
+      hudCtx.fillRect(sx - 3, s % 2 === 0 ? swY - 5 : swY + 1, 6, 6);
+    }
+    // Glowing orange Afterburner indicator lamp
+    const abX = cx + 112;
+    hudCtx.fillStyle = flight.thrusting ? "#ff6b1a" : "#3b2316";
+    hudCtx.fillRect(abX - 28, swY - 7, 56, 16);
+    hudCtx.strokeStyle = "#475569";
+    hudCtx.lineWidth = 1.5;
+    hudCtx.strokeRect(abX - 28, swY - 7, 56, 16);
+    hudCtx.fillStyle = flight.thrusting ? "#fff7ed" : "#9a6b52";
+    hudCtx.font = "700 9px ui-monospace, SFMono-Regular, Menlo, monospace";
+    hudCtx.textAlign = "center";
+    hudCtx.fillText(flight.thrusting ? "AB BOOST" : "AB STBY", abX, swY + 4);
+  }
+
+  // 7. Right Top-Down Pixel-Art Fighter Jet Status MFD + Segmented Bar Gauges
+  const mfdW = compact ? 64 : 104;
+  const mfdH = compact ? 64 : 98;
+  const mx = compact ? cx + ballR + 18 : cx + 184;
+  const my = dashY + (compact ? 18 : 24);
+  hudCtx.fillStyle = "#334155";
+  hudCtx.fillRect(mx - 3, my - 3, mfdW + 6, mfdH + 6);
+  hudCtx.fillStyle = "#041a12";
+  hudCtx.fillRect(mx, my, mfdW, mfdH);
+  hudCtx.strokeStyle = "rgba(52, 211, 153, 0.35)";
+  hudCtx.lineWidth = 1;
+  hudCtx.strokeRect(mx + 2, my + 2, mfdW - 4, mfdH - 4);
+
+  // Top-down green wireframe/pixel fighter jet icon inside MFD
+  const jx = mx + (compact ? 22 : 38);
+  const jy = my + (compact ? 35 : 52);
+  const js = compact ? 0.62 : 1.0;
+  hudCtx.fillStyle = "#34d399";
+  hudCtx.beginPath();
+  hudCtx.moveTo(jx, jy - 22 * js); // nose
+  hudCtx.lineTo(jx + 5 * js, jy - 6 * js);
+  hudCtx.lineTo(jx + 20 * js, jy + 8 * js); // right wingtip
+  hudCtx.lineTo(jx + 18 * js, jy + 13 * js);
+  hudCtx.lineTo(jx + 6 * js, jy + 10 * js);
+  hudCtx.lineTo(jx + 10 * js, jy + 19 * js); // tail
+  hudCtx.lineTo(jx - 10 * js, jy + 19 * js);
+  hudCtx.lineTo(jx - 6 * js, jy + 10 * js);
+  hudCtx.lineTo(jx - 18 * js, jy + 13 * js);
+  hudCtx.lineTo(jx - 20 * js, jy + 8 * js); // left wingtip
+  hudCtx.lineTo(jx - 5 * js, jy - 6 * js);
+  hudCtx.closePath();
+  hudCtx.fill();
+  // Thruster glow dots on MFD jet
+  hudCtx.fillStyle = flight.thrusting ? "#ff7824" : "#fde047";
+  hudCtx.fillRect(jx - 6 * js, jy + 19 * js, 4 * js, (flight.thrusting ? 7 : 3) * js);
+  hudCtx.fillRect(jx + 2 * js, jy + 19 * js, 4 * js, (flight.thrusting ? 7 : 3) * js);
+
+  // Segmented twin thruster / speed vertical gauges
+  const segs = 8;
+  const activeSegs = flight.thrusting ? 8 : 4;
+  const gx = mx + mfdW - (compact ? 16 : 24);
+  const gyBase = my + mfdH - 10;
+  const segH = compact ? 4.5 : 7.5;
+  for (let i = 0; i < segs; i++) {
+    const lit = i < activeSegs;
+    hudCtx.fillStyle = !lit ? "#0d3326" : i >= 6 ? "#ff6b1a" : i >= 4 ? "#facc15" : "#34d399";
+    hudCtx.fillRect(gx, gyBase - i * (segH + 1.8) - segH, compact ? 10 : 15, segH);
+  }
+  hudCtx.fillStyle = "#6ee7b7";
+  hudCtx.font = `700 ${compact ? 8 : 10}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  hudCtx.textAlign = "left";
+  hudCtx.fillText(`G:${flight.score}`, mx + 6, my + (compact ? 12 : 15));
+
+  // 8. Live Tilting Center Fighter Yoke / Control Stick!
+  const stickBaseY = ch + 6;
+  const stickDx = clamp(flight.bank * 32, -30, 30);
+  const stickDy = clamp(-flight.pitch * 24, -18, 18);
+  const gripX = cx + stickDx;
+  const gripY = ch - (compact ? 22 : 34) + stickDy;
+
+  // Rubber bellows boot
+  hudCtx.fillStyle = "#0e131c";
+  hudCtx.beginPath();
+  hudCtx.ellipse(cx, ch - 2, compact ? 22 : 30, compact ? 10 : 14, 0, Math.PI, Math.PI * 2);
+  hudCtx.fill();
+  // Tilting metal shaft
+  hudCtx.strokeStyle = "#475569";
+  hudCtx.lineWidth = compact ? 8 : 11;
+  hudCtx.lineCap = "round";
+  hudCtx.beginPath();
+  hudCtx.moveTo(cx, stickBaseY);
+  hudCtx.lineTo(gripX, gripY);
+  hudCtx.stroke();
+  // Contoured flight grip handle + orange trigger cap
+  hudCtx.fillStyle = "#1e293b";
+  hudCtx.strokeStyle = "#64748b";
+  hudCtx.lineWidth = 2;
+  hudCtx.beginPath();
+  hudCtx.roundRect(gripX - (compact ? 11 : 15), gripY - (compact ? 12 : 16), compact ? 22 : 30, compact ? 22 : 28, 7);
+  hudCtx.fill();
+  hudCtx.stroke();
+  // Blazing orange arcade fire button on stick top
+  hudCtx.fillStyle = flight.thrusting ? "#ff3b1f" : "#ff6b1a";
+  hudCtx.beginPath();
+  hudCtx.arc(gripX, gripY - (compact ? 5 : 7), compact ? 4.5 : 5.5, 0, Math.PI * 2);
+  hudCtx.fill();
 
   hudCtx.restore();
 }
@@ -774,6 +1158,7 @@ function frame(now: number): void {
         {
           telemetry: st,
           camera: world.doc.camera.mode,
+          style: world.doc.style,
           aaMode: world.doc.aaMode,
           splitCompare: world.doc.splitCompare,
           entities: world.doc.entities.length,
@@ -831,6 +1216,12 @@ document.addEventListener("visibilitychange", () => {
   setCameraMode: (m: CameraMode) => {
     flight.camMode = m;
     syncControlsUI();
+  },
+  setStyle: (s: RenderStyle) => {
+    applyRenderStyle(s);
+  },
+  setThrust: (on: boolean) => {
+    flight.forceThrust = on;
   },
   toggleSplit: toggleSplitCompare,
 };

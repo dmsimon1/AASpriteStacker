@@ -9,6 +9,7 @@ export type Quat = [number, number, number, number]; // [x, y, z, w]
 export type RGB = [number, number, number]; // 0..255
 
 export type AAMode = "legacy" | "voxel-dda" | "smooth-sdf" | "bandlimited";
+export type RenderStyle = "arcade-8bit" | "hd-2d" | "smooth-toy" | "retro-raw";
 export type ShadeStyle = "toon-aa" | "pbr-lite" | "unlit";
 export type CameraMode = "overhead" | "chase" | "cockpit" | "ortho" | "free";
 export type QualityTier = "auto" | "mobile" | "desktop" | "ultra";
@@ -155,6 +156,8 @@ export interface SceneDocument {
   seed: number;
   time: number;
   tick: number;
+  /** High-level look-dev softswitch ("arcade-8bit" | "hd-2d" | "smooth-toy" | "retro-raw"). */
+  style: RenderStyle;
   aaMode: AAMode;
   samples: 1 | 4 | 8;
   camera: CameraState;
