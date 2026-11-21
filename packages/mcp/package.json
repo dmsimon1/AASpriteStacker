@@ -1,16 +1,28 @@
 {
   "name": "@aastack/mcp",
   "version": "0.1.0",
-  "description": "Model Context Protocol (MCP) server for frontier coding agents building games with AASpriteStacker.",
+  "description": "Model Context Protocol (MCP) server & zero-dep localhost WebSocket dev bridge for frontier coding agents building games with AASpriteStacker.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
   "bin": {
     "aastack-mcp": "./dist/server.js"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./relay": {
+      "types": "./dist/ws-relay.d.ts",
+      "import": "./dist/ws-relay.js"
+    }
+  },
   "dependencies": {
     "@aastack/core": "0.1.0",
-    "@aastack/blueprint": "0.1.0"
+    "@aastack/blueprint": "0.1.0",
+    "@aastack/bridge": "0.1.0"
   },
   "scripts": {
     "build": "tsc -b"

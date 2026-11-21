@@ -8,7 +8,8 @@
   },
   "references": [
     { "path": "../core" },
-    { "path": "../blueprint" }
+    { "path": "../blueprint" },
+    { "path": "../bridge" }
   ],
   "include": ["src"]
 }

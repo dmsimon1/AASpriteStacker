@@ -1,0 +1,44 @@
+{
+  "name": "@aastack/bridge",
+  "version": "0.1.0",
+  "description": "Zero-dependency isomorphic JSON Schemas, 3D geometric linter, vendor-neutral LLM tool dispatcher, and browser dev bridge client for AASpriteStacker.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js"
+    },
+    "./schemas": {
+      "types": "./dist/schemas.d.ts",
+      "import": "./dist/schemas.js"
+    },
+    "./linter": {
+      "types": "./dist/linter.d.ts",
+      "import": "./dist/linter.js"
+    },
+    "./tools": {
+      "types": "./dist/tools.d.ts",
+      "import": "./dist/tools.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    }
+  },
+  "dependencies": {
+    "@aastack/core": "0.1.0",
+    "@aastack/blueprint": "0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "files": ["dist"]
+}
