@@ -117,6 +117,19 @@ test("SceneWorld patchable IR, Undo/Redo, Snapshot/Restore, Sockets, and 3D Voxe
   world.restore(snap);
   assert.deepEqual(world.getEntity("jet").pos, [0, 20, 0]);
 
+  // First-class RenderStyle softswitch defaults to punchy "arcade-8bit" and patches/undoes cleanly
+  assert.equal(world.doc.style, "arcade-8bit");
+  world.applyPatch([{ op: "set", path: "style", value: "hd-2d" }]);
+  assert.equal(world.doc.style, "hd-2d");
+  world.applyPatch([{ op: "set", path: "style", value: "smooth-toy" }]);
+  assert.equal(world.doc.style, "smooth-toy");
+  world.applyPatch([{ op: "set", path: "style", value: "retro-raw" }]);
+  assert.equal(world.doc.style, "retro-raw");
+  assert.equal(world.undo(), true);
+  assert.equal(world.doc.style, "smooth-toy");
+  world.applyPatch([{ op: "set", path: "style", value: "arcade-8bit" }]);
+  assert.equal(world.doc.style, "arcade-8bit");
+
   // Semantic socket query returns exact world-space coordinate
   const wL = world.getSocketWorldPos("jet", "wingtipL");
   const wR = world.getSocketWorldPos("jet", "wingtipR");

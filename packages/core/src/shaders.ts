@@ -1,9 +1,10 @@
 /**
- * WebGL2 ES 3.00 Shaders for @aastack/core:
- *  - TERRAIN_FS: Perspective & Overhead Voxel-Space / Terraced Archipelago + Animated Ocean + Projected Cloud Shadows + Exact gl_FragDepth
- *  - ENTITY_OBB_VS / ENTITY_OBB_FS: 6-DOF Instanced/Batched OBB Proxy Volume Raycaster (RGSS DDA, Smooth SDF, Bandlimited, Legacy 1x) + gl_FragDepth + Object-ID MRT
- *  - RIBBON_VS / RIBBON_FS: Depth-tested 3D World-Space Contrails & Thruster Plumes
- *  - JFA_INIT_FS / JFA_STEP_FS / COMPOSITE_FS: Object-ID-Aware 4-Pass 2D Euclidean SDF Outline (standard RGBA8, zero float-FBO required) + Night/Thruster Bloom + A/B Split Curtain
+ * WebGL2 ES 3.00 Shaders for @aastack/core with live RenderStyle softswitch:
+ *  uStyle:
+ *    0 = "arcade-8bit" (DEFAULT: vivid hue-shifted 8/16-bit palette bands with tight fwidth AA, crisp indigo shadows, snappy wave flecks, arcade cel punch + silky geometric RGSS AA)
+ *    1 = "hd-2d"       (balanced atmospheric HD-2D voxel DDA + softer penumbra & hemisphere lighting)
+ *    2 = "smooth-toy"  (3D SDF sphere tracing + smooth curved surfaces + soft miniature look)
+ *    3 = "retro-raw"   (authentic 1x pixelated nearest-neighbor retro look for direct comparison)
  */
 
 export const FULLSCREEN_VS = `#version 300 es
@@ -25,6 +26,7 @@ uniform vec3 uSunDir;
 uniform float uTimeOfDay;
 uniform float uFogDensity;
 
+uniform int uStyle;        // 0=arcade-8bit, 1=hd-2d, 2=smooth-toy, 3=retro-raw
 uniform int uTerrainEnabled;
 uniform float uSeed;
 uniform float uMaxHeight;
@@ -34,25 +36,16 @@ uniform float uTerraceSteps;
 uniform float uStepFactor; // 1.0 desktop, 1.35 mobile
 
 uniform float uSplitX;     // < 0 disabled, else [0..1]
-uniform int uLeftLegacy;   // 1 if left side of split is legacy 1x pixelated
-uniform int uRightLegacy;  // 1 if right side is legacy 1x pixelated
+uniform int uLeftLegacy;
+uniform int uRightLegacy;
 
 uniform int uShadowCount;
 uniform vec4 uShadowCasters[28]; // xyz = world pos, w = radius
 
 in vec2 vUv;
-layout(location = 0) out vec4 outColor; // sRGB color + 1.0 alpha
-layout(location = 1) out vec4 outAux;   // r=objectId(0 for terrain), g=emissive, b=legacyFlag, a=0
+layout(location = 0) out vec4 outColor;
+layout(location = 1) out vec4 outAux;
 
-vec3 srgbToLin(vec3 c) {
-  return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, lessThanEqual(c, vec3(0.04045)));
-}
-vec3 linToSrgb(vec3 c) {
-  c = clamp(c, 0.0, 1.0);
-  return mix(1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, c * 12.92, lessThanEqual(c, vec3(0.0031308)));
-}
-
-// Sin-free Dave Hoskins hash — exact 1:1 parity with scene.ts CPU sampleTerrainHeight!
 float hash21(vec2 p) {
   p = fract(p * vec2(0.1031, 0.1030));
   p += dot(p, p.yx + 33.33);
@@ -68,6 +61,12 @@ float valueNoise(vec2 p) {
   float c = hash21(i + vec2(0.0, 1.0));
   float d = hash21(i + vec2(1.0, 1.0));
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+// Tight derivative-aware anti-aliased step: razor-crisp 8-bit color bands with 1-display-px AA edge!
+float aaBand(float edge, float val, float minW) {
+  float w = max(fwidth(val) * 0.85, minW);
+  return smoothstep(edge - w, edge + w, val);
 }
 
 float terrainHeight(vec2 xz, out float rawNoise) {
@@ -88,47 +87,56 @@ float terrainHeight(vec2 xz, out float rawNoise) {
     float st = uMaxHeight / uTerraceSteps;
     float band = floor(h / st);
     float fr = h / st - band;
-    float sf = smoothstep(0.72, 1.0, fr);
-    h = (band + sf) * st;
+    float sf = smoothstep(0.76, 1.0, fr);
+    h = max(min(h, 0.55), (band + sf) * st);
   }
   return h;
 }
 
-float cloudShadowAt(vec3 worldPos) {
+float cloudShadowAt(vec3 worldPos, bool crispStyle) {
   float sh = 0.0;
-  vec2 sunHoriz = uSunDir.xz / max(uSunDir.y, 0.22);
+  vec2 sunHoriz = uSunDir.xz / max(uSunDir.y, 0.24);
   for (int i = 0; i < 28; i++) {
     if (i >= uShadowCount) break;
     vec4 sc = uShadowCasters[i];
     if (sc.y <= worldPos.y + 0.5) continue;
     vec2 proj = sc.xz - sunHoriz * (sc.y - worldPos.y);
-    float d = length(worldPos.xz - proj);
-    float s = 1.0 - smoothstep(sc.w * 0.55, sc.w * 1.12, d);
+    // Multi-lobe organic cloud silhouette footprint instead of a generic blurry circle!
+    vec2 rel = worldPos.xz - proj;
+    float d0 = length(rel);
+    float d1 = length(rel - vec2(sc.w * 0.42, sc.w * 0.16));
+    float d2 = length(rel + vec2(sc.w * 0.36, -sc.w * 0.22));
+    float d = min(d0, min(d1 * 1.18, d2 * 1.22));
+    float s = crispStyle
+      ? (1.0 - smoothstep(sc.w * 0.78, sc.w * 0.90, d))
+      : (1.0 - smoothstep(sc.w * 0.58, sc.w * 1.06, d));
     sh = max(sh, s);
   }
   return sh;
 }
 
-vec3 skyColor(vec3 rd, float sunsetW, float nightW) {
-  float h = clamp(rd.y * 1.8, 0.0, 1.0);
-  vec3 dayTop = vec3(0.32, 0.64, 0.94);
-  vec3 dayHor = vec3(0.76, 0.89, 0.98);
-  vec3 sunTop = vec3(0.28, 0.28, 0.56);
-  vec3 sunHor = vec3(0.96, 0.62, 0.42);
-  vec3 ngtTop = vec3(0.04, 0.06, 0.14);
-  vec3 ngtHor = vec3(0.09, 0.14, 0.26);
+vec3 skyColor(vec3 rd, float sunsetW, float nightW, bool arcade) {
+  float h = clamp(rd.y * 1.7, 0.0, 1.0);
+  vec3 dayTop = arcade ? vec3(0.24, 0.58, 0.96) : vec3(0.32, 0.64, 0.94);
+  vec3 dayHor = arcade ? vec3(0.66, 0.86, 0.99) : vec3(0.76, 0.89, 0.98);
+  vec3 sunTop = vec3(0.24, 0.24, 0.56);
+  vec3 sunHor = vec3(0.99, 0.56, 0.34);
+  vec3 ngtTop = vec3(0.03, 0.05, 0.14);
+  vec3 ngtHor = vec3(0.08, 0.13, 0.26);
 
   vec3 top = mix(mix(dayTop, sunTop, sunsetW), ngtTop, nightW);
   vec3 hor = mix(mix(dayHor, sunHor, sunsetW), ngtHor, nightW);
-  vec3 col = mix(hor, top, pow(h, 0.55));
+  vec3 col = mix(hor, top, pow(h, 0.52));
   float sunDot = max(dot(rd, uSunDir), 0.0);
-  vec3 sunGlow = mix(vec3(1.0, 0.95, 0.80), vec3(1.0, 0.58, 0.28), sunsetW) * (1.0 - nightW * 0.7);
+  vec3 sunGlow = mix(vec3(1.0, 0.95, 0.78), vec3(1.0, 0.54, 0.24), sunsetW) * (1.0 - nightW * 0.7);
   col += sunGlow * pow(sunDot, 36.0) * 0.65;
   return col;
 }
 
 void main() {
   bool isLegacy = (uSplitX >= 0.0 && (gl_FragCoord.x / uResolution.x) < uSplitX) ? (uLeftLegacy == 1) : (uRightLegacy == 1);
+  bool arcade = (uStyle == 0 || uStyle == 3);
+
   vec2 fragPx = gl_FragCoord.xy;
   if (isLegacy) {
     float blk = max(3.0, floor(min(uResolution.x, uResolution.y) / 145.0));
@@ -143,7 +151,7 @@ void main() {
 
   float sunsetW = max(0.0, 1.0 - abs(uTimeOfDay - 0.5) * 2.4);
   float nightW = max(0.0, (uTimeOfDay - 0.48) / 0.52);
-  vec3 sky = skyColor(rd, sunsetW, nightW);
+  vec3 sky = skyColor(rd, sunsetW, nightW, arcade);
 
   if (uTerrainEnabled == 0 || rd.y >= -0.002) {
     outColor = vec4(sky, 1.0);
@@ -153,7 +161,7 @@ void main() {
   }
 
   float tWater = (0.0 - ro.y) / rd.y;
-  float farLimit = min(tWater, 420.0);
+  float farLimit = min(tWater, 460.0);
   float tStart = max(0.5, (uMaxHeight + 0.8 - ro.y) / rd.y);
   if (ro.y <= uMaxHeight + 0.8) tStart = 0.5;
 
@@ -161,7 +169,6 @@ void main() {
   float tHit = tWater;
   float rawN = 0.0;
   float prevT = tStart;
-  float prevDiff = 1.0;
 
   if (tStart < farLimit) {
     float t = tStart;
@@ -171,7 +178,6 @@ void main() {
       float th = terrainHeight(p.xz, rawN);
       float diff = p.y - th;
       if (diff <= 0.0) {
-        // 3 binary refinement steps for razor-clean cliff silhouettes
         float lo = prevT, hi = t;
         for (int b = 0; b < 3; b++) {
           float mid = 0.5 * (lo + hi);
@@ -184,9 +190,24 @@ void main() {
         break;
       }
       prevT = t;
-      prevDiff = diff;
       float dt = max(0.55, max(diff * 0.52, t * 0.022)) * uStepFactor;
       t += dt;
+    }
+    // Guarantee zero grazing-ray skip over thin coastal beaches: check exact water-plane intersection!
+    if (!hitLand && farLimit < 459.5) {
+      vec3 pw = ro + rd * farLimit;
+      float thw = terrainHeight(pw.xz, rawN);
+      if (thw > 0.001) {
+        float lo = prevT, hi = farLimit;
+        for (int b = 0; b < 4; b++) {
+          float mid = 0.5 * (lo + hi);
+          vec3 mp = ro + rd * mid;
+          float mh = terrainHeight(mp.xz, rawN);
+          if (mp.y <= mh) hi = mid; else lo = mid;
+        }
+        tHit = hi;
+        hitLand = true;
+      }
     }
   }
 
@@ -194,64 +215,130 @@ void main() {
   vec3 col;
 
   if (hitLand) {
-    float e = 0.75;
+    float e = 0.72;
     float r0, rx, rz;
     float h0 = terrainHeight(hitPos.xz, r0);
     float hx = terrainHeight(hitPos.xz + vec2(e, 0.0), rx);
     float hz = terrainHeight(hitPos.xz + vec2(0.0, e), rz);
     vec3 nrm = normalize(vec3(h0 - hx, e, h0 - hz));
-    float hFrac = clamp(h0 / max(uMaxHeight, 0.1), 0.0, 1.0);
 
-    // Rich archipelago elevation bands: sand -> sunny meadow -> emerald forest -> highland canopy tufts
-    vec3 sand = vec3(0.92, 0.85, 0.64);
-    vec3 grass = vec3(0.39, 0.72, 0.30);
-    vec3 midGrass = vec3(0.24, 0.56, 0.25);
-    vec3 forest = vec3(0.13, 0.37, 0.20);
-    vec3 cliff = vec3(0.54, 0.52, 0.44);
+    if (arcade) {
+      // PUNCHY 8/16-BIT CRISP TERRACE BANDS (1-display-px derivative AA only at band borders!)
+      vec3 sand     = vec3(0.95, 0.85, 0.56);
+      vec3 lime     = vec3(0.45, 0.79, 0.25);
+      vec3 emerald  = vec3(0.24, 0.64, 0.24);
+      vec3 pine     = vec3(0.11, 0.42, 0.20);
+      vec3 pineHi   = vec3(0.28, 0.68, 0.26);
+      vec3 cliffLit = vec3(0.60, 0.54, 0.42);
+      vec3 cliffSh  = vec3(0.34, 0.35, 0.36);
 
-    vec3 baseCol = mix(sand, grass, smoothstep(0.03, 0.14, hFrac));
-    baseCol = mix(baseCol, midGrass, smoothstep(0.26, 0.48, hFrac));
-    float canopyNoise = valueNoise(hitPos.xz * 0.34);
-    float isForest = smoothstep(0.34, 0.52, hFrac) * smoothstep(0.38, 0.68, canopyNoise);
-    baseCol = mix(baseCol, forest, isForest * 0.85);
-    // Steep terrace risers show warm rocky cliff faces
-    baseCol = mix(cliff, baseCol, smoothstep(0.45, 0.78, nrm.y));
+      // Crisp narrow golden beach ribbon -> lush lime meadow -> emerald hills -> pine forest!
+      vec3 baseCol = mix(sand, lime, aaBand(0.552, r0, 0.004));
+      baseCol = mix(baseCol, emerald, aaBand(0.605, r0, 0.006));
+      baseCol = mix(baseCol, pine, aaBand(0.675, r0, 0.007));
 
-    float ndotl = dot(nrm, uSunDir);
-    float sh = cloudShadowAt(hitPos);
-    float lit = mix(smoothstep(-0.2, 0.75, ndotl), 0.28, sh * 0.75);
-    vec3 dayTint = mix(vec3(0.56, 0.65, 0.82), vec3(1.12, 1.08, 0.98), lit);
-    vec3 sunTint = mix(vec3(0.46, 0.42, 0.64), vec3(1.25, 0.94, 0.68), lit);
-    vec3 ngtTint = mix(vec3(0.14, 0.18, 0.30), vec3(0.36, 0.44, 0.64), lit);
-    vec3 tint = mix(mix(dayTint, sunTint, sunsetW), ngtTint, nightW);
-    col = baseCol * tint;
+      // Crisp clustered 8-bit tree crowns on green meadows & highlands (jittered clusters, sunlit tops over deep pine!)
+      vec2 treeGrid = floor(hitPos.xz * 0.34);
+      vec2 jitter = (vec2(hash21(treeGrid + vec2(3.1, 7.4)), hash21(treeGrid + vec2(11.7, 2.3))) - 0.5) * 0.30;
+      vec2 treeLocal = fract(hitPos.xz * 0.34) - 0.5 - jitter;
+      float treeSeed = hash21(treeGrid);
+      float treeDistFade = 1.0 - smoothstep(130.0, 250.0, tHit);
+      float treeMask = aaBand(0.595, r0, 0.006) * step(0.42, treeSeed) * treeDistFade;
+      float crownD = length(treeLocal);
+      float inCrown = (1.0 - aaBand(0.38, crownD, 0.05)) * treeMask;
+      float inSunCrown = (1.0 - aaBand(0.21, length(treeLocal + vec2(0.09, 0.09)), 0.05)) * treeMask;
+      baseCol = mix(baseCol, pine, inCrown * 0.94);
+      baseCol = mix(baseCol, pineHi, inSunCrown * 0.88);
+
+      // Crisp steep rocky cliff risers
+      float isFlat = aaBand(0.62, nrm.y, 0.04);
+      vec3 cliffCol = mix(cliffSh, cliffLit, aaBand(0.15, dot(nrm, uSunDir), 0.05));
+      baseCol = mix(cliffCol, baseCol, isFlat);
+
+      // Tight 2-band hue-shifted directional light + hue-shifted cool-teal cloud shadow!
+      float ndotl = dot(nrm, uSunDir);
+      float litBand = aaBand(0.12, ndotl, 0.06);
+      float sh = cloudShadowAt(hitPos, true);
+      vec3 dayLit = mix(vec3(0.62, 0.72, 0.88), vec3(1.10, 1.07, 0.96), litBand);
+      vec3 sunLit = mix(vec3(0.48, 0.44, 0.68), vec3(1.26, 0.92, 0.64), litBand);
+      vec3 ngtLit = mix(vec3(0.12, 0.17, 0.32), vec3(0.34, 0.43, 0.66), litBand);
+      vec3 tint = mix(mix(dayLit, sunLit, sunsetW), ngtLit, nightW);
+      col = baseCol * tint;
+      // Hue-shifted deep cool-indigo/teal shadow (NEVER muddy gray!)
+      vec3 shTarget = mix(vec3(0.08, 0.24, 0.32), vec3(0.04, 0.08, 0.18), nightW);
+      col = mix(col, mix(col * vec3(0.46, 0.58, 0.78), shTarget, 0.35), sh);
+    } else {
+      vec3 sand = vec3(0.92, 0.85, 0.64);
+      vec3 grass = vec3(0.39, 0.72, 0.30);
+      vec3 midGrass = vec3(0.24, 0.56, 0.25);
+      vec3 forest = vec3(0.13, 0.37, 0.20);
+      vec3 cliff = vec3(0.54, 0.52, 0.44);
+
+      vec3 baseCol = mix(sand, grass, smoothstep(0.542, 0.568, r0));
+      baseCol = mix(baseCol, midGrass, smoothstep(0.595, 0.655, r0));
+      float canopyNoise = valueNoise(hitPos.xz * 0.34);
+      baseCol = mix(baseCol, forest, smoothstep(0.61, 0.67, r0) * smoothstep(0.38, 0.68, canopyNoise) * 0.85);
+      baseCol = mix(cliff, baseCol, smoothstep(0.45, 0.78, nrm.y));
+
+      float ndotl = dot(nrm, uSunDir);
+      float sh = cloudShadowAt(hitPos, false);
+      float lit = mix(smoothstep(-0.2, 0.75, ndotl), 0.28, sh * 0.75);
+      vec3 tint = mix(mix(mix(vec3(0.56, 0.65, 0.82), vec3(1.12, 1.08, 0.98), lit),
+                          mix(vec3(0.46, 0.42, 0.64), vec3(1.25, 0.94, 0.68), lit), sunsetW),
+                      mix(vec3(0.14, 0.18, 0.30), vec3(0.36, 0.44, 0.64), lit), nightW);
+      col = baseCol * tint;
+    }
   } else {
-    // Ocean surface at Y = 0 with coastal turquoise shallows, shoreline foam, and crisp animated wave sparkles!
+    // Ocean surface at Y = 0
     float rW;
     terrainHeight(hitPos.xz, rW);
-    float coast = smoothstep(0.36, 0.53, rW);
-    float foam = smoothstep(0.505, 0.53, rW);
 
-    vec3 deepSea = mix(mix(vec3(0.11, 0.40, 0.74), vec3(0.16, 0.30, 0.56), sunsetW), vec3(0.04, 0.10, 0.24), nightW);
-    vec3 shallow = mix(mix(vec3(0.20, 0.67, 0.82), vec3(0.38, 0.52, 0.64), sunsetW), vec3(0.08, 0.24, 0.38), nightW);
-    col = mix(deepSea, shallow, coast);
+    if (arcade) {
+      // VIVID COBALT OCEAN -> AZURE MID -> RICH TROPICAL TURQUOISE SHALLOWS -> RAZOR-THIN WHITE SURF RING!
+      vec3 deepSea   = mix(mix(vec3(0.08, 0.35, 0.76), vec3(0.15, 0.27, 0.56), sunsetW), vec3(0.03, 0.09, 0.24), nightW);
+      vec3 midSea    = mix(mix(vec3(0.11, 0.49, 0.84), vec3(0.23, 0.37, 0.62), sunsetW), vec3(0.05, 0.14, 0.31), nightW);
+      vec3 shallow   = mix(mix(vec3(0.14, 0.68, 0.82), vec3(0.38, 0.55, 0.66), sunsetW), vec3(0.07, 0.24, 0.38), nightW);
+      vec3 surfFoam  = mix(vec3(0.95, 0.99, 1.00), vec3(1.0, 0.85, 0.72), sunsetW) * (1.0 - nightW * 0.62);
 
-    // Animated wave-crest sparkles (distance-filtered so distant ocean never shimmers!)
-    vec2 wp = hitPos.xz * 0.42 + vec2(uWaveTime * 0.75, uWaveTime * 0.35);
-    float wCell = valueNoise(wp * vec2(1.0, 2.6));
-    float distFade = 1.0 - smoothstep(65.0, 220.0, tHit);
-    float waveFleck = smoothstep(0.79, 0.89, wCell) * distFade;
-    col = mix(col, mix(vec3(0.84, 0.94, 1.0), vec3(1.0, 0.82, 0.66), sunsetW), waveFleck * (0.42 - nightW * 0.25));
-    col = mix(col, vec3(0.90, 0.96, 1.0) * (1.0 - nightW * 0.65), foam * 0.55);
+      col = mix(deepSea, midSea, aaBand(0.415, rW, 0.006));
+      col = mix(col, shallow, aaBand(0.478, rW, 0.005));
+      col = mix(col, surfFoam, aaBand(0.519, rW, 0.0025) * 0.92);
 
-    // Projected dark-blue cloud shadows gliding over the ocean!
-    float sh = cloudShadowAt(hitPos);
-    col *= mix(1.0, 0.58, sh);
+      // Crisp 8-bit ocean wave-crest dashes (distance-filtered so horizon stays silky!)
+      vec2 wGrid = hitPos.xz * vec2(0.34, 0.52) + vec2(uWaveTime * 0.65, uWaveTime * 0.22);
+      vec2 wCell = floor(wGrid);
+      vec2 wFrac = fract(wGrid) - 0.5;
+      float wRand = hash21(wCell);
+      float dash = (1.0 - aaBand(0.34, abs(wFrac.x), 0.06)) * (1.0 - aaBand(0.11, abs(wFrac.y), 0.05));
+      float distFade = 1.0 - smoothstep(85.0, 230.0, tHit);
+      float isCrest = dash * step(0.84, wRand) * distFade;
+      col = mix(col, surfFoam, isCrest * 0.78);
+
+      // CRISP HUE-SHIFTED DEEP ROYAL INDIGO CLOUD SHADOWS (never gray mud!)
+      float sh = cloudShadowAt(hitPos, true);
+      vec3 indigoSh = mix(mix(vec3(0.06, 0.20, 0.50), vec3(0.09, 0.13, 0.32), sunsetW), vec3(0.01, 0.04, 0.12), nightW);
+      col = mix(col, indigoSh, sh * 0.76);
+    } else {
+      float coast = smoothstep(0.36, 0.53, rW);
+      float foam = smoothstep(0.505, 0.53, rW);
+      vec3 deepSea = mix(mix(vec3(0.11, 0.40, 0.74), vec3(0.16, 0.30, 0.56), sunsetW), vec3(0.04, 0.10, 0.24), nightW);
+      vec3 shallow = mix(mix(vec3(0.20, 0.67, 0.82), vec3(0.38, 0.52, 0.64), sunsetW), vec3(0.08, 0.24, 0.38), nightW);
+      col = mix(deepSea, shallow, coast);
+      vec2 wp = hitPos.xz * 0.42 + vec2(uWaveTime * 0.75, uWaveTime * 0.35);
+      float wCell = valueNoise(wp * vec2(1.0, 2.6));
+      float waveFleck = smoothstep(0.79, 0.89, wCell) * (1.0 - smoothstep(65.0, 220.0, tHit));
+      col = mix(col, mix(vec3(0.84, 0.94, 1.0), vec3(1.0, 0.82, 0.66), sunsetW), waveFleck * (0.42 - nightW * 0.25));
+      col = mix(col, vec3(0.90, 0.96, 1.0) * (1.0 - nightW * 0.65), foam * 0.55);
+      float sh = cloudShadowAt(hitPos, false);
+      col *= mix(1.0, 0.58, sh);
+    }
   }
 
-  // Smooth aerial-perspective atmospheric horizon fog
-  float fogT = 1.0 - exp(-pow(max(0.0, tHit - 45.0) * 0.0046 * max(uFogDensity, 0.05), 1.55));
-  vec3 horCol = skyColor(vec3(rd.x, 0.02, rd.z), sunsetW, nightW);
+  // Push horizon haze cleanly into the distance in arcade-8bit so midground stays vibrant & electric!
+  float fogStart = arcade ? 115.0 : 45.0;
+  float fogRate = arcade ? 0.0040 : 0.0046;
+  float fogT = 1.0 - exp(-pow(max(0.0, tHit - fogStart) * fogRate * max(uFogDensity, 0.05), 1.6));
+  vec3 horCol = skyColor(vec3(rd.x, 0.02, rd.z), sunsetW, nightW, arcade);
   col = mix(col, horCol, clamp(fogT, 0.0, 0.96));
 
   vec4 clip = uViewProj * vec4(hitPos, 1.0);
@@ -261,14 +348,13 @@ void main() {
 }`;
 
 export const ENTITY_OBB_VS = `#version 300 es
-layout(location = 0) in vec3 aUnitPos; // unit cube [0..1]^3
+layout(location = 0) in vec3 aUnitPos;
 
 uniform mat4 uViewProj;
 uniform mat4 uVoxelToWorld;
 uniform vec3 uVolSize;
 
 void main() {
-  // Pad bounding box slightly (+0.45 voxel) so smooth SDF shells & anti-aliased edge rays never clip!
   vec3 pad = vec3(0.45);
   vec3 voxPos = mix(-pad, uVolSize + pad, aUnitPos);
   vec4 worldPos = uVoxelToWorld * vec4(voxPos, 1.0);
@@ -289,28 +375,29 @@ uniform mat4 uViewProj;
 uniform mat4 uInvViewProj;
 uniform mat4 uVoxelToWorld;
 uniform mat4 uWorldToVoxel;
-uniform mat3 uNormalMat;      // upper-left 3x3 of VoxelToWorld (normalized)
+uniform mat3 uNormalMat;
 uniform vec3 uVolSize;
 uniform float uSdfRange;
 
-uniform int uModeA;           // 0=legacy, 1=voxel-dda, 2=smooth-sdf, 3=bandlimited
+uniform int uStyle;           // 0=arcade-8bit, 1=hd-2d, 2=smooth-toy, 3=retro-raw
+uniform int uModeA;
 uniform int uModeB;
 uniform float uSplitX;
-uniform int uSamples;         // 1, 4, 8
-uniform int uShadeStyle;      // 0=toon-aa, 1=pbr-lite, 2=unlit
+uniform int uSamples;
+uniform int uShadeStyle;
 uniform int uSelfShadow;
 uniform int uOutlineEnabled;
-uniform float uObjectIdNorm;  // unique entity ID in (0..1] for ID-aware outlines
+uniform float uObjectIdNorm;
 uniform float uEmissiveBoost;
 
-uniform vec3 uSunDir;         // world space unit sun vector
-uniform vec3 uSunLocal;       // voxel-local unit sun vector
+uniform vec3 uSunDir;
+uniform vec3 uSunLocal;
 uniform float uTimeOfDay;
 uniform float uFogDensity;
-uniform int uDebugOverlay;    // 0=none, 1=normals, 2=depth, 3=objectId
+uniform int uDebugOverlay;
 
-layout(location = 0) out vec4 outColor; // premultiplied sRGB? No — straight sRGB with alpha + GL_BLEND(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)
-layout(location = 1) out vec4 outAux;   // r=objectIdNorm, g=emissive, b=legacyFlag, a=alpha
+layout(location = 0) out vec4 outColor;
+layout(location = 1) out vec4 outAux;
 
 vec3 srgbToLin(vec3 c) {
   return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, lessThanEqual(c, vec3(0.04045)));
@@ -340,33 +427,41 @@ vec3 shadeVoxel(vec3 baseLin, vec3 worldN, float ao, float emisFlag, float selfS
   if (uShadeStyle == 2) return baseLin;
   float sunsetW = max(0.0, 1.0 - abs(uTimeOfDay - 0.5) * 2.4);
   float nightW = max(0.0, (uTimeOfDay - 0.48) / 0.52);
+  bool arcade = (uStyle == 0 || uStyle == 3);
 
   if (emisFlag > 0.5) {
-    float boost = 1.0 + (0.35 + nightW * 0.85) * uEmissiveBoost;
-    return baseLin * boost + vec3(0.12, 0.08, 0.03) * uEmissiveBoost;
+    float boost = 1.0 + (0.45 + nightW * 0.9) * uEmissiveBoost;
+    return baseLin * boost + vec3(0.15, 0.09, 0.02) * uEmissiveBoost;
   }
 
-  vec3 shMul = mix(mix(vec3(0.62, 0.69, 0.84), vec3(0.52, 0.48, 0.70), sunsetW), vec3(0.20, 0.25, 0.42), nightW);
-  vec3 midMul = mix(mix(vec3(0.96, 0.97, 1.00), vec3(1.00, 0.85, 0.78), sunsetW), vec3(0.36, 0.43, 0.62), nightW);
-  vec3 litMul = mix(mix(vec3(1.13, 1.10, 1.02), vec3(1.26, 1.02, 0.80), sunsetW), vec3(0.56, 0.66, 0.88), nightW);
+  // Punchy hue-shifted 3-stop arcade palette multipliers (cool indigo shadows -> crisp mid -> warm golden top!)
+  vec3 shMul = arcade
+    ? mix(mix(vec3(0.50, 0.60, 0.84), vec3(0.44, 0.40, 0.68), sunsetW), vec3(0.18, 0.24, 0.44), nightW)
+    : mix(mix(vec3(0.62, 0.69, 0.84), vec3(0.52, 0.48, 0.70), sunsetW), vec3(0.20, 0.25, 0.42), nightW);
+  vec3 midMul = mix(mix(vec3(0.98, 0.98, 1.02), vec3(1.02, 0.86, 0.78), sunsetW), vec3(0.36, 0.44, 0.64), nightW);
+  vec3 litMul = arcade
+    ? mix(mix(vec3(1.18, 1.13, 1.02), vec3(1.32, 1.04, 0.78), sunsetW), vec3(0.60, 0.70, 0.94), nightW)
+    : mix(mix(vec3(1.13, 1.10, 1.02), vec3(1.26, 1.02, 0.80), sunsetW), vec3(0.56, 0.66, 0.88), nightW);
 
   float ndotl = dot(worldN, uSunDir);
-  float litVal = mix(ndotl, min(ndotl, -0.25), selfSh * 0.82);
+  float litVal = mix(ndotl, min(ndotl, -0.28), selfSh * 0.85);
 
   vec3 tint;
   if (hardToon) {
-    if (litVal > 0.35) tint = litMul;
-    else if (litVal > -0.14) tint = midMul;
+    if (litVal > 0.34) tint = litMul;
+    else if (litVal > -0.12) tint = midMul;
     else tint = shMul;
   } else if (uShadeStyle == 0) {
-    float tSh = smoothstep(-0.28, 0.04, litVal);
-    float tLit = smoothstep(0.18, 0.50, litVal);
+    // Tight AA band width (±0.06 in arcade-8bit vs ±0.16 in hd-2d): punchy crisp cel bands with zero rotation pop!
+    float bw = arcade ? 0.06 : 0.16;
+    float tSh = smoothstep(-0.12 - bw, -0.12 + bw, litVal);
+    float tLit = smoothstep(0.34 - bw, 0.34 + bw, litVal);
     tint = mix(mix(shMul, midMul, tSh), litMul, tLit);
   } else {
     float diff = smoothstep(-0.72, 0.95, litVal);
     tint = mix(shMul, litMul, diff);
   }
-  return baseLin * srgbToLin(clamp(tint, 0.0, 2.0)) * ao;
+  return baseLin * srgbToLin(clamp(tint, 0.0, 2.2)) * ao;
 }
 
 bool traceLocalShadow(vec3 ro, vec3 rd) {
@@ -471,7 +566,6 @@ bool traceVoxelRay(
     return true;
   }
 
-  // Exact Amanatides-Woo 3D Voxel DDA
   vec3 invD = vec3(
     abs(rdVox.x) > 1e-6 ? 1.0 / rdVox.x : 1e20,
     abs(rdVox.y) > 1e-6 ? 1.0 / rdVox.y : 1e20,
@@ -512,7 +606,10 @@ bool traceVoxelRay(
       vec4 na = texelFetch(uNormalTex, cell, 0);
       float ef = texelFetch(uEmisTex, cell, 0).r;
       vec3 smoothN = normalize(na.xyz * 2.0 - 1.0);
-      vec3 nLoc = normalize(mix(faceN, smoothN, hardToon ? 0.25 : 0.42));
+      // Crisp faceted cube-face planes on hard-surface outlined actors (24% smooth),
+      // cohesive billowing SDF dome shading on soft non-outlined volumetric clouds (78% smooth, zero checkerboard risers!)
+      float nBlend = (uOutlineEnabled == 0) ? 0.78 : ((uStyle == 0 || hardToon) ? 0.24 : 0.45);
+      vec3 nLoc = normalize(mix(faceN, smoothN, nBlend));
       vec3 worldN = normalize(uNormalMat * nLoc);
       float selfSh = (uSelfShadow == 1 && !hardToon && ef < 0.5 && uShadeStyle != 2)
         ? (traceLocalShadow(pos + rdVox * tCur + faceN * 0.08, uSunLocal) ? 1.0 : 0.0)
@@ -589,11 +686,12 @@ void main() {
   vec3 avgN = normalize(accNorm / hits);
   float avgEm = accEmis / hits;
 
-  // Distance fog matching terrain horizon
+  bool arcade = (uStyle == 0 || uStyle == 3);
   float sunsetW = max(0.0, 1.0 - abs(uTimeOfDay - 0.5) * 2.4);
   float nightW = max(0.0, (uTimeOfDay - 0.48) / 0.52);
-  vec3 horCol = mix(mix(vec3(0.76, 0.89, 0.98), vec3(0.96, 0.62, 0.42), sunsetW), vec3(0.09, 0.14, 0.26), nightW);
-  float fogT = clamp(1.0 - exp(-pow(max(0.0, minT - 45.0) * 0.0046 * max(uFogDensity, 0.05), 1.55)), 0.0, 0.92);
+  vec3 horCol = mix(mix(arcade ? vec3(0.66, 0.86, 0.99) : vec3(0.76, 0.89, 0.98), vec3(0.99, 0.56, 0.34), sunsetW), vec3(0.08, 0.13, 0.26), nightW);
+  float fogStart = arcade ? 115.0 : 45.0;
+  float fogT = clamp(1.0 - exp(-pow(max(0.0, minT - fogStart) * (arcade ? 0.0040 : 0.0046) * max(uFogDensity, 0.05), 1.6)), 0.0, 0.92);
   vec3 finalSrgb = mix(linToSrgb(avgLin), horCol, fogT * (1.0 - avgEm * 0.7));
 
   if (uDebugOverlay == 1) finalSrgb = avgN * 0.5 + 0.5;
@@ -609,7 +707,7 @@ void main() {
 
 export const RIBBON_VS = `#version 300 es
 layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec2 aMeta; // x = age (0..1), y = across (-1..1)
+layout(location = 1) in vec2 aMeta;
 
 uniform mat4 uViewProj;
 out vec2 vMeta;
@@ -630,15 +728,14 @@ layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec4 outAux;
 
 void main() {
-  float edge = 1.0 - smoothstep(0.45, 1.0, abs(vMeta.y));
-  float fade = (1.0 - vMeta.x) * (1.0 - vMeta.x);
+  float edge = 1.0 - smoothstep(uEmissive > 0.5 ? 0.62 : 0.45, 1.0, abs(vMeta.y));
+  float fade = uEmissive > 0.5 ? (1.0 - vMeta.x * 0.78) : (1.0 - vMeta.x) * (1.0 - vMeta.x);
   float a = edge * fade * uAlpha;
   if (a < 0.01) discard;
   outColor = vec4(uColor, a);
   outAux = vec4(0.0, uEmissive * a, 0.0, 0.0);
 }`;
 
-// Object-ID-Aware 2D JFA SDF Outlines (packs 16-bit seed coords in standard RGBA8 — 100% mobile safe!)
 export const JFA_INIT_FS = `#version 300 es
 precision highp float;
 uniform sampler2D uAuxTex;
@@ -655,7 +752,6 @@ vec4 encodeSeed(vec2 uv) {
 
 void main() {
   vec4 aux = texture(uAuxTex, vUv);
-  // Only outline foreground stacked entities with objectId > 0 and solid alpha
   if (aux.r > 0.002 && aux.a > 0.20) {
     outSeed = encodeSeed(vUv);
   } else {
@@ -711,6 +807,7 @@ uniform vec2 uResolution;
 uniform float uOutlinePx;
 uniform vec3 uOutlineSrgb;
 uniform float uBloomStrength;
+uniform int uStyle;
 
 in vec2 vUv;
 out vec4 fragColor;
@@ -730,7 +827,7 @@ vec2 decodeSeed(vec4 s) {
 
 void main() {
   vec4 sceneCol = texture(uColorTex, vUv);
-  vec4 aux = texture(uAuxTex, vUv); // r=objId, g=emissive, b=legacyFlag, a=entityCov
+  vec4 aux = texture(uAuxTex, vUv);
   vec2 px = 1.0 / uResolution;
   bool isLegacy = aux.b > 0.5;
 
@@ -752,7 +849,6 @@ void main() {
     }
   }
 
-  // Smooth emissive bloom (thruster flames, headlights, night windows)
   vec3 bloomLin = vec3(0.0);
   if (uBloomStrength > 0.02) {
     float rStep = max(1.5, min(uResolution.x, uResolution.y) * 0.004);
@@ -766,11 +862,19 @@ void main() {
         }
       }
     }
-    bloomLin *= uBloomStrength * 0.14;
+    bloomLin *= uBloomStrength * 0.16;
   }
 
   vec3 baseLin = srgbToLin(sceneCol.rgb);
   vec3 olLin = srgbToLin(uOutlineSrgb);
-  vec3 finalLin = mix(baseLin, olLin, olAlpha * 0.92) + bloomLin;
-  fragColor = vec4(linToSrgb(finalLin), 1.0);
+  vec3 finalLin = mix(baseLin, olLin, olAlpha * 0.94) + bloomLin;
+  vec3 srgb = linToSrgb(finalLin);
+
+  // Subtle arcade vibrance & contrast punch in arcade-8bit / retro-raw modes!
+  if (uStyle == 0 || uStyle == 3) {
+    float luma = dot(srgb, vec3(0.299, 0.587, 0.114));
+    srgb = mix(vec3(luma), srgb, 1.16);
+    srgb = clamp((srgb - 0.5) * 1.06 + 0.5, 0.0, 1.0);
+  }
+  fragColor = vec4(srgb, 1.0);
 }`;

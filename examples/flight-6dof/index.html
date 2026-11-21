@@ -167,11 +167,11 @@
     .mobile-actions { display: flex; }
   }
   #stage.cockpit-mode .bottom-meta {
-    bottom: 124px;
+    bottom: 146px;
   }
   @media (max-width: 640px) {
     #stage.cockpit-mode .bottom-meta {
-      bottom: 92px;
+      bottom: 104px;
     }
   }
   .touch-action {
@@ -212,8 +212,8 @@
     </div>
     <div class="bar-group hud-interactive">
       <button id="camBtn" title="Cycle Overhead / Chase / Cockpit (Space or V)">Cam: Chase</button>
-      <button id="modeBtn" title="Cycle AA Voxel DDA / AA Smooth SDF / Legacy">AA Voxel DDA</button>
-      <button id="splitBtn" aria-pressed="false" title="Toggle Legacy vs AA Split Curtain (C)">A/B</button>
+      <button id="styleBtn" title="Cycle Render Style: 8-Bit AA / HD-2D / Smooth Toy / Retro 1× (M)">Style: 8-Bit AA</button>
+      <button id="splitBtn" aria-pressed="false" title="Toggle Retro 1× vs AA Split Curtain (C)">A/B</button>
       <button id="todBtn" title="Cycle Day / Sunset / Night">Day</button>
       <button id="inspectorBtn" aria-pressed="false" title="Live SceneIR & Deterministic Replay">IR</button>
     </div>
@@ -221,8 +221,8 @@
 
   <div id="splitOverlay">
     <div id="splitHandle" style="left: 50%"><div class="split-knob">⇄</div></div>
-    <div class="split-tag left" id="tagLeft">Legacy 1×</div>
-    <div class="split-tag right" id="tagRight">AA Voxel DDA · 8×</div>
+    <div class="split-tag left" id="tagLeft">Retro 1×</div>
+    <div class="split-tag right" id="tagRight">8-Bit AA · 8×</div>
   </div>
 
   <aside id="inspectorDrawer" class="hud-interactive" aria-label="Live SceneIR Inspector">

@@ -163,11 +163,16 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     if (world.doc.entities.length > 64) {
       warnings.push(`Scene has ${world.doc.entities.length} entities; enable distance LOD / culling for mobile 60fps.`);
     }
+    const validStyles = new Set(["arcade-8bit", "hd-2d", "smooth-toy", "retro-raw"]);
+    if (!validStyles.has(world.doc.style)) {
+      warnings.push(`Unknown RenderStyle "${String(world.doc.style)}"; expected arcade-8bit | hd-2d | smooth-toy | retro-raw.`);
+    }
     return {
       ok: warnings.length === 0,
       entityCount: world.doc.entities.length,
       ribbonCount: world.doc.ribbons.length,
       cameraMode: world.doc.camera.mode,
+      style: world.doc.style,
       warnings,
     };
   }

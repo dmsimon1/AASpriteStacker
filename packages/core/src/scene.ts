@@ -76,9 +76,10 @@ export function sampleTerrainHeight(x: number, z: number, terrain: TerrainState)
     const step = terrain.maxHeight / terrain.terraceSteps;
     const band = Math.floor(h / step);
     const frac = (h / step) - band;
-    // Slight bevel on each terrace riser so cliffs stay anti-aliased & readable
-    const smoothFrac = clamp((frac - 0.72) / 0.28, 0, 1);
-    h = (band + smoothFrac * smoothFrac * (3 - 2 * smoothFrac)) * step;
+    // Keep low beach shelf > 0 so coastline aligns 1:1 with surf foam, then terrace upward cleanly
+    const smoothFrac = clamp((frac - 0.76) / 0.24, 0, 1);
+    const stepped = (band + smoothFrac * smoothFrac * (3 - 2 * smoothFrac)) * step;
+    h = Math.max(Math.min(h, 0.55), stepped);
   }
   return h;
 }
@@ -89,6 +90,7 @@ export function createDefaultScene(seed = 7): SceneDocument {
     seed,
     time: 0,
     tick: 0,
+    style: "arcade-8bit",
     aaMode: "voxel-dda",
     samples: 4,
     camera: {
