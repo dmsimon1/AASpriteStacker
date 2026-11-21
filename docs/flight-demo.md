@@ -84,11 +84,19 @@ const pngDataUrl = __AASTACK__.renderer.captureDataUrl(__AASTACK__.world);
 
 ---
 
-## 5. Footprint Breakdown
+## 5. Live Agent Co-Editing (`?bridge=1`) & Footprint Breakdown
 
-Built via `scripts/bundle-demos.mjs` (`esbuild --bundle --minify`):
+Launch the demo with `?bridge=1` (or click **`Bridge: Off`** inside the `IR` drawer) to lazy-load `@aastack/bridge/client` and attach to your running `@aastack/mcp` relay on `ws://127.0.0.1:8787`:
 
-- **Minified JS (`examples/flight-6dof/bundle.js`):** `90 KB` raw
-- **Gzipped JS:** `29.3 KB`
-- **HTML + CSS (`examples/flight-6dof/index.html`):** `~3.2 KB` gzipped
+```text
+http://127.0.0.1:8765/examples/flight-6dof/index.html?bridge=1
+```
+
+A subtle **"Agent Live"** pill appears below the brand badge with a live status dot, agent edit toast, and a **1-click `Undo`** button.
+
+Built via `scripts/bundle-demos.mjs` (`esbuild --bundle --splitting --minify`):
+
+- **Default Initial Load (`bundle.js` + core chunk):** **`30.7 KB` gzipped** (`0` bytes of bridge/linter/validators downloaded until `?bridge=1` is active!)
+- **Lazy Dev Bridge Chunk (`dev-bridge-client-*.js`):** `8.5 KB` gzipped (loaded on demand only in `?bridge=1` dev sessions)
+- **HTML + CSS (`examples/flight-6dof/index.html`):** `~3.4 KB` gzipped
 - **External Runtime Dependencies:** `0`

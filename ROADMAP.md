@@ -18,15 +18,15 @@ This document tracks the concrete milestones from our current foundation to **`v
 
 ---
 
-## Milestone 2: Frontier LLM Integration & Interfaces *(Next — Target for `v0.1.0`)*
+## Milestone 2: Frontier LLM Integration & Interfaces *(Completed)*
 
 Goal: Make AASpriteStacker the cleanest, highest-leverage **iterative AI-native game engine** — without bloating `@aastack/core` or locking into any single model vendor.
 
-- [ ] **Live Runtime Bridge (WebSocket / Dev Relay for `@aastack/mcp`):** Allow an external coding agent (Claude Code, Antigravity, Cursor, Codex, Gemini CLI) to attach to a running browser tab, push live `ScenePatchOp[]` / hot-swapped `BlueprintSpec` JSON with zero reload, query `getStats()` / `raycastEntities()`, and receive real rendered PNG frames (`captureDataUrl`) for closed-loop visual self-critique.
-- [ ] **Strict JSON Schema + Structured Diagnostics:** Publish machine-readable JSON Schemas (`scene-ir.schema.json`, `blueprint.schema.json`, `patch.schema.json`) and actionable validation errors (e.g., socket out-of-bounds, floating disconnected voxels, mobile fill-rate budget warnings) so models self-correct in 1 turn.
-- [ ] **Multi-Turn Visual Critique & Diff Loop (`aastack_capture_frame`, `aastack_patch_live`, `aastack_verify_orbit`):** Let agents spin an asset across `0°/45°/90°/180°` or switch `Overhead`/`Chase`/`Cockpit`, inspect rendered screenshots, and iteratively refine geometry, colors, and lighting.
-- [ ] **Model-Agnostic Prompt & Tooling Adapters:** Keep runtime 100% vendor-neutral while shipping clean adapters/examples for MCP, OpenAI/Anthropic/Gemini tool-calling schemas, and `llms-full.txt` context packs.
-- [ ] **Zero-Setup Studio Mode / Live Patch Console:** Optional dev overlay & hot-reload harness so humans and agents can co-edit the same live scene with full undo/redo history and export clean `.json` / `.ts` / `.vox` artifacts.
+- [x] **Zero-Dep Isomorphic `@aastack/bridge` Package:** Draft 2020-12 JSON Schemas (`BLUEPRINT_SPEC_SCHEMA`, `SCENE_PATCH_OPS_SCHEMA`, `SCENE_DOCUMENT_SCHEMA`), vendor-neutral tool adapters (`toOpenAITools`, `toAnthropicTools`, `toGeminiFunctionDeclarations`), in-process `executeEngineTool()` dispatcher, and lazy-loaded browser `connectDevBridge()` client (`0` bytes in production when unused).
+- [x] **3D Geometric & Mobile-Budget Linter (`@aastack/bridge/linter`):** Exact 3D 6-connected-component BFS floating voxel island detection, socket bounds & primary-hull detachment checks, empty volume errors, and mobile VRAM/entity budget diagnostics.
+- [x] **Embedded Localhost RFC 6455 WebSocket Relay (`@aastack/mcp`):** Zero-dependency loopback relay (`ws://127.0.0.1:8787`) with automatic multi-agent leader/follower port sharing, strict `Origin` allowlist, and workspace-confined `aastack_save_blueprint` / `aastack_export_scene` persistence tools.
+- [x] **Native MCP Visual Self-Critique Loop:** Single-frame PNG capture (`aastack_live_capture`) and 2×2 labeled multi-angle contact sheets (`aastack_live_capture_views`: `turntable` and `scene`) returned as native MCP `image/png` blocks + telemetry JSON.
+- [x] **Live Co-Editing UX (`examples/flight-6dof`):** Opt-in `?bridge=1` / IR toggle + subtle `"Agent Live"` pill with status dot, edit toast, and 1-click `Undo`, verified end-to-end across Leader+Follower MCP servers and live Chromium.
 
 ---
 

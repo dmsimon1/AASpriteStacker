@@ -123,14 +123,32 @@ interface BlueprintSpec {
 
 ---
 
-## 3. `@aastack/mcp`
+## 3. `@aastack/bridge`
 
-Zero-dependency stdio JSON-RPC 2.0 MCP server (`node packages/mcp/dist/server.js`).
+Zero-dependency isomorphic package (`sideEffects: false`) providing strict schemas, 3D geometric linting, the vendor-neutral tool dispatcher, and the browser dev bridge client.
 
-| Tool Name | Arguments | Returns |
-| --- | --- | --- |
-| `aastack_compile_blueprint` | `{ spec: BlueprintSpec }` | `{ ok, id, hash, dimensions, solidVoxels, fillRatio, emissiveVoxels, gpuTextureKB, sockets }` |
-| `aastack_inspect_vox` | `{ path: string, id?: string }` | `{ ok, id, hash, dimensions, solidVoxels, gpuTextureKB }` |
-| `aastack_carve_4view` | `{ inputPng, outputSlicesPng, slices?, round?, previewPng?, sdfPng? }` | Runs `aa_views_to_slices.py` via `.venv/bin/python` and returns `{ ok, stdout, stderr }` |
-| `aastack_validate_scene_ir` | `{ scene: Partial<SceneDocument>, patches?: ScenePatchOp[] }` | Validates `parentId` references, positive scales, `RenderStyle`, and mobile entity budgets |
-| `aastack_get_sdk_spec` | `{}` | Returns the full contents of [`llms-full.txt`](../llms-full.txt) |
+### `@aastack/bridge/schemas`
+- `BLUEPRINT_SPEC_SCHEMA`, `SCENE_PATCH_OPS_SCHEMA`, `SCENE_DOCUMENT_SCHEMA` (Draft 2020-12 JSON Schemas)
+- `ENGINE_TOOL_DEFINITIONS` — vendor-neutral tool array
+- `toOpenAITools()`, `toAnthropicTools()`, `toGeminiFunctionDeclarations()`
+- `validateBlueprintSpec(raw)`, `validateScenePatchOps(raw)`, `validateSceneDocument(raw)` → `Diagnostic[]`
+
+### `@aastack/bridge/linter`
+- `lintVolumeAsset(asset: VolumeAsset): VolumeLintReport` — returns `{ ok, metrics, diagnostics }` including 3D 6-connected-component floating island detection (`FLOATING_VOXEL_ISLAND`), socket bounds/detachment checks, occupancy, and mobile VRAM checks.
+- `lintSceneWorld(world: SceneWorld, checkAssetRegistry?): Diagnostic[]`
+
+### `@aastack/bridge/tools`
+- `executeEngineTool(ctx: EngineToolContext, tool: string, args?: Record<string, unknown>): Promise<EngineToolResult>` — executes `aastack_live_state`, `aastack_live_patch`, `aastack_live_undo`, `aastack_live_redo`, `aastack_live_hot_swap_blueprint`, `aastack_live_query`, `aastack_live_snapshot`, `aastack_live_restore`, `aastack_live_capture`, and `aastack_live_capture_views` (2×2 labeled PNG contact sheet).
+
+### `@aastack/bridge/client`
+- `connectDevBridge(ctx: EngineToolContext, opts?: DevBridgeOptions): DevBridgeHandle` — connects to `ws://127.0.0.1:8787` (or `?bridgePort=` / `opts.url`), auto-reconnects cleanly, and emits `onStatusChange` / `onAgentEvent` updates.
+
+---
+
+## 4. `@aastack/mcp`
+
+Zero-dependency stdio JSON-RPC 2.0 MCP server + embedded localhost RFC 6455 WebSocket relay (`node packages/mcp/dist/server.js`) with automatic leader/follower multi-agent port sharing.
+
+- **Offline & Persistence Tools:** `aastack_compile_blueprint`, `aastack_save_blueprint`, `aastack_export_scene`, `aastack_inspect_vox`, `aastack_carve_4view`, `aastack_validate_scene_ir`, `aastack_get_sdk_spec`.
+- **Live Browser Bridge Tools:** `aastack_live_sessions`, `aastack_live_state`, `aastack_live_patch`, `aastack_live_undo`, `aastack_live_redo`, `aastack_live_hot_swap_blueprint`, `aastack_live_query`, `aastack_live_snapshot`, `aastack_live_restore`, `aastack_live_capture` (native MCP `image/png`), `aastack_live_capture_views` (2×2 labeled PNG contact sheet).
+- **Helper Export (`@aastack/mcp/relay`):** `startBridgeRelay({ port?, token? })`, `isAllowedLocalOrigin(origin)`.
