@@ -3,6 +3,16 @@
   "version": "0.1.0",
   "description": "Zero-dependency isomorphic JSON Schemas, 3D geometric linter, vendor-neutral LLM tool dispatcher, and browser dev bridge client for AASpriteStacker.",
   "license": "MIT",
+  "homepage": "https://aasprite.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dmsimon1/AASpriteStacker.git",
+    "directory": "packages/bridge"
+  },
+  "bugs": "https://github.com/dmsimon1/AASpriteStacker/issues",
+  "keywords": ["sprite-stacking", "mcp", "ai-agents", "voxel-linter", "webgl2"],
+  "engines": { "node": ">=18.0.0" },
+  "publishConfig": { "access": "public" },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -40,5 +50,5 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "files": ["dist"]
+  "files": ["dist", "README.md"]
 }

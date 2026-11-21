@@ -18,6 +18,13 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build:site
+      - name: Verify publishable workspace tarballs
+        run: |
+          npm pack --dry-run --workspace=@aastack/core
+          npm pack --dry-run --workspace=@aastack/blueprint
+          npm pack --dry-run --workspace=@aastack/bridge
+          npm pack --dry-run --workspace=@aastack/mcp
 
   python:
     runs-on: ubuntu-latest

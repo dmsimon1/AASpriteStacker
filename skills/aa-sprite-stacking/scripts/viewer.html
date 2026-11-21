@@ -267,8 +267,8 @@
     <button id="loupeBtn" aria-pressed="false" title="4x pixel inspection loupe on hover">Loupe</button>
     <button id="playBtn" title="Space">Pause</button>
     <button id="exportBtn" title="Export anti-aliased 16-angle sprite sheet PNG">Export 16-dir AA</button>
-    <label class="btn" for="fileInput">Load Strip</label>
-    <input id="fileInput" type="file" accept="image/png,image/webp" />
+    <label class="btn" for="fileInput" title="Load a MagicaVoxel .vox model or horizontal slices.png strip">Load .vox / Strip</label>
+    <input id="fileInput" type="file" accept=".vox,image/png,image/webp" />
   </div>
 </header>
 
@@ -323,7 +323,7 @@
   </div>
 
   <div class="readout" id="readout"></div>
-  <div class="drop-hint">Drop any horizontal slice strip PNG (standard or AA)</div>
+  <div class="drop-hint">Drop a MagicaVoxel .vox model or horizontal slice strip PNG</div>
 </main>
 
 <footer>
@@ -2244,19 +2244,64 @@ function loadImage(src) {
   });
 }
 
+function computeIdealScale(vol, view) {
+  const availW = Math.max(260, (stage.clientWidth || 720) - 96);
+  const topReserve = view === "compare" ? 156 : 100;
+  const availH = Math.max(220, (stage.clientHeight || 540) - topReserve);
+  const diagXY = Math.hypot(vol.w, vol.h);
+  const maxSpacing = view === "exploded" ? 2.65 : 1.0;
+  const projW = diagXY + 8;
+  const projH = diagXY * 0.75 + vol.n * maxSpacing + 10;
+  const fit = Math.min(availW / projW, availH / projH);
+  return clamp(Math.floor(fit * 2) / 2, 2.0, 10.0);
+}
+
+function syncRangeValue(input, output, val, fmt) {
+  input.value = String(val);
+  output.textContent = fmt(val);
+  const min = Number(input.min || 0);
+  const max = Number(input.max || 100);
+  if (max > min) {
+    input.style.setProperty("--progress", `${(((val - min) / (max - min)) * 100).toFixed(1)}%`);
+  }
+}
+
+function resetCamera() {
+  drag = null;
+  draggingSplit = false;
+  stage.classList.remove("dragging-split");
+
+  state.angle = 35;
+  state.squash = 0.75;
+  state.spacing = 1.0;
+  state.sunAngle = 42;
+  state.splitPos = 0.5;
+  state.explodePhase = 0;
+  state.scanZ = state.view === "scan" ? 1 : (state.vol ? state.vol.n : state.slices);
+  state.playing = true;
+  els.play.textContent = "Pause";
+
+  if (state.vol) {
+    state.scale = computeIdealScale(state.vol, state.view);
+  }
+
+  syncRangeValue(els.angle, els.angleOut, state.angle, (v) => `${Math.round(v)}°`);
+  syncRangeValue(els.squash, els.squashOut, state.squash, (v) => v.toFixed(2));
+  syncRangeValue(els.spacing, els.spacingOut, state.spacing, (v) => v.toFixed(2));
+  syncRangeValue(els.scale, els.scaleOut, state.scale, (v) => `${v.toFixed(1)}×`);
+  syncRangeValue(els.sun, els.sunOut, state.sunAngle, (v) => `${Math.round(v)}°`);
+  syncUI();
+  state.dirty = true;
+}
+
 function applyVolume(vol, name) {
   state.vol = vol;
   state.slices = vol.n;
-  state.scanZ = vol.n;
   els.slices.value = String(vol.n);
   titleText.textContent = name;
   metaText.textContent = `${vol.n} slices · ${vol.w}×${vol.h}px`;
-  const ideal = clamp(Math.round((300 / Math.max(vol.w, vol.h, vol.n * 1.4)) * 2) / 2, 3, 10);
-  state.scale = ideal;
-  els.scale.value = String(ideal);
-  els.scaleOut.textContent = `${ideal.toFixed(1)}×`;
   uploadVolumeToGPU(vol);
-  state.dirty = true;
+  resetCamera();
 }
 
 async function loadStripImages(sheetImg, count, name, sdfImg = null, sdfRange = 6.0) {
@@ -2432,10 +2477,7 @@ document.querySelectorAll("[data-view]").forEach((btn) => {
   btn.addEventListener("click", () => {
     state.view = btn.dataset.view;
     document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
-    if (state.view === "scan") state.scanZ = 1;
-    if (state.view === "exploded") state.explodePhase = 0;
-    syncUI();
-    state.dirty = true;
+    resetCamera();
   });
 });
 document.querySelectorAll("[data-samples]").forEach((btn) => {
@@ -2488,11 +2530,126 @@ els.slices.addEventListener("change", () => {
   if (loadedStripImg) loadStripImages(loadedStripImg, n, loadedStripName);
 });
 
+function defaultVoxPalette() {
+  const pal = new Uint8Array(256 * 4);
+  const vals = [0xff, 0xcc, 0x99, 0x66, 0x33, 0x00];
+  let idx = 1;
+  for (let b = 0; b < 6 && idx < 216; b++) {
+    for (let g = 0; g < 6 && idx < 216; g++) {
+      for (let r = 0; r < 6 && idx < 216; r++) {
+        pal[idx * 4 + 0] = vals[r];
+        pal[idx * 4 + 1] = vals[g];
+        pal[idx * 4 + 2] = vals[b];
+        pal[idx * 4 + 3] = 255;
+        idx++;
+      }
+    }
+  }
+  for (let i = idx; i < 256; i++) {
+    const v = Math.round(((255 - i) / (256 - idx)) * 255);
+    pal[i * 4 + 0] = v;
+    pal[i * 4 + 1] = v;
+    pal[i * 4 + 2] = v;
+    pal[i * 4 + 3] = 255;
+  }
+  return pal;
+}
+
+function parseVoxBuffer(buffer) {
+  const view = new DataView(buffer);
+  const u8 = new Uint8Array(buffer);
+  if (buffer.byteLength < 20) throw new Error("Invalid .vox file: too short");
+  const readStr = (off) => String.fromCharCode(u8[off], u8[off + 1], u8[off + 2], u8[off + 3]);
+  if (readStr(0) !== "VOX ") throw new Error(`Invalid .vox magic: "${readStr(0)}"`);
+
+  let sizeX = 0, sizeY = 0, sizeZ = 0;
+  const voxels = [];
+  let palette = defaultVoxPalette();
+
+  const parseChunk = (pos, limit) => {
+    if (pos + 12 > limit) return limit;
+    const id = readStr(pos);
+    const contentBytes = view.getInt32(pos + 4, true);
+    const childBytes = view.getInt32(pos + 8, true);
+    const contentStart = pos + 12;
+    const childStart = contentStart + contentBytes;
+    const chunkEnd = Math.min(limit, childStart + childBytes);
+
+    if (id === "SIZE" && contentBytes >= 12 && sizeX === 0) {
+      sizeX = view.getInt32(contentStart, true);
+      sizeY = view.getInt32(contentStart + 4, true);
+      sizeZ = view.getInt32(contentStart + 8, true);
+    } else if (id === "XYZI" && contentBytes >= 4 && voxels.length === 0) {
+      const count = view.getInt32(contentStart, true);
+      for (let i = 0; i < count; i++) {
+        const p = contentStart + 4 + i * 4;
+        if (p + 4 > childStart) break;
+        voxels.push([u8[p], u8[p + 1], u8[p + 2], u8[p + 3]]);
+      }
+    } else if (id === "RGBA" && contentBytes >= 1024) {
+      const pal = new Uint8Array(256 * 4);
+      for (let i = 0; i < 255; i++) {
+        const src = contentStart + i * 4;
+        const dst = (i + 1) * 4;
+        pal[dst + 0] = u8[src + 0];
+        pal[dst + 1] = u8[src + 1];
+        pal[dst + 2] = u8[src + 2];
+        pal[dst + 3] = u8[src + 3];
+      }
+      palette = pal;
+    }
+
+    let cPos = childStart;
+    while (cPos < chunkEnd) {
+      const next = parseChunk(cPos, chunkEnd);
+      if (next <= cPos) break;
+      cPos = next;
+    }
+    return chunkEnd;
+  };
+
+  let offset = 8;
+  while (offset < buffer.byteLength) {
+    const next = parseChunk(offset, buffer.byteLength);
+    if (next <= offset) break;
+    offset = next;
+  }
+  if (sizeX <= 0 || sizeY <= 0 || sizeZ <= 0) throw new Error("Invalid .vox file: missing SIZE chunk");
+
+  const area = sizeX * sizeY;
+  const rgba = new Uint8Array(sizeZ * area * 4);
+  for (const [vx, vy, vz, ci] of voxels) {
+    if (vx >= sizeX || vy >= sizeY || vz >= sizeZ || ci === 0) continue;
+    const idx = vz * area + (sizeY - 1 - vy) * sizeX + vx;
+    const p = idx * 4;
+    const cp = ci * 4;
+    rgba[p + 0] = palette[cp + 0];
+    rgba[p + 1] = palette[cp + 1];
+    rgba[p + 2] = palette[cp + 2];
+    rgba[p + 3] = palette[cp + 3] || 255;
+  }
+  return buildVolumePack(sizeX, sizeY, sizeZ, rgba, null, 6.0);
+}
+
 async function handleFile(file) {
+  const baseName = file.name.replace(/\.[^.]+$/, "");
+  if (file.name.toLowerCase().endsWith(".vox")) {
+    try {
+      const buf = await file.arrayBuffer();
+      const vol = parseVoxBuffer(buf);
+      loadedStripImg = null;
+      loadedStripName = baseName;
+      document.querySelectorAll("[data-preset]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+      applyVolume(vol, `${baseName} (.vox)`);
+    } catch (err) {
+      metaText.textContent = `VOX error: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    return;
+  }
   const url = URL.createObjectURL(file);
   const img = await loadImage(url);
   loadedStripImg = img;
-  loadedStripName = file.name.replace(/\.[^.]+$/, "");
+  loadedStripName = baseName;
   // Heuristic: guess square-ish slice count when width >= 2 * height
   const guessed = img.height > 0 && img.width >= img.height * 2
     ? Math.max(1, Math.round(img.width / img.height))

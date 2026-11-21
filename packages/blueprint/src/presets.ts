@@ -159,3 +159,110 @@ export function createSkyGateBlueprint(id = "sky-gate"): BlueprintSpec {
     },
   };
 }
+
+/**
+ * Classic 2.5D pixel-art cottage with stepped grass plinth, warm timber-framed walls,
+ * glowing amber windows, diagonal blue-shingled gabled roof, brick chimney, and a thin
+ * 1-voxel rooftop weathervane — designed specifically to showcase rotation anti-aliasing
+ * on diagonal roof edges, fine stripes, and 1px details.
+ */
+export function createCottageBlueprint(id = "aa-cottage"): BlueprintSpec {
+  const EARTH: [number, number, number] = [108, 72, 46];
+  const GRASS_DARK: [number, number, number] = [66, 138, 56];
+  const GRASS: [number, number, number] = [94, 174, 68];
+  const GRASS_HI: [number, number, number] = [132, 202, 82];
+  const STONE: [number, number, number] = [164, 170, 178];
+  const WALL: [number, number, number] = [244, 232, 198];
+  const WALL_SHADE: [number, number, number] = [218, 202, 166];
+  const TIMBER: [number, number, number] = [118, 76, 44];
+  const DOOR: [number, number, number] = [42, 134, 122];
+  const WINDOW_GLOW: [number, number, number] = [255, 224, 108];
+  const ROOF_DARK: [number, number, number] = [56, 86, 136];
+  const ROOF_MID: [number, number, number] = [78, 114, 170];
+  const ROOF_LIGHT: [number, number, number] = [104, 142, 198];
+  const CHIMNEY: [number, number, number] = [184, 66, 52];
+  const CHIMNEY_TOP: [number, number, number] = [138, 46, 38];
+  const METAL: [number, number, number] = [58, 66, 82];
+  const GOLD: [number, number, number] = [255, 204, 52];
+
+  return {
+    id,
+    name: "Sprite Stack Cottage",
+    size: [24, 24, 28],
+    voxelScale: 0.28,
+    pivot: [12, 12, 10],
+    smoothSdf: 0.14,
+    ops: [
+      // Rounded-corner earth & lush grass plinth
+      { op: "box", min: [2, 3, 0], max: [21, 20, 1], color: EARTH },
+      { op: "box", min: [3, 2, 0], max: [20, 21, 1], color: EARTH },
+      { op: "box", min: [2, 3, 2], max: [21, 20, 3], color: GRASS },
+      { op: "box", min: [3, 2, 2], max: [20, 21, 3], color: GRASS },
+      { op: "paint", min: [2, 2, 2], max: [21, 21, 2], color: GRASS_DARK },
+      { op: "paint", min: [4, 4, 3], max: [19, 19, 3], color: GRASS_HI },
+      // Stone garden path leading to the front door (+Y)
+      { op: "box", min: [10, 18, 3], max: [13, 21, 3], color: STONE },
+
+      // Warm cream plaster cottage walls + lower wainscot trim
+      { op: "box", min: [5, 5, 4], max: [18, 18, 13], color: WALL },
+      { op: "paint", min: [5, 5, 4], max: [18, 18, 5], color: WALL_SHADE },
+      // Timber corner posts & top eaves beam
+      { op: "box", min: [5, 5, 4], max: [5, 5, 13], color: TIMBER, mirrorX: true },
+      { op: "box", min: [5, 18, 4], max: [5, 18, 13], color: TIMBER, mirrorX: true },
+      { op: "paint", min: [5, 5, 12], max: [18, 18, 13], color: TIMBER },
+
+      // Front teal doorway (+Y face) with warm wooden threshold
+      { op: "box", min: [10, 18, 4], max: [13, 18, 10], color: DOOR },
+      { op: "paint", min: [13, 18, 7], max: [13, 18, 7], color: GOLD },
+
+      // Glowing amber windows on left, right, front-upper & back faces
+      { op: "box", min: [5, 8, 7], max: [5, 10, 10], color: WINDOW_GLOW, emissive: true, mirrorX: true },
+      { op: "box", min: [5, 13, 7], max: [5, 15, 10], color: WINDOW_GLOW, emissive: true, mirrorX: true },
+      { op: "box", min: [9, 5, 7], max: [14, 5, 10], color: WINDOW_GLOW, emissive: true },
+      // Crisp timber window sills & center mullions (1px detail test!)
+      { op: "paint", min: [5, 7, 6], max: [5, 16, 6], color: TIMBER, mirrorX: true },
+      { op: "paint", min: [11, 5, 7], max: [12, 5, 10], color: TIMBER },
+
+      // Pitched gabled roof (steep diagonal slopes + crisp alternating shingle bands!)
+      {
+        op: "wedge",
+        min: [3, 4, 13],
+        max: [20, 19, 22],
+        taperAxis: "+z",
+        shrinkAxis: "x",
+        minScale: 0.08,
+        color: ROOF_MID,
+      },
+      { op: "paint", min: [3, 4, 13], max: [20, 19, 13], color: ROOF_DARK },
+      { op: "paint", min: [3, 4, 15], max: [20, 19, 15], color: ROOF_DARK },
+      { op: "paint", min: [3, 4, 17], max: [20, 19, 17], color: ROOF_DARK },
+      { op: "paint", min: [3, 4, 19], max: [20, 19, 19], color: ROOF_DARK },
+      { op: "paint", min: [3, 4, 21], max: [20, 19, 22], color: ROOF_LIGHT },
+      // Cream gable end infill inside the pitched roof (+Y & -Y)
+      {
+        op: "wedge",
+        min: [6, 5, 13],
+        max: [17, 18, 20],
+        taperAxis: "+z",
+        shrinkAxis: "x",
+        minScale: 0.1,
+        color: WALL,
+      },
+      // Upper attic gable window (front +Y)
+      { op: "box", min: [11, 18, 15], max: [12, 18, 17], color: WINDOW_GLOW, emissive: true },
+
+      // Brick red chimney rising through the roof slope
+      { op: "box", min: [14, 7, 15], max: [16, 9, 23], color: CHIMNEY },
+      { op: "paint", min: [14, 7, 23], max: [16, 9, 23], color: CHIMNEY_TOP },
+
+      // Thin 1px rooftop weathervane mast + golden vane (ultimate 1px anti-aliasing test!)
+      { op: "box", min: [12, 12, 22], max: [12, 12, 27], color: METAL },
+      { op: "box", min: [10, 12, 26], max: [14, 12, 26], color: GOLD },
+      { op: "box", min: [12, 12, 27], max: [12, 12, 27], color: GOLD, emissive: true },
+    ],
+    sockets: {
+      chimney: { pos: [15, 8, 24], dir: [0, 0, 1] },
+      vane: { pos: [12, 12, 27.5], dir: [0, 0, 1] },
+    },
+  };
+}

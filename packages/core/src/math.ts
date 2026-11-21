@@ -101,13 +101,13 @@ export function quatRotateVec3(q: Quat, v: Vec3): Vec3 {
   ];
 }
 
-export function mat4Identity(out = new Float32Array(16)): Float32Array {
+export function mat4Identity(out: Float32Array = new Float32Array(16)): Float32Array {
   out.fill(0);
   out[0] = out[5] = out[10] = out[15] = 1;
   return out;
 }
 
-export function mat4Mul(a: Float32Array, b: Float32Array, out = new Float32Array(16)): Float32Array {
+export function mat4Mul(a: Float32Array, b: Float32Array, out: Float32Array = new Float32Array(16)): Float32Array {
   for (let c = 0; c < 4; c++) {
     const b0 = b[c * 4], b1 = b[c * 4 + 1], b2 = b[c * 4 + 2], b3 = b[c * 4 + 3];
     out[c * 4 + 0] = a[0] * b0 + a[4] * b1 + a[8] * b2 + a[12] * b3;
@@ -118,7 +118,7 @@ export function mat4Mul(a: Float32Array, b: Float32Array, out = new Float32Array
   return out;
 }
 
-export function mat4FromTRS(pos: Vec3, rot: Quat, scale: Vec3, out = new Float32Array(16)): Float32Array {
+export function mat4FromTRS(pos: Vec3, rot: Quat, scale: Vec3, out: Float32Array = new Float32Array(16)): Float32Array {
   const [x, y, z, w] = rot;
   const x2 = x + x, y2 = y + y, z2 = z + z;
   const xx = x * x2, xy = x * y2, xz = x * z2;
@@ -155,7 +155,7 @@ export function mat4FromTRS(pos: Vec3, rot: Quat, scale: Vec3, out = new Float32
  *   worldY = (vz - pivotZ) * s
  *   worldZ = -(vy - pivotY) * s   (so asset +Y nose faces world -Z forward!)
  */
-export function mat4AssetToLocal(pivot: Vec3, voxelScale: number, out = new Float32Array(16)): Float32Array {
+export function mat4AssetToLocal(pivot: Vec3, voxelScale: number, out: Float32Array = new Float32Array(16)): Float32Array {
   out.fill(0);
   // Column 0: vx -> +worldX
   out[0] = voxelScale;
@@ -171,7 +171,7 @@ export function mat4AssetToLocal(pivot: Vec3, voxelScale: number, out = new Floa
   return out;
 }
 
-export function mat4Perspective(fovRad: number, aspect: number, near: number, far: number, out = new Float32Array(16)): Float32Array {
+export function mat4Perspective(fovRad: number, aspect: number, near: number, far: number, out: Float32Array = new Float32Array(16)): Float32Array {
   const f = 1.0 / Math.tan(fovRad * 0.5);
   const nf = 1.0 / (near - far);
   out.fill(0);
@@ -183,7 +183,7 @@ export function mat4Perspective(fovRad: number, aspect: number, near: number, fa
   return out;
 }
 
-export function mat4Ortho(halfH: number, aspect: number, near: number, far: number, out = new Float32Array(16)): Float32Array {
+export function mat4Ortho(halfH: number, aspect: number, near: number, far: number, out: Float32Array = new Float32Array(16)): Float32Array {
   const halfW = halfH * Math.max(aspect, 1e-4);
   const lr = 1 / (-halfW - halfW);
   const bt = 1 / (-halfH - halfH);
@@ -197,7 +197,7 @@ export function mat4Ortho(halfH: number, aspect: number, near: number, far: numb
   return out;
 }
 
-export function mat4LookAt(eye: Vec3, target: Vec3, up: Vec3, out = new Float32Array(16)): Float32Array {
+export function mat4LookAt(eye: Vec3, target: Vec3, up: Vec3, out: Float32Array = new Float32Array(16)): Float32Array {
   const z = vec3Norm(vec3Sub(eye, target));
   let x = vec3Cross(up, z);
   if (vec3Len(x) < 1e-6) {
@@ -217,7 +217,7 @@ export function mat4LookAt(eye: Vec3, target: Vec3, up: Vec3, out = new Float32A
   return out;
 }
 
-export function mat4Invert(a: Float32Array, out = new Float32Array(16)): Float32Array {
+export function mat4Invert(a: Float32Array, out: Float32Array = new Float32Array(16)): Float32Array {
   const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
   const a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
   const a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
@@ -277,4 +277,94 @@ export function mat4TransformDir(m: Float32Array, d: Vec3): Vec3 {
     m[1] * x + m[5] * y + m[9] * z,
     m[2] * x + m[6] * y + m[10] * z,
   ];
+}
+
+/**
+ * Combined View-Projection matrix for classic 2D Oblique Sprite Stacking (SpriteStack / Nium / top-down 2.5D):
+ * - Ground XZ footprints remain 100% un-foreshortened (circles stay circular, squares stay square).
+ * - Vertical height (+Y) extrudes straight up the screen by `skew` world units per height unit (1.0 = 1:1, 0.5 = cabinet).
+ * - Preserves exact OpenGL negative determinant so OBB back-face culling and hardware gl_FragDepth work natively.
+ */
+export function mat4ObliqueOrtho(
+  halfH: number,
+  aspect: number,
+  near: number,
+  far: number,
+  skew: number,
+  target: Vec3,
+  yawRad = 0,
+  out: Float32Array = new Float32Array(16),
+): Float32Array {
+  const safeH = Math.max(halfH, 1e-4);
+  const invW = 1 / (safeH * Math.max(aspect, 1e-4));
+  const invH = 1 / safeH;
+  const invD = 1 / Math.max((far - near) * 0.5, 1e-3);
+  const c = Math.cos(yawRad);
+  const s = Math.sin(yawRad);
+  const [tx, ty, tz] = target;
+
+  out[0] = c * invW;
+  out[1] = -s * invH;
+  out[2] = 0;
+  out[3] = 0;
+
+  out[4] = 0;
+  out[5] = skew * invH;
+  out[6] = -invD;
+  out[7] = 0;
+
+  out[8] = -s * invW;
+  out[9] = -c * invH;
+  out[10] = 0;
+  out[11] = 0;
+
+  out[12] = -(c * tx - s * tz) * invW;
+  out[13] = -(-s * tx + skew * ty - c * tz) * invH;
+  out[14] = ty * invD;
+  out[15] = 1;
+  return out;
+}
+
+/**
+ * Extract 6 normalized clip-space frustum planes (Gribb-Hartmann) from any ViewProj matrix
+ * (perspective, orthographic, isometric, or oblique) into a 24-float buffer [a,b,c,d * 6].
+ */
+export function extractFrustumPlanes(m: Float32Array, out: Float32Array = new Float32Array(24)): Float32Array {
+  const setPlane = (idx: number, a: number, b: number, c: number, d: number) => {
+    const inv = 1 / (Math.hypot(a, b, c) || 1);
+    const o = idx * 4;
+    out[o] = a * inv;
+    out[o + 1] = b * inv;
+    out[o + 2] = c * inv;
+    out[o + 3] = d * inv;
+  };
+  // Left: row3 + row0
+  setPlane(0, m[3] + m[0], m[7] + m[4], m[11] + m[8], m[15] + m[12]);
+  // Right: row3 - row0
+  setPlane(1, m[3] - m[0], m[7] - m[4], m[11] - m[8], m[15] - m[12]);
+  // Bottom: row3 + row1
+  setPlane(2, m[3] + m[1], m[7] + m[5], m[11] + m[9], m[15] + m[13]);
+  // Top: row3 - row1
+  setPlane(3, m[3] - m[1], m[7] - m[5], m[11] - m[9], m[15] - m[13]);
+  // Near: row3 + row2
+  setPlane(4, m[3] + m[2], m[7] + m[6], m[11] + m[10], m[15] + m[14]);
+  // Far: row3 - row2
+  setPlane(5, m[3] - m[2], m[7] - m[6], m[11] - m[10], m[15] - m[14]);
+  return out;
+}
+
+/** Test whether a world-space bounding sphere intersects or lies inside all 6 frustum planes. */
+export function sphereInFrustum(
+  planes: Float32Array,
+  cx: number,
+  cy: number,
+  cz: number,
+  radius: number,
+): boolean {
+  for (let i = 0; i < 24; i += 4) {
+    if (planes[i] * cx + planes[i + 1] * cy + planes[i + 2] * cz + planes[i + 3] < -radius) {
+      return false;
+    }
+  }
+  return true;
 }

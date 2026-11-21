@@ -10,3 +10,7 @@ examples/flight-6dof/bundle.js
 examples/flight-6dof/bundle.js.map
 examples/flight-6dof/dev-bridge*.js
 examples/flight-6dof/dev-bridge*.js.map
+examples/minimal-2d/bundle.js
+examples/minimal-2d/bundle.js.map
+site/dist/
+.cloudflare/

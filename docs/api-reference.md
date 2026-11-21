@@ -15,10 +15,14 @@ Zero external runtime dependencies. All exports live in `packages/core/src/index
 | `Vec2`, `Vec3`, `Quat`, `RGB` | Tuple types: `[number, number]`, `[number, number, number]`, `[x, y, z, w]`, `[r, g, b]` (`0..255`) |
 | `RenderStyle` | `"arcade-8bit" \| "hd-2d" \| "smooth-toy" \| "retro-raw"` |
 | `AAMode` | `"legacy" \| "voxel-dda" \| "smooth-sdf" \| "bandlimited"` |
+| `AAQuality` | `"eco" \| "balanced" \| "ultra"` |
+| `BackgroundMode` | `"terrain" \| "studio" \| "solid" \| "transparent"` |
 | `ShadeStyle` | `"toon-aa" \| "pbr-lite" \| "unlit"` |
-| `CameraMode` | `"overhead" \| "chase" \| "cockpit" \| "ortho" \| "free"` |
-| `QualityTier` | `"auto" \| "mobile" \| "desktop" \| "ultra"` |
+| `CameraMode` | `"overhead" \| "chase" \| "cockpit" \| "ortho" \| "oblique" \| "free"` |
+| `IsometricPreset` | `"dimetric-2to1" \| "isometric" \| "oblique-stack" \| "topdown-3quarter"` |
+| `QualityTier` | `"auto" \| "mobile" \| "desktop" \| "eco" \| "balanced" \| "ultra"` |
 | `DebugOverlay` | `"none" \| "normals" \| "depth" \| "object-id"` |
+| `EntityState` | `{ id, assetId, pos, rot, scale, outline?, normalSmoothness?, aaPriority?, castShadow?, emissiveBoost?, tag?, visible?, parentId?, parentSocket? }` |
 | `SocketDef` | `{ pos: Vec3; dir?: Vec3 }` in voxel asset space `[0..W, 0..L, 0..H]` |
 | `ScenePatchOp` | `{ op: "set"; path: string; value: unknown }` \| `{ op: "spawn"; entity: EntityState }` \| `{ op: "remove"; entityId: string }` \| `{ op: "updateEntity"; entityId: string; patch: Partial<Omit<EntityState, "id">> }` |
 
@@ -41,8 +45,8 @@ const world = new SceneWorld(initial?: Partial<SceneDocument>);
 | `world.stepClock(dt: number)` | Advances deterministic simulation `time`, `tick`, and `terrain.waveTime` |
 | `world.snapshot(): string` / `world.restore(json: string)` | Full deterministic JSON serialization & time-travel restore |
 | `world.getEntity(id: string)` | Returns `EntityState \| undefined` |
-| `world.getEntityWorldMatrix(ent)` | Computes hierarchical `Float32Array(16)` world matrix (resolving `parentId` + `parentSocket`) |
-| `world.getVoxelToWorldMatrix(ent)` | Computes `Float32Array(16)` mapping voxel coords `[0..W, 0..L, 0..H]` directly to world space |
+| `world.getEntityWorldMatrix(id, depth?, out?)` | Computes hierarchical `Float32Array(16)` world matrix (resolving `parentId` + `parentSocket`); pass `out` to avoid allocation |
+| `world.getVoxelToWorldMatrix(ent, out?)` | Computes `Float32Array(16)` mapping voxel coords `[0..W, 0..L, 0..H]` directly to world space; pass `out` for zero-GC rendering |
 | `world.getSocketWorldPos(entityId, socketName)` | Returns world-space `Vec3 \| null` for a named asset socket |
 | `world.getSocketWorldDir(entityId, socketName)` | Returns normalized world-space `Vec3 \| null` for a socket's local direction |
 | `world.sampleTerrainHeight(x, z)` | Returns exact elevation `>= 0` (`0` = ocean), matching `TERRAIN_FS` 1:1 |
@@ -54,9 +58,12 @@ Standalone helper: `sampleTerrainHeight(x, z, terrain)` and `createDefaultScene(
 
 ```ts
 const renderer = new AASpriteRenderer(canvas: HTMLCanvasElement, opts?: {
-  quality?: QualityTier;          // default "auto"
-  adaptiveDpr?: boolean;          // default true (mobile DRS governor)
-  maxDpr?: number;                // default 1.5 mobile, 2.0 desktop
+  quality?: QualityTier;          // default "auto" ("eco" | "balanced" | "ultra" | "mobile" | "desktop")
+  background?: BackgroundMode;    // default "terrain" ("transparent" | "studio" | "solid" | "terrain")
+  backgroundColor?: RGB;          // RGB [0..255] used when background === "solid"
+  adaptiveDpr?: boolean;          // default true (GPU/thermal DRS governor)
+  maxDpr?: number;                // default 1.25 eco, 1.5 balanced (1.35 mobile), 2.0 ultra
+  powerPreference?: "default" | "low-power" | "high-performance"; // default "default"
   preserveDrawingBuffer?: boolean; // default true (enables captureDataUrl)
 });
 ```
@@ -65,25 +72,44 @@ const renderer = new AASpriteRenderer(canvas: HTMLCanvasElement, opts?: {
 | --- | --- |
 | `renderer.isReady` | `true` if WebGL2 context and all 6 shader programs linked cleanly |
 | `renderer.isMobile` | Resolved mobile profile flag |
+| `renderer.setQuality(preset: AAQuality, world?)` | Live runtime AA quality softswitch (`"eco"` 2× / `"balanced"` 4× / `"ultra"` 8× Retina + full-res JFA) |
+| `renderer.getQuality(): AAQuality` | Returns active runtime AA quality preset |
+| `renderer.setBackground(mode: BackgroundMode, color?: RGB)` | Switches backdrop mode at runtime (`"transparent"`, `"studio"`, `"solid"`, `"terrain"`) without recreating WebGL2 |
+| `renderer.getBackground(): BackgroundMode` | Returns active background mode |
 | `renderer.resizeToDisplay(cssW?, cssH?)` | Resizes backing buffer respecting DPR cap & adaptive DRS |
-| `renderer.render(world: SceneWorld)` | Renders all 4 passes (terrain, OBB entities, 3D ribbons, JFA outlines + bloom + style grade) |
-| `renderer.getStats(): EngineTelemetry` | Returns `{ fps, frameMs, canvasWidth, canvasHeight, dpr, drsScale, drawCalls, visibleEntities, totalEntities, isMobile, backend, activeSamples, tick, time }` |
+| `renderer.render(world: SceneWorld)` | Renders all active passes (optional backdrop, OBB entities, 3D ribbons, JFA outlines + bloom + premultiplied transparent or opaque composite) |
+| `renderer.getStats(): EngineTelemetry` | Returns `{ fps, frameMs, gpuMs?, quality, canvasWidth, canvasHeight, dpr, drsScale, drawCalls, visibleEntities, totalEntities, isMobile, backend, activeSamples, tick, time }` |
 | `renderer.captureDataUrl(world, mimeType?)` | Renders one deterministic frame and returns a PNG/WebP data URL for visual QA & MCP screenshots |
+| `renderer.evictAsset(assetId: string): boolean` | Frees GPU 3D textures for a single asset without disposing the renderer |
+| `renderer.dispose()` | Releases all WebGL2 textures, FBOs, buffers, VAOs, shader programs, timer queries, and context listeners |
+
+### 2.5D Isometric, Oblique & Picking Helpers (`camera.ts`)
+
+| Function | Description |
+| --- | --- |
+| `createIsometricCamera(opts?)` | Builds a drop-in `CameraState` for `"dimetric-2to1"` (exact 2:1 pixel-art diamond grid), `"isometric"` (`35.264°` equal-axis axonometric), `"oblique-stack"` (un-foreshortened circular XZ footprints + pure vertical slice extrusion), or `"topdown-3quarter"` (`55°` RPG tilt); supports `pixelsPerUnit` + `viewportHeightCss` exact pixel locking |
+| `computeCameraViewProj(cam, aspect, viewOut?, projOut?, vpOut?)` | Canonical View-Projection matrix builder shared by WebGL2 rendering and CPU picking |
+| `projectWorldToScreen(worldPos, cam, w, h)` | Projects a 3D world point `[X, Y, Z]` to DOM/Canvas2D `{ x, y, depth, visible }` coordinates |
+| `unprojectScreenToGround(sx, sy, cam, w, h, groundY = 0)` | Exact screen-to-ground-plane ray intersection across perspective, orthographic, dimetric, isometric, and oblique projections |
 
 ### Volume & Asset Loaders (`volume.ts`, `loaders.ts`)
 
 | Function | Description |
 | --- | --- |
-| `createVolumeAsset(input)` | Builds a complete `VolumeAsset` (3D EDT SDF, smooth normals + AO, 3D RGB edge dilation, emissive mask, content hash) from raw `rgba` voxels |
+| `createVolumeAsset(input)` | Builds a complete `VolumeAsset` (optional 3D EDT SDF via `computeSdf?: boolean`, smooth normals + AO, 3D RGB edge dilation, emissive mask, content hash) from raw `rgba` voxels |
 | `compute3DSdf(rgba, w, l, h, smoothStrength?)` | Exact `O(N)` 3-pass Felzenszwalb–Huttenlocher 3D Euclidean SDF with boundary air clamping |
-| `parseVox(buffer: ArrayBuffer, opts: VoxParseOptions)` | Zero-dependency MagicaVoxel `.vox` binary parser (`SIZE`, `XYZI`, `RGBA`, default palette) |
+| `parseVox(buffer: ArrayBuffer, opts: VoxParseOptions)` | Zero-dependency MagicaVoxel `.vox` binary parser (`SIZE`, `XYZI`, `RGBA`, default palette, optional `computeSdf`) |
+| `loadVoxUrl(url: string, opts: VoxParseOptions)` | Async one-line drop-in loader fetching and compiling any MagicaVoxel `.vox` URL |
 | `loadSliceStripPixels(pixels, stripW, stripH, opts)` | Loads horizontal `slices.png` RGBA pixel buffers into a `VolumeAsset` |
+| `loadSliceStripFromImage(img, opts)` | Compiles an already-loaded `HTMLImageElement` or `ImageBitmap` horizontal slice strip into a `VolumeAsset` |
+| `loadSliceStripUrl(url: string, opts: SliceStripOptions)` | Async one-line browser drop-in loader fetching and compiling any horizontal `slices.png` strip URL |
 
-### 6-DOF Math & Mobile Touch (`math.ts`, `mobile.ts`)
+### 6-DOF Math, Frustum Culling & Mobile Touch (`math.ts`, `mobile.ts`)
 
-- **Vector & Matrix:** `clamp`, `lerp`, `vec3Add`, `vec3Sub`, `vec3Scale`, `vec3Dot`, `vec3Cross`, `vec3Len`, `vec3Norm`, `vec3Lerp`, `mat4Identity`, `mat4Mul`, `mat4Invert`, `mat4FromTRS`, `mat4AssetToLocal`, `mat4LookAt`, `mat4Perspective`, `mat4Ortho`, `mat4TransformPoint`, `mat4TransformDir`.
+- **Vector & Matrix:** `clamp`, `lerp`, `vec3Add`, `vec3Sub`, `vec3Scale`, `vec3Dot`, `vec3Cross`, `vec3Len`, `vec3Norm`, `vec3Lerp`, `mat4Identity`, `mat4Mul`, `mat4Invert`, `mat4FromTRS`, `mat4AssetToLocal`, `mat4LookAt`, `mat4Perspective`, `mat4Ortho`, `mat4ObliqueOrtho`, `mat4TransformPoint`, `mat4TransformDir`.
+- **Frustum Culling:** `extractFrustumPlanes(viewProj, out?)`, `sphereInFrustum(planes, cx, cy, cz, radius)`.
 - **Quaternions:** `quatIdentity`, `quatNorm`, `quatMul`, `quatFromYawPitchRoll`, `quatRotateVec3`.
-- **Touch:** `createTouchController({ steerZone, stickBase?, stickKnob?, maxRadius? })` → `{ state: VirtualControlState, destroy() }`.
+- **Touch:** `createTouchController({ steerZone, stickBase?, stickKnob?, maxRadius? })` → `{ state: VirtualStickState, destroy() }` (`VirtualControlState` exported as alias).
 
 ---
 
@@ -117,6 +143,7 @@ interface BlueprintSpec {
 | `"paint"` | `min: Vec3, max: Vec3, color: RGB` | `emissive`, `mirrorX` |
 
 ### Built-In Presets (`presets.ts`)
+- `createCottageBlueprint(id = "aa-cottage")` — Classic 2.5D pixel-art cottage with pitched blue-shingled roof, glowing windows, brick chimney, and 1px rooftop weathervane (`chimney`, `vane` sockets).
 - `createFighterJetBlueprint(id = "fighter-jet")` — Swept-wing twin-engine interceptor with `thrusterL`, `thrusterR`, `wingtipL`, `wingtipR`, `cockpitCam` sockets.
 - `createCloudBlueprint(variant: 0 | 1 | 2 = 0, id?)` — 3-tone sunlit multi-lobed volumetric cumulus clouds.
 - `createSkyGateBlueprint(id = "sky-gate")` — Hollow emissive sky-ring checkpoint with `center` socket.

@@ -1,18 +1,21 @@
 /**
- * Mobile-first Multi-Touch Controller for @aastack/core games.
- * Tracks independent pointerIds so left-hand steering thumbstick and right-hand
- * Boost / Roll / Camera buttons work simultaneously with zero scroll/zoom bounce.
+ * Genre-agnostic Mobile Multi-Touch Virtual Thumbstick for @aastack/core apps.
+ * Tracks independent pointerIds so left-hand 2D axis steering and right-hand
+ * action buttons work simultaneously with zero scroll/zoom bounce.
  */
 
-export interface VirtualControlState {
-  /** Normalized steering axes in [-1, 1] (x = yaw/bank, y = pitch/climb). */
+export interface VirtualStickState {
+  /** Normalized 2D thumbstick axes in [-1, 1]. */
   steerX: number;
   steerY: number;
   /** True while player is actively dragging the thumbstick. */
   steering: boolean;
-  /** True while boost / thruster button is held. */
+  /** Optional primary hold action state (e.g. boost, sprint, fire). */
   thrust: boolean;
 }
+
+/** Backwards-compatible alias for VirtualStickState. */
+export type VirtualControlState = VirtualStickState;
 
 export interface TouchControllerOptions {
   /** Container covering the left steering zone (usually the full stage or left half). */

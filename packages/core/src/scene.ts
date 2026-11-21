@@ -161,9 +161,31 @@ export class SceneWorld {
   private redoStack: string[] = [];
   private maxHistory = 64;
   private onAssetChangeListeners: Array<(assetId: string) => void> = [];
+  private scratchEntMat = new Float32Array(16);
+  private scratchA2lMat = new Float32Array(16);
+  private scratchScaleVec: Vec3 = [1, 1, 1];
 
-  constructor(initial?: Partial<SceneDocument>) {
-    this.doc = { ...createDefaultScene(initial?.seed ?? 7), ...initial };
+  constructor(initial?: {
+    seed?: number;
+    style?: SceneDocument["style"];
+    aaMode?: SceneDocument["aaMode"];
+    samples?: SceneDocument["samples"];
+    camera?: Partial<SceneDocument["camera"]>;
+    lighting?: Partial<SceneDocument["lighting"]>;
+    terrain?: Partial<SceneDocument["terrain"]>;
+    splitCompare?: Partial<SceneDocument["splitCompare"]>;
+    entities?: SceneDocument["entities"];
+    ribbons?: SceneDocument["ribbons"];
+  }) {
+    const base = createDefaultScene(initial?.seed ?? 7);
+    this.doc = {
+      ...base,
+      ...initial,
+      camera: { ...base.camera, ...initial?.camera },
+      lighting: { ...base.lighting, ...initial?.lighting },
+      terrain: { ...base.terrain, ...initial?.terrain },
+      splitCompare: { ...base.splitCompare, ...initial?.splitCompare },
+    };
   }
 
   /** Register or hot-swap a VolumeAsset in place (emits GPU re-upload notification). */
@@ -248,15 +270,23 @@ export class SceneWorld {
     this.doc = JSON.parse(snap) as SceneDocument;
   }
 
-  /** Compute full entity world matrix (resolving parent & socket hierarchy). */
-  getEntityWorldMatrix(entityId: string, depth = 0): Float32Array {
+  /** Compute full entity world matrix (resolving parent & socket hierarchy). Pass `out` to avoid allocation. */
+  getEntityWorldMatrix(entityId: string, depth = 0, out?: Float32Array): Float32Array {
+    const target = out ?? new Float32Array(16);
     const ent = this.getEntity(entityId);
-    if (!ent || depth > 8) return mat4FromTRS([0, 0, 0], quatIdentity(), [1, 1, 1]);
-    const localM = mat4FromTRS(ent.pos, ent.rot, [ent.scale, ent.scale, ent.scale]);
-    if (!ent.parentId) return localM;
+    if (!ent || depth > 8) return mat4FromTRS([0, 0, 0], quatIdentity(), [1, 1, 1], target);
+    const s = this.scratchScaleVec;
+    s[0] = ent.scale; s[1] = ent.scale; s[2] = ent.scale;
+    if (!ent.parentId) {
+      return mat4FromTRS(ent.pos, ent.rot, s, target);
+    }
 
+    const localM = mat4FromTRS(ent.pos, ent.rot, [ent.scale, ent.scale, ent.scale]);
     const parent = this.getEntity(ent.parentId);
-    if (!parent) return localM;
+    if (!parent) {
+      target.set(localM);
+      return target;
+    }
     const parentM = this.getEntityWorldMatrix(ent.parentId, depth + 1);
 
     if (ent.parentSocket) {
@@ -266,19 +296,19 @@ export class SceneWorld {
         const a2l = mat4AssetToLocal(pAsset.pivot, pAsset.voxelScale);
         const sockLocal = mat4TransformPoint(a2l, sock.pos);
         const sockM = mat4FromTRS(sockLocal, quatIdentity(), [1, 1, 1]);
-        return mat4Mul(mat4Mul(parentM, sockM), localM);
+        return mat4Mul(mat4Mul(parentM, sockM), localM, target);
       }
     }
-    return mat4Mul(parentM, localM);
+    return mat4Mul(parentM, localM, target);
   }
 
-  /** Matrix mapping asset voxel coords [0..W, 0..L, 0..H] directly to World coords. */
-  getVoxelToWorldMatrix(entity: EntityState): Float32Array | null {
+  /** Matrix mapping asset voxel coords [0..W, 0..L, 0..H] directly to World coords. Pass `out` for zero-GC rendering. */
+  getVoxelToWorldMatrix(entity: EntityState, out?: Float32Array): Float32Array | null {
     const asset = this.assets.get(entity.assetId);
     if (!asset) return null;
-    const entM = this.getEntityWorldMatrix(entity.id);
-    const a2l = mat4AssetToLocal(asset.pivot, asset.voxelScale);
-    return mat4Mul(entM, a2l);
+    const entM = this.getEntityWorldMatrix(entity.id, 0, this.scratchEntMat);
+    const a2l = mat4AssetToLocal(asset.pivot, asset.voxelScale, this.scratchA2lMat);
+    return mat4Mul(entM, a2l, out ?? new Float32Array(16));
   }
 
   /** Query exact world position of a named semantic socket on an entity (e.g. "wingtipL", "cockpitCam"). */

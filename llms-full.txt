@@ -7,19 +7,23 @@ Zero-dependency, mobile-first, anti-aliased 6-DOF & 2.5D sprite-stacking renderi
 - **Voxel Asset Space:** `[0..W, 0..L, 0..H]` (`+X` right, `+Y` nose/forward, `+Z` up/roof).
   - `mat4AssetToLocal` maps asset `(x, y, z)` to world `(x - pivotX, z - pivotZ, -(y - pivotY)) * voxelScale`.
 
-## Quickstart (`@aastack/core` + `@aastack/blueprint`)
+## Quickstart (`@aastack/core`)
 ```ts
-import { AASpriteRenderer, SceneWorld } from "@aastack/core";
-import { compileBlueprint, createFighterJetBlueprint } from "@aastack/blueprint";
+import { AASpriteRenderer, SceneWorld, createIsometricCamera, loadSliceStripUrl, loadVoxUrl } from "@aastack/core";
 
-const world = new SceneWorld({ seed: 11 });
-const renderer = new AASpriteRenderer(canvas, { quality: "auto", adaptiveDpr: true });
+// Presets: "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter"
+const world = new SceneWorld({
+  camera: createIsometricCamera({ preset: "dimetric-2to1", target: [0, 2.4, 0], orthoSize: 10.5 }),
+});
+// background: "transparent" | "studio" | "solid" | "terrain" (use "transparent" to overlay existing 2D games!)
+const renderer = new AASpriteRenderer(canvas, { background: "transparent", quality: "ultra" });
 
-world.registerAsset(compileBlueprint(createFighterJetBlueprint("jet-asset")));
+// Drop-in loaders: loadSliceStripUrl(url, { id, slices }), loadVoxUrl(url, { id }), or compileBlueprint(...)
+world.registerAsset(await loadSliceStripUrl("/car_slices.png", { id: "car", slices: 24 }));
 world.applyPatch([
   { op: "set", path: "style", value: "arcade-8bit" }, // "arcade-8bit" | "hd-2d" | "smooth-toy" | "retro-raw"
   { op: "set", path: "aaMode", value: "voxel-dda" },  // "voxel-dda" | "smooth-sdf" | "legacy"
-  { op: "spawn", entity: { id: "jet", assetId: "jet-asset", pos: [0, 30, 0], rot: [0, 0, 0, 1], scale: 1, outline: true, castShadow: true, tag: "player" } },
+  { op: "spawn", entity: { id: "hero", assetId: "car", pos: [0, 2.8, 0], rot: [0, 0, 0, 1], scale: 1, outline: true, aaPriority: "hero" } },
 ]);
 
 function loop(dt: number) {
@@ -31,10 +35,12 @@ function loop(dt: number) {
 ## First-Principles Iterative Hooks
 1. **Patchable SceneIR:** `world.applyPatch(ops)` (`"set" | "spawn" | "remove" | "updateEntity"`), `world.undo()`, `world.redo()`.
 2. **Deterministic Time-Travel:** `const snap = world.snapshot(); world.restore(snap);`
-3. **Hot-Swappable Asset Registry:** `world.registerAsset(newAsset)` updates GPU 3D textures automatically by content hash.
+3. **Hot-Swappable Asset Registry:** `world.registerAsset(newAsset)` updates GPU 3D textures automatically by content hash; `renderer.evictAsset(assetId)` frees GPU textures per asset.
 4. **Semantic Sockets:** `world.getSocketWorldPos("jet", "wingtipL")` & `world.getSocketWorldDir("jet", "thrusterL")`.
-5. **Spatial Queries (1:1 with Rendered Pixels):** `world.sampleTerrainHeight(x, z)` and `world.raycastEntities(ro, rd, maxDist)`.
-6. **Introspection & QA:** `renderer.getStats()` (FPS, frameMs, DRS, DPR, drawCalls, isMobile) and `renderer.captureDataUrl(world)`.
+5. **Spatial & 2.5D Picking Queries (1:1 with Rendered Pixels):** `world.sampleTerrainHeight(x, z)`, `world.raycastEntities(ro, rd, maxDist)`, `projectWorldToScreen(pos, cam, w, h)`, and `unprojectScreenToGround(sx, sy, cam, w, h, groundY)`.
+6. **Introspection & QA:** `renderer.getStats()` (FPS, frameMs, gpuMs, quality, DRS, DPR, drawCalls, isMobile) and `renderer.captureDataUrl(world)`.
+7. **Live AA Quality & Background Softswitches:** `renderer.setQuality("eco" | "balanced" | "ultra", world)` toggles `2×` / `4×` / `8×` RGSS, DPR (`1.25×` / `1.5×` / `2.0×`), and half-res vs. full-res JFA outlines at runtime; `renderer.setBackground("transparent" | "studio" | "solid" | "terrain", rgb?)` switches backdrop mode with zero context rebuild.
+8. **First-Class 2.5D Isometric / Oblique Cameras & Genre-Agnostic Shading:** `createIsometricCamera({ preset: "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter", pixelsPerUnit?, viewportHeightCss? })`, explicit `entity.normalSmoothness` (`0..1`), and `entity.aaPriority` (`"hero" | "auto"`).
 
 ## Live Agent Dev Bridge (`@aastack/bridge` + `@aastack/mcp`)
 - Opt-in browser client (`@aastack/bridge/client`): lazy-load `connectDevBridge({ world, renderer }, { title })` when `?bridge=1` is set (`ws://127.0.0.1:8787`, zero production bloat).

@@ -22,7 +22,7 @@ import {
   vec3Lerp,
   vec3Scale,
 } from "@aastack/core";
-import type { AAMode, CameraMode, RenderStyle, RibbonPoint, Vec3 } from "@aastack/core";
+import type { AAMode, AAQuality, CameraMode, RenderStyle, RibbonPoint, Vec3 } from "@aastack/core";
 import {
   compileBlueprint,
   createCloudBlueprint,
@@ -45,6 +45,7 @@ const hintBar = document.getElementById("hintBar") as HTMLElement;
 
 const camBtn = document.getElementById("camBtn") as HTMLButtonElement;
 const styleBtn = document.getElementById("styleBtn") as HTMLButtonElement;
+const qualityBtn = document.getElementById("qualityBtn") as HTMLButtonElement | null;
 const splitBtn = document.getElementById("splitBtn") as HTMLButtonElement;
 const todBtn = document.getElementById("todBtn") as HTMLButtonElement;
 const inspectorBtn = document.getElementById("inspectorBtn") as HTMLButtonElement;
@@ -93,7 +94,7 @@ world.applyPatch(
     {
       op: "set",
       path: "samples",
-      value: renderer.isMobile ? 4 : 8,
+      value: 4,
     },
     {
       op: "set",
@@ -148,6 +149,7 @@ for (let i = 0; i < CLOUD_COUNT; i++) {
           rot: quatFromYawPitchRoll((i * 1.1) % 6.28, 0, 0),
           scale: 0.9 + (i % 3) * 0.32,
           outline: false, // Soft puffy clouds without harsh black outlines!
+          normalSmoothness: 0.78, // Explicit soft dome shading (decoupled from outline!)
           castShadow: true,
           tag: "cloud",
         },
@@ -286,6 +288,19 @@ function cycleRenderStyle(): void {
   applyRenderStyle(next);
 }
 
+const QUALITY_CYCLE: AAQuality[] = ["eco", "balanced", "ultra"];
+const QUALITY_LABELS: Record<AAQuality, string> = {
+  eco: "Eco 2×",
+  balanced: "Bal 4×",
+  ultra: "Ultra 8×",
+};
+function cycleAAQuality(): void {
+  const cur = renderer.getQuality();
+  const next = QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(cur) + 1) % QUALITY_CYCLE.length];
+  renderer.setQuality(next, world);
+  syncControlsUI();
+}
+
 const TOD_PRESETS = [
   { label: "Day", val: 0.0 },
   { label: "Sunset", val: 0.52 },
@@ -327,6 +342,7 @@ function syncControlsUI(): void {
 
   const activeStyle = world.doc.style ?? "arcade-8bit";
   styleBtn.textContent = `Style: ${labelForStyle(activeStyle)}`;
+  if (qualityBtn) qualityBtn.textContent = `AA: ${QUALITY_LABELS[renderer.getQuality()]}`;
   splitBtn.setAttribute("aria-pressed", String(world.doc.splitCompare.enabled));
   todBtn.textContent = TOD_PRESETS[todIdx].label;
 
@@ -384,6 +400,8 @@ window.addEventListener("keydown", (e) => {
     toggleSplitCompare();
   } else if (e.code === "KeyM") {
     cycleRenderStyle();
+  } else if (e.code === "KeyQ") {
+    cycleAAQuality();
   }
 });
 window.addEventListener("keyup", (e) => input.keys.delete(e.code));
@@ -410,6 +428,7 @@ splitHandle.addEventListener("pointerup", () => {
 // UI Buttons + Mobile Touch Action Buttons
 camBtn.addEventListener("click", cycleCamera);
 styleBtn.addEventListener("click", cycleRenderStyle);
+qualityBtn?.addEventListener("click", cycleAAQuality);
 splitBtn.addEventListener("click", toggleSplitCompare);
 todBtn.addEventListener("click", cycleTimeOfDay);
 
@@ -1136,16 +1155,23 @@ function drawCockpitHud(): void {
   hudCtx.restore();
 }
 
-// 7. Main Loop with content-visibility & visibilitychange Power Conservation
+// 7. Main Loop with 60 FPS Thermal Pacing & content-visibility / visibilitychange Conservation
 let pausedByVis = false;
 let rafId = 0;
 let lastNow = performance.now();
 let uiTick = 0;
+const TARGET_FPS = 60;
+const MIN_FRAME_MS = 1000 / TARGET_FPS - 1.5;
 
 function frame(now: number): void {
   rafId = 0;
   if (pausedByVis) return;
-  const dt = Math.min(0.05, Math.max(0.001, (now - lastNow) / 1000));
+  const elapsedMs = now - lastNow;
+  if (elapsedMs < MIN_FRAME_MS) {
+    rafId = requestAnimationFrame(frame);
+    return;
+  }
+  const dt = Math.min(0.05, Math.max(0.001, elapsedMs / 1000));
   lastNow = now;
 
   stepSimulation(dt);
@@ -1155,8 +1181,9 @@ function frame(now: number): void {
   uiTick++;
   if ((uiTick & 7) === 0) {
     const st = renderer.getStats();
+    const timing = st.gpuMs !== undefined ? `${st.gpuMs.toFixed(1)} ms gpu` : `${st.frameMs.toFixed(1)} ms cpu`;
     statsBar.textContent =
-      `${st.fps} fps · ${st.frameMs.toFixed(1)} ms · ${st.drawCalls} dc · ` +
+      `${st.fps} fps · ${timing} · ${st.drawCalls} dc · ` +
       `${st.canvasWidth}×${st.canvasHeight} (DRS ${st.drsScale}) · ${st.isMobile ? "Mobile" : "Desktop"} · Gates: ${flight.score}`;
     if (inspectorDrawer.classList.contains("open")) {
       irPreview.textContent = JSON.stringify(

@@ -3,7 +3,18 @@
   "version": "0.1.0",
   "description": "Frontier-AI-friendly declarative Voxel + 3D SDF Blueprint DSL for AASpriteStacker.",
   "license": "MIT",
+  "homepage": "https://aasprite.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dmsimon1/AASpriteStacker.git",
+    "directory": "packages/blueprint"
+  },
+  "bugs": "https://github.com/dmsimon1/AASpriteStacker/issues",
+  "keywords": ["sprite-stacking", "voxel", "csg", "blueprint", "sdf", "procedural", "pixel-art"],
+  "engines": { "node": ">=18.0.0" },
+  "publishConfig": { "access": "public" },
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -18,5 +29,5 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "files": ["dist"]
+  "files": ["dist", "README.md"]
 }

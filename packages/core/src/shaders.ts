@@ -93,7 +93,7 @@ float terrainHeight(vec2 xz, out float rawNoise) {
   return h;
 }
 
-float cloudShadowAt(vec3 worldPos, bool crispStyle) {
+float castShadowAt(vec3 worldPos, bool crispStyle) {
   float sh = 0.0;
   vec2 sunHoriz = uSunDir.xz / max(uSunDir.y, 0.24);
   for (int i = 0; i < 28; i++) {
@@ -101,8 +101,10 @@ float cloudShadowAt(vec3 worldPos, bool crispStyle) {
     vec4 sc = uShadowCasters[i];
     if (sc.y <= worldPos.y + 0.5) continue;
     vec2 proj = sc.xz - sunHoriz * (sc.y - worldPos.y);
-    // Multi-lobe organic cloud silhouette footprint instead of a generic blurry circle!
+    // Cheap AABB early-out skips ~95% of sqrt() calls on flat surfaces!
     vec2 rel = worldPos.xz - proj;
+    float bound = sc.w * 1.48;
+    if (abs(rel.x) > bound || abs(rel.y) > bound) continue;
     float d0 = length(rel);
     float d1 = length(rel - vec2(sc.w * 0.42, sc.w * 0.16));
     float d2 = length(rel + vec2(sc.w * 0.36, -sc.w * 0.22));
@@ -153,7 +155,27 @@ void main() {
   float nightW = max(0.0, (uTimeOfDay - 0.48) / 0.52);
   vec3 sky = skyColor(rd, sunsetW, nightW, arcade);
 
-  if (uTerrainEnabled == 0 || rd.y >= -0.002) {
+  if (uTerrainEnabled == 0) {
+    // High-contrast studio cyclorama with soft floor contact shadow (ideal for AA inspection & turntables)
+    vec3 stBot = mix(vec3(0.95, 0.97, 0.99), vec3(0.10, 0.14, 0.23), nightW);
+    vec3 stTop = mix(vec3(0.84, 0.89, 0.96), vec3(0.05, 0.08, 0.14), nightW);
+    float vy = clamp(gl_FragCoord.y / max(uResolution.y, 1.0), 0.0, 1.0);
+    vec3 stCol = mix(stBot, stTop, pow(vy, 0.85));
+    if (rd.y < -0.002 && uShadowCount > 0) {
+      float tFloor = (0.0 - ro.y) / rd.y;
+      if (tFloor > 0.0 && tFloor < 220.0) {
+        vec3 fp = ro + rd * tFloor;
+        float sh = castShadowAt(fp, false);
+        stCol = mix(stCol, stCol * vec3(0.76, 0.81, 0.89), sh * 0.45);
+      }
+    }
+    outColor = vec4(stCol, 1.0);
+    outAux = vec4(0.0, 0.0, isLegacy ? 1.0 : 0.0, 0.0);
+    gl_FragDepth = 0.99999;
+    return;
+  }
+
+  if (rd.y >= -0.002) {
     outColor = vec4(sky, 1.0);
     outAux = vec4(0.0, 0.0, isLegacy ? 1.0 : 0.0, 0.0);
     gl_FragDepth = 0.99999;
@@ -172,7 +194,7 @@ void main() {
 
   if (tStart < farLimit) {
     float t = tStart;
-    for (int i = 0; i < 48; i++) {
+    for (int i = 0; i < 34; i++) {
       if (t >= farLimit) break;
       vec3 p = ro + rd * t;
       float th = terrainHeight(p.xz, rawN);
@@ -190,7 +212,7 @@ void main() {
         break;
       }
       prevT = t;
-      float dt = max(0.55, max(diff * 0.52, t * 0.022)) * uStepFactor;
+      float dt = max(0.75, max(diff * 0.62, t * 0.028)) * uStepFactor;
       t += dt;
     }
     // Guarantee zero grazing-ray skip over thin coastal beaches: check exact water-plane intersection!
@@ -258,7 +280,7 @@ void main() {
       // Tight 2-band hue-shifted directional light + hue-shifted cool-teal cloud shadow!
       float ndotl = dot(nrm, uSunDir);
       float litBand = aaBand(0.12, ndotl, 0.06);
-      float sh = cloudShadowAt(hitPos, true);
+      float sh = castShadowAt(hitPos, true);
       vec3 dayLit = mix(vec3(0.62, 0.72, 0.88), vec3(1.10, 1.07, 0.96), litBand);
       vec3 sunLit = mix(vec3(0.48, 0.44, 0.68), vec3(1.26, 0.92, 0.64), litBand);
       vec3 ngtLit = mix(vec3(0.12, 0.17, 0.32), vec3(0.34, 0.43, 0.66), litBand);
@@ -281,7 +303,7 @@ void main() {
       baseCol = mix(cliff, baseCol, smoothstep(0.45, 0.78, nrm.y));
 
       float ndotl = dot(nrm, uSunDir);
-      float sh = cloudShadowAt(hitPos, false);
+      float sh = castShadowAt(hitPos, false);
       float lit = mix(smoothstep(-0.2, 0.75, ndotl), 0.28, sh * 0.75);
       vec3 tint = mix(mix(mix(vec3(0.56, 0.65, 0.82), vec3(1.12, 1.08, 0.98), lit),
                           mix(vec3(0.46, 0.42, 0.64), vec3(1.25, 0.94, 0.68), lit), sunsetW),
@@ -315,7 +337,7 @@ void main() {
       col = mix(col, surfFoam, isCrest * 0.78);
 
       // CRISP HUE-SHIFTED DEEP ROYAL INDIGO CLOUD SHADOWS (never gray mud!)
-      float sh = cloudShadowAt(hitPos, true);
+      float sh = castShadowAt(hitPos, true);
       vec3 indigoSh = mix(mix(vec3(0.06, 0.20, 0.50), vec3(0.09, 0.13, 0.32), sunsetW), vec3(0.01, 0.04, 0.12), nightW);
       col = mix(col, indigoSh, sh * 0.76);
     } else {
@@ -329,7 +351,7 @@ void main() {
       float waveFleck = smoothstep(0.79, 0.89, wCell) * (1.0 - smoothstep(65.0, 220.0, tHit));
       col = mix(col, mix(vec3(0.84, 0.94, 1.0), vec3(1.0, 0.82, 0.66), sunsetW), waveFleck * (0.42 - nightW * 0.25));
       col = mix(col, vec3(0.90, 0.96, 1.0) * (1.0 - nightW * 0.65), foam * 0.55);
-      float sh = cloudShadowAt(hitPos, false);
+      float sh = castShadowAt(hitPos, false);
       col *= mix(1.0, 0.58, sh);
     }
   }
@@ -350,15 +372,13 @@ void main() {
 export const ENTITY_OBB_VS = `#version 300 es
 layout(location = 0) in vec3 aUnitPos;
 
-uniform mat4 uViewProj;
-uniform mat4 uVoxelToWorld;
+uniform mat4 uVoxelToClip;
 uniform vec3 uVolSize;
 
 void main() {
   vec3 pad = vec3(0.45);
   vec3 voxPos = mix(-pad, uVolSize + pad, aUnitPos);
-  vec4 worldPos = uVoxelToWorld * vec4(voxPos, 1.0);
-  gl_Position = uViewProj * worldPos;
+  gl_Position = uVoxelToClip * vec4(voxPos, 1.0);
 }`;
 
 export const ENTITY_OBB_FS = `#version 300 es
@@ -371,12 +391,11 @@ uniform sampler3D uNormalTex;
 uniform sampler3D uEmisTex;
 
 uniform vec2 uResolution;
-uniform mat4 uViewProj;
-uniform mat4 uInvViewProj;
-uniform mat4 uVoxelToWorld;
-uniform mat4 uWorldToVoxel;
+uniform mat4 uVoxelToClip;
+uniform mat4 uClipToVoxel;
 uniform mat3 uNormalMat;
 uniform vec3 uVolSize;
+uniform float uVoxelWorldScale;
 uniform float uSdfRange;
 
 uniform int uStyle;           // 0=arcade-8bit, 1=hd-2d, 2=smooth-toy, 3=retro-raw
@@ -387,6 +406,7 @@ uniform int uSamples;
 uniform int uShadeStyle;
 uniform int uSelfShadow;
 uniform int uOutlineEnabled;
+uniform float uNormalSmoothness;
 uniform float uObjectIdNorm;
 uniform float uEmissiveBoost;
 
@@ -409,6 +429,9 @@ vec3 linToSrgb(vec3 c) {
 
 vec2 getRgssOffset(int idx, int count) {
   if (count <= 1) return vec2(0.0);
+  if (count == 2) {
+    return idx == 0 ? vec2(-0.25, -0.25) : vec2(0.25, 0.25);
+  }
   if (count == 4) {
     const vec2 r4[4] = vec2[4](
       vec2(-0.375, -0.125), vec2(0.125, -0.375),
@@ -490,7 +513,7 @@ bool traceLocalShadow(vec3 ro, vec3 rd) {
   if (stepDir.y == 0) tMax.y = 1e20;
   if (stepDir.z == 0) tMax.z = 1e20;
 
-  for (int i = 0; i < 48; i++) {
+  for (int i = 0; i < 32; i++) {
     if (texelFetch(uAlbedoTex, cell, 0).a >= 0.5) return true;
     if (tMax.x <= tMax.y && tMax.x <= tMax.z) { cell.x += stepDir.x; tMax.x += tDelta.x; }
     else if (tMax.y <= tMax.z) { cell.y += stepDir.y; tMax.y += tDelta.y; }
@@ -508,63 +531,15 @@ float sampleSdf(vec3 p) {
   return max(d, dBox);
 }
 
-bool traceVoxelRay(
-  vec3 roVox, vec3 rdVox, bool smoothSdfMode, bool hardToon,
-  out vec3 outLin, out vec3 outWorldN, out float outT, out float outEmis
+bool traceVoxelDdaHit(
+  vec3 roVox, vec3 rdVox,
+  out ivec3 outCell, out vec3 outFaceN, out vec3 outHitPos, out float outT, out vec3 outRgb
 ) {
-  outLin = vec3(0.0);
-  outWorldN = vec3(0.0, 1.0, 0.0);
+  outCell = ivec3(-1);
+  outFaceN = vec3(0.0, 0.0, 1.0);
+  outHitPos = vec3(0.0);
   outT = 1e20;
-  outEmis = 0.0;
-
-  if (smoothSdfMode) {
-    float rdLen = length(rdVox);
-    if (rdLen < 1e-6) return false;
-    vec3 rdN = rdVox / rdLen;
-    vec3 invD = 1.0 / mix(rdN, vec3(1e-6), lessThan(abs(rdN), vec3(1e-6)));
-    vec3 t0 = (vec3(-0.45) - roVox) * invD;
-    vec3 t1 = (uVolSize + vec3(0.45) - roVox) * invD;
-    float tEnter = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), max(min(t0.z, t1.z), 0.0));
-    float tExit = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
-    if (tExit <= tEnter + 1e-4) return false;
-
-    float s = tEnter;
-    bool hit = false;
-    for (int i = 0; i < 64; i++) {
-      vec3 p = roVox + rdN * s;
-      float d = sampleSdf(p);
-      if (d <= 0.02) {
-        s = max(tEnter, s + d * 0.65);
-        hit = true;
-        break;
-      }
-      s += max(d * 0.72, 0.14);
-      if (s > tExit) break;
-    }
-    if (!hit) return false;
-
-    vec3 hp = roVox + rdN * s;
-    const float e = 0.28;
-    vec3 nLoc = normalize(
-      vec3( 1, -1, -1) * sampleSdf(hp + vec3( e, -e, -e)) +
-      vec3(-1, -1,  1) * sampleSdf(hp + vec3(-e, -e,  e)) +
-      vec3(-1,  1, -1) * sampleSdf(hp + vec3(-e,  e, -e)) +
-      vec3( 1,  1,  1) * sampleSdf(hp + vec3( e,  e,  e))
-    );
-    vec3 uv = clamp(hp / uVolSize, vec3(0.0), vec3(1.0));
-    vec3 albedo = texture(uAlbedoTex, uv).rgb;
-    float ao = texture(uNormalTex, uv).a;
-    ivec3 ic = clamp(ivec3(floor(hp)), ivec3(0), ivec3(uVolSize) - 1);
-    float ef = texelFetch(uEmisTex, ic, 0).r;
-
-    vec3 worldN = normalize(uNormalMat * nLoc);
-    float selfSh = (uSelfShadow == 1 && ef < 0.5 && uShadeStyle != 2) ? (traceLocalShadow(hp + nLoc * 0.35, uSunLocal) ? 1.0 : 0.0) : 0.0;
-    outLin = shadeVoxel(srgbToLin(albedo), worldN, ao, ef, selfSh, false);
-    outWorldN = worldN;
-    outT = s / rdLen;
-    outEmis = ef;
-    return true;
-  }
+  outRgb = vec3(0.0);
 
   vec3 invD = vec3(
     abs(rdVox.x) > 1e-6 ? 1.0 / rdVox.x : 1e20,
@@ -600,24 +575,14 @@ bool traceVoxelRay(
   else faceN = vec3(0.0, 0.0, -float(stepDir.z));
 
   float tCur = 0.0;
-  for (int i = 0; i < 128; i++) {
+  for (int i = 0; i < 96; i++) {
     vec4 tex = texelFetch(uAlbedoTex, cell, 0);
     if (tex.a >= 0.5) {
-      vec4 na = texelFetch(uNormalTex, cell, 0);
-      float ef = texelFetch(uEmisTex, cell, 0).r;
-      vec3 smoothN = normalize(na.xyz * 2.0 - 1.0);
-      // Crisp faceted cube-face planes on hard-surface outlined actors (24% smooth),
-      // cohesive billowing SDF dome shading on soft non-outlined volumetric clouds (78% smooth, zero checkerboard risers!)
-      float nBlend = (uOutlineEnabled == 0) ? 0.78 : ((uStyle == 0 || hardToon) ? 0.24 : 0.45);
-      vec3 nLoc = normalize(mix(faceN, smoothN, nBlend));
-      vec3 worldN = normalize(uNormalMat * nLoc);
-      float selfSh = (uSelfShadow == 1 && !hardToon && ef < 0.5 && uShadeStyle != 2)
-        ? (traceLocalShadow(pos + rdVox * tCur + faceN * 0.08, uSunLocal) ? 1.0 : 0.0)
-        : 0.0;
-      outLin = shadeVoxel(srgbToLin(tex.rgb), worldN, na.a, ef, selfSh, hardToon);
-      outWorldN = worldN;
+      outCell = cell;
+      outFaceN = faceN;
+      outHitPos = pos + rdVox * tCur;
       outT = te + tCur;
-      outEmis = ef;
+      outRgb = tex.rgb;
       return true;
     }
     if (tMax.x <= tMax.y && tMax.x <= tMax.z) {
@@ -635,6 +600,65 @@ bool traceVoxelRay(
   return false;
 }
 
+bool traceSmoothSdfRay(
+  vec3 roVox, vec3 rdVox,
+  out vec3 outLin, out vec3 outWorldN, out float outT, out float outEmis
+) {
+  outLin = vec3(0.0);
+  outWorldN = vec3(0.0, 1.0, 0.0);
+  outT = 1e20;
+  outEmis = 0.0;
+
+  float rdLen = length(rdVox);
+  if (rdLen < 1e-6) return false;
+  vec3 rdN = rdVox / rdLen;
+  vec3 invD = 1.0 / mix(rdN, vec3(1e-6), lessThan(abs(rdN), vec3(1e-6)));
+  vec3 t0 = (vec3(-0.45) - roVox) * invD;
+  vec3 t1 = (uVolSize + vec3(0.45) - roVox) * invD;
+  float tEnter = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), max(min(t0.z, t1.z), 0.0));
+  float tExit = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
+  if (tExit <= tEnter + 1e-4) return false;
+
+  float s = tEnter;
+  bool hit = false;
+  for (int i = 0; i < 64; i++) {
+    vec3 p = roVox + rdN * s;
+    float d = sampleSdf(p);
+    if (d <= 0.02) {
+      s = max(tEnter, s + d * 0.65);
+      hit = true;
+      break;
+    }
+    s += max(d * 0.72, 0.14);
+    if (s > tExit) break;
+  }
+  if (!hit) return false;
+
+  vec3 hp = roVox + rdN * s;
+  const float e = 0.28;
+  vec3 nLoc = normalize(
+    vec3( 1, -1, -1) * sampleSdf(hp + vec3( e, -e, -e)) +
+    vec3(-1, -1,  1) * sampleSdf(hp + vec3(-e, -e,  e)) +
+    vec3(-1,  1, -1) * sampleSdf(hp + vec3(-e,  e, -e)) +
+    vec3( 1,  1,  1) * sampleSdf(hp + vec3( e,  e,  e))
+  );
+  vec3 uv = clamp(hp / uVolSize, vec3(0.0), vec3(1.0));
+  vec3 albedo = texture(uAlbedoTex, uv).rgb;
+  float ao = texture(uNormalTex, uv).a;
+  ivec3 ic = clamp(ivec3(floor(hp)), ivec3(0), ivec3(uVolSize) - 1);
+  float ef = texelFetch(uEmisTex, ic, 0).r;
+
+  vec3 worldN = normalize(uNormalMat * nLoc);
+  float selfSh = (uSelfShadow == 1 && ef < 0.5 && uShadeStyle != 2 && dot(worldN, uSunDir) > -0.28)
+    ? (traceLocalShadow(hp + nLoc * 0.35, uSunLocal) ? 1.0 : 0.0)
+    : 0.0;
+  outLin = shadeVoxel(srgbToLin(albedo), worldN, ao, ef, selfSh, false);
+  outWorldN = worldN;
+  outT = s / rdLen;
+  outEmis = ef;
+  return true;
+}
+
 void main() {
   int mode = (uSplitX >= 0.0 && (gl_FragCoord.x / uResolution.x) < uSplitX) ? uModeA : uModeB;
   bool isLegacy = (mode == 0);
@@ -647,34 +671,86 @@ void main() {
     basePx = (floor(basePx / blk) + 0.5) * blk;
   }
 
+  // Exact homogeneous column-step RGSS ray setup: 2 mat4 multiplies/pixel instead of 16 at 8x RGSS (bit-identical!)
+  vec2 baseNdc = (basePx / uResolution) * 2.0 - 1.0;
+  vec4 nearBase = uClipToVoxel * vec4(baseNdc, -1.0, 1.0);
+  vec4 farBase  = uClipToVoxel * vec4(baseNdc,  1.0, 1.0);
+  vec4 dVoxDx   = uClipToVoxel[0] * (2.0 / uResolution.x);
+  vec4 dVoxDy   = uClipToVoxel[1] * (2.0 / uResolution.y);
+
   vec3 accLin = vec3(0.0);
   vec3 accNorm = vec3(0.0);
   float accEmis = 0.0;
   float hits = 0.0;
   float minT = 1e20;
-  vec3 bestWorldHit = vec3(0.0);
+  vec3 bestVoxHit = vec3(0.0);
+
+  // Same-voxel sample shading cache (reuses normal/emissive/sRGB/shadeVoxel across RGSS samples hitting same cell+face)
+  ivec3 cCell = ivec3(-1);
+  vec3 cFace = vec3(0.0);
+  vec3 cBaseLin = vec3(0.0);
+  vec3 cWorldN = vec3(0.0, 1.0, 0.0);
+  float cAo = 1.0;
+  float cEmis = 0.0;
+  float cNdotL = 0.0;
+  float cLastSh = -1.0;
+  vec3 cShadedLin = vec3(0.0);
+  float nBlend = (uNormalSmoothness >= 0.0) ? clamp(uNormalSmoothness, 0.0, 1.0) : ((uStyle == 0 || isLegacy) ? 0.24 : 0.45);
 
   for (int i = 0; i < 8; i++) {
     if (i >= spp) break;
     vec2 off = getRgssOffset(i, spp);
-    vec2 ndc = ((basePx + off) / uResolution) * 2.0 - 1.0;
-    vec4 nearP = uInvViewProj * vec4(ndc, -1.0, 1.0); nearP /= nearP.w;
-    vec4 farP  = uInvViewProj * vec4(ndc,  1.0, 1.0); farP  /= farP.w;
-    vec3 roW = nearP.xyz;
-    vec3 rdW = normalize(farP.xyz - nearP.xyz);
+    vec4 delta = dVoxDx * off.x + dVoxDy * off.y;
+    vec4 nearV = nearBase + delta; nearV /= nearV.w;
+    vec4 farV  = farBase  + delta; farV  /= farV.w;
+    vec3 roV = nearV.xyz;
+    vec3 rdV = normalize(farV.xyz - nearV.xyz);
 
-    vec3 roV = (uWorldToVoxel * vec4(roW, 1.0)).xyz;
-    vec3 rdV = (uWorldToVoxel * vec4(rdW, 0.0)).xyz;
-
-    vec3 cLin; vec3 wN; float tHit; float em;
-    if (traceVoxelRay(roV, rdV, smoothSdf, isLegacy, cLin, wN, tHit, em)) {
-      accLin += cLin;
-      accNorm += wN;
-      accEmis += em;
-      hits += 1.0;
-      if (tHit < minT) {
-        minT = tHit;
-        bestWorldHit = roW + rdW * tHit;
+    if (smoothSdf) {
+      vec3 cLin; vec3 wN; float tHit; float em;
+      if (traceSmoothSdfRay(roV, rdV, cLin, wN, tHit, em)) {
+        accLin += cLin;
+        accNorm += wN;
+        accEmis += em;
+        hits += 1.0;
+        if (tHit < minT) {
+          minT = tHit;
+          bestVoxHit = roV + rdV * tHit;
+        }
+      }
+    } else {
+      ivec3 hitCell; vec3 faceN; vec3 hitPos; float tHit; vec3 albedoRgb;
+      if (traceVoxelDdaHit(roV, rdV, hitCell, faceN, hitPos, tHit, albedoRgb)) {
+        bool sameCell = (hitCell == cCell && all(equal(faceN, cFace)));
+        if (!sameCell) {
+          vec4 na = texelFetch(uNormalTex, hitCell, 0);
+          cEmis = texelFetch(uEmisTex, hitCell, 0).r;
+          vec3 smoothN = normalize(na.xyz * 2.0 - 1.0);
+          vec3 nLoc = normalize(mix(faceN, smoothN, nBlend));
+          cWorldN = normalize(uNormalMat * nLoc);
+          cBaseLin = srgbToLin(albedoRgb);
+          cAo = na.a;
+          cNdotL = dot(cWorldN, uSunDir);
+          cCell = hitCell;
+          cFace = faceN;
+          cLastSh = -1.0;
+        }
+        // Back-lit faces (ndotl <= -0.28) skip traceLocalShadow mathematically identically (min(ndotl, -0.28) == ndotl)
+        float selfSh = (uSelfShadow == 1 && !isLegacy && cEmis < 0.5 && uShadeStyle != 2 && cNdotL > -0.28)
+          ? (traceLocalShadow(hitPos + faceN * 0.08, uSunLocal) ? 1.0 : 0.0)
+          : 0.0;
+        if (!sameCell || selfSh != cLastSh) {
+          cShadedLin = shadeVoxel(cBaseLin, cWorldN, cAo, cEmis, selfSh, isLegacy);
+          cLastSh = selfSh;
+        }
+        accLin += cShadedLin;
+        accNorm += cWorldN;
+        accEmis += cEmis;
+        hits += 1.0;
+        if (tHit < minT) {
+          minT = tHit;
+          bestVoxHit = roV + rdV * tHit;
+        }
       }
     }
   }
@@ -685,20 +761,23 @@ void main() {
   vec3 avgLin = accLin / hits;
   vec3 avgN = normalize(accNorm / hits);
   float avgEm = accEmis / hits;
+  float worldDist = minT * uVoxelWorldScale;
 
   bool arcade = (uStyle == 0 || uStyle == 3);
   float sunsetW = max(0.0, 1.0 - abs(uTimeOfDay - 0.5) * 2.4);
   float nightW = max(0.0, (uTimeOfDay - 0.48) / 0.52);
   vec3 horCol = mix(mix(arcade ? vec3(0.66, 0.86, 0.99) : vec3(0.76, 0.89, 0.98), vec3(0.99, 0.56, 0.34), sunsetW), vec3(0.08, 0.13, 0.26), nightW);
   float fogStart = arcade ? 115.0 : 45.0;
-  float fogT = clamp(1.0 - exp(-pow(max(0.0, minT - fogStart) * (arcade ? 0.0040 : 0.0046) * max(uFogDensity, 0.05), 1.6)), 0.0, 0.92);
+  float fogT = uFogDensity <= 0.001
+    ? 0.0
+    : clamp(1.0 - exp(-pow(max(0.0, worldDist - fogStart) * (arcade ? 0.0040 : 0.0046) * uFogDensity, 1.6)), 0.0, 0.92);
   vec3 finalSrgb = mix(linToSrgb(avgLin), horCol, fogT * (1.0 - avgEm * 0.7));
 
   if (uDebugOverlay == 1) finalSrgb = avgN * 0.5 + 0.5;
-  else if (uDebugOverlay == 2) finalSrgb = vec3(clamp(1.0 - minT / 220.0, 0.0, 1.0));
+  else if (uDebugOverlay == 2) finalSrgb = vec3(clamp(1.0 - worldDist / 220.0, 0.0, 1.0));
   else if (uDebugOverlay == 3) finalSrgb = vec3(fract(uObjectIdNorm * 7.3), fract(uObjectIdNorm * 13.7), fract(uObjectIdNorm * 23.1));
 
-  vec4 clip = uViewProj * vec4(bestWorldHit, 1.0);
+  vec4 clip = uVoxelToClip * vec4(bestVoxHit, 1.0);
   gl_FragDepth = clamp((clip.z / clip.w) * 0.5 + 0.5, 0.0, 0.99997);
 
   outColor = vec4(finalSrgb, cov);
@@ -740,6 +819,7 @@ export const JFA_INIT_FS = `#version 300 es
 precision highp float;
 uniform sampler2D uAuxTex;
 uniform vec2 uResolution;
+uniform float uJfaScale;
 in vec2 vUv;
 out vec4 outSeed;
 
@@ -751,12 +831,28 @@ vec4 encodeSeed(vec2 uv) {
 }
 
 void main() {
-  vec4 aux = texture(uAuxTex, vUv);
-  if (aux.r > 0.002 && aux.a > 0.20) {
-    outSeed = encodeSeed(vUv);
-  } else {
+  if (uJfaScale >= 0.75) {
+    // Full-res JFA (Ultra AA quality): exact 1:1 sub-pixel seed for razor-smooth outlines under zoom!
+    vec4 aux = texture(uAuxTex, vUv);
+    if (aux.r > 0.002 && aux.a > 0.20) {
+      outSeed = encodeSeed(vUv);
+      return;
+    }
     outSeed = vec4(0.0);
+    return;
   }
+  // Half-res JFA (Eco/Balanced): probe 2x2 sub-texels of full-res uAuxTex so thin 1px edges are never missed!
+  vec2 hp = 0.25 / uResolution;
+  vec2 offs[4] = vec2[4](vec2(-hp.x, -hp.y), vec2(hp.x, -hp.y), vec2(-hp.x, hp.y), vec2(hp.x, hp.y));
+  for (int i = 0; i < 4; i++) {
+    vec2 suv = clamp(vUv + offs[i], vec2(0.0), vec2(1.0));
+    vec4 aux = texture(uAuxTex, suv);
+    if (aux.r > 0.002 && aux.a > 0.20) {
+      outSeed = encodeSeed(suv);
+      return;
+    }
+  }
+  outSeed = vec4(0.0);
 }`;
 
 export const JFA_STEP_FS = `#version 300 es
@@ -808,6 +904,7 @@ uniform float uOutlinePx;
 uniform vec3 uOutlineSrgb;
 uniform float uBloomStrength;
 uniform int uStyle;
+uniform int uTransparent;
 
 in vec2 vUv;
 out vec4 fragColor;
@@ -852,21 +949,56 @@ void main() {
   vec3 bloomLin = vec3(0.0);
   if (uBloomStrength > 0.02) {
     float rStep = max(1.5, min(uResolution.x, uResolution.y) * 0.004);
-    for (int dy = -2; dy <= 2; dy++) {
-      for (int dx = -2; dx <= 2; dx++) {
-        vec2 off = vec2(float(dx), float(dy)) * rStep * px;
-        float e = texture(uAuxTex, vUv + off).g;
-        if (e > 0.05) {
-          float w = exp(-0.38 * float(dx * dx + dy * dy));
-          bloomLin += srgbToLin(texture(uColorTex, vUv + off).rgb) * e * w;
+    // Cheap 5-tap coarse emissive check skips 25-tap Gaussian bloom on ~97% of pixels (sky, sea, land)!
+    float probe = aux.g;
+    probe = max(probe, texture(uAuxTex, vUv + vec2( rStep * 2.0, 0.0) * px).g);
+    probe = max(probe, texture(uAuxTex, vUv + vec2(-rStep * 2.0, 0.0) * px).g);
+    probe = max(probe, texture(uAuxTex, vUv + vec2(0.0,  rStep * 2.0) * px).g);
+    probe = max(probe, texture(uAuxTex, vUv + vec2(0.0, -rStep * 2.0) * px).g);
+    if (probe > 0.02) {
+      for (int dy = -2; dy <= 2; dy++) {
+        for (int dx = -2; dx <= 2; dx++) {
+          vec2 off = vec2(float(dx), float(dy)) * rStep * px;
+          float e = texture(uAuxTex, vUv + off).g;
+          if (e > 0.05) {
+            float w = exp(-0.38 * float(dx * dx + dy * dy));
+            bloomLin += srgbToLin(texture(uColorTex, vUv + off).rgb) * e * w;
+          }
         }
       }
+      bloomLin *= uBloomStrength * 0.16;
     }
-    bloomLin *= uBloomStrength * 0.16;
+  }
+
+  vec3 olLin = srgbToLin(uOutlineSrgb);
+
+  if (uTransparent == 1) {
+    // Premultiplied transparent overlay mode: zero dark halos over arbitrary DOM / 2D game canvases!
+    float fgA = clamp(sceneCol.a, 0.0, 1.0);
+    vec3 fgStraightSrgb = fgA > 1e-4 ? clamp(sceneCol.rgb / fgA, 0.0, 1.0) : vec3(0.0);
+    vec3 fgLin = srgbToLin(fgStraightSrgb);
+    float olA = clamp(olAlpha * 0.94, 0.0, 1.0);
+    // Standard Porter-Duff over: foreground sprite over crisp anti-aliased outline
+    float outA = clamp(fgA + olA * (1.0 - fgA), 0.0, 1.0);
+    vec3 premulLin = fgLin * fgA + olLin * (olA * (1.0 - fgA));
+    vec3 straightLin = outA > 1e-4 ? premulLin / outA : vec3(0.0);
+    float bloomA = clamp(max(bloomLin.r, max(bloomLin.g, bloomLin.b)) * 0.72, 0.0, 1.0);
+    float finalA = clamp(outA + bloomA * (1.0 - outA), 0.0, 1.0);
+    if (finalA < 1e-4) {
+      fragColor = vec4(0.0);
+      return;
+    }
+    vec3 srgb = linToSrgb(straightLin + bloomLin / max(finalA, 0.15));
+    if (uStyle == 0 || uStyle == 3) {
+      float luma = dot(srgb, vec3(0.299, 0.587, 0.114));
+      srgb = mix(vec3(luma), srgb, 1.16);
+      srgb = clamp((srgb - 0.5) * 1.06 + 0.5, 0.0, 1.0);
+    }
+    fragColor = vec4(srgb * finalA, finalA);
+    return;
   }
 
   vec3 baseLin = srgbToLin(sceneCol.rgb);
-  vec3 olLin = srgbToLin(uOutlineSrgb);
   vec3 finalLin = mix(baseLin, olLin, olAlpha * 0.94) + bloomLin;
   vec3 srgb = linToSrgb(finalLin);
 

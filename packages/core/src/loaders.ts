@@ -39,6 +39,7 @@ export interface VoxParseOptions {
   name?: string;
   voxelScale?: number;
   pivot?: Vec3;
+  computeSdf?: boolean;
   sockets?: Record<string, SocketDef>;
 }
 
@@ -138,6 +139,7 @@ export function parseVox(buffer: ArrayBuffer, opts: VoxParseOptions): VolumeAsse
     rgba,
     voxelScale: opts.voxelScale ?? 1.0,
     pivot: opts.pivot,
+    computeSdf: opts.computeSdf,
     sockets: opts.sockets,
     provenance: { kind: "vox", source: opts.id },
   });
@@ -149,6 +151,7 @@ export interface SliceStripOptions {
   name?: string;
   voxelScale?: number;
   pivot?: Vec3;
+  computeSdf?: boolean;
   sockets?: Record<string, SocketDef>;
 }
 
@@ -186,7 +189,59 @@ export function loadSliceStripPixels(
     rgba,
     voxelScale: opts.voxelScale ?? 1.0,
     pivot: opts.pivot,
+    computeSdf: opts.computeSdf,
     sockets: opts.sockets,
     provenance: { kind: "slices", source: opts.id },
   });
+}
+
+/**
+ * Browser helper: build a VolumeAsset directly from a loaded HTMLImageElement or ImageBitmap
+ * containing a horizontal `slices.png` strip (width = W * slices, height = L).
+ */
+export function loadSliceStripFromImage(
+  img: HTMLImageElement | ImageBitmap,
+  opts: SliceStripOptions,
+): VolumeAsset {
+  const w = "naturalWidth" in img ? img.naturalWidth : img.width;
+  const h = "naturalHeight" in img ? img.naturalHeight : img.height;
+  if (w < 1 || h < 1) {
+    throw new Error(`Slice strip image "${opts.id}" has empty dimensions (${w}x${h}).`);
+  }
+  const off = document.createElement("canvas");
+  off.width = w;
+  off.height = h;
+  const ctx = off.getContext("2d");
+  if (!ctx) throw new Error("2D canvas context unavailable for loadSliceStripFromImage.");
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, w, h).data;
+  return loadSliceStripPixels(data, w, h, opts);
+}
+
+/**
+ * Browser drop-in loader: fetch a horizontal `slices.png` strip URL and compile it into an AA-ready VolumeAsset.
+ * Compatible with Aseprite, SpriteStack, and standard horizontal slice strips.
+ */
+export async function loadSliceStripUrl(url: string, opts: SliceStripOptions): Promise<VolumeAsset> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.crossOrigin = "anonymous";
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error(`Failed to load slice strip image from "${url}".`));
+    el.src = url;
+  });
+  return loadSliceStripFromImage(img, opts);
+}
+
+/**
+ * Browser / Node 18+ drop-in loader: fetch a MagicaVoxel `.vox` binary file and compile it into an AA-ready VolumeAsset.
+ */
+export async function loadVoxUrl(url: string, opts: VoxParseOptions): Promise<VolumeAsset> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch .vox asset from "${url}" (HTTP ${res.status}).`);
+  }
+  const buf = await res.arrayBuffer();
+  return parseVox(buf, opts);
 }

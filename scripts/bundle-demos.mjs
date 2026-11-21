@@ -30,3 +30,20 @@ await build({
 });
 
 console.log("Bundled examples/flight-6dof/bundle.js");
+
+const MINIMAL_DIR = resolve(ROOT, "examples/minimal-2d");
+await build({
+  entryPoints: [resolve(MINIMAL_DIR, "src/main.ts")],
+  outfile: resolve(MINIMAL_DIR, "bundle.js"),
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  minify: true,
+  sourcemap: true,
+  alias: {
+    "@aastack/core": resolve(ROOT, "packages/core/dist/index.js"),
+    "@aastack/blueprint": resolve(ROOT, "packages/blueprint/dist/index.js"),
+  },
+});
+
+console.log("Bundled examples/minimal-2d/bundle.js");

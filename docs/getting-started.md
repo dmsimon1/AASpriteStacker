@@ -19,16 +19,57 @@ Useful root scripts:
 
 | Command | Purpose |
 | --- | --- |
-| `npm run build` | Builds `@aastack/core`, `@aastack/blueprint`, `@aastack/mcp` + bundles `examples/flight-6dof/bundle.js` |
+| `npm run build` | Builds all 4 workspaces (`@aastack/{core,blueprint,bridge,mcp}`) + bundles `examples/flight-6dof` & `examples/minimal-2d` |
+| `npm run build:site` | Builds the full static `aasprite.com` website into `site/dist/` |
 | `npm run typecheck` | Strict TypeScript project-reference check across all workspaces |
-| `npm test` | Rebuilds and runs the Node test suite (`tests/core.test.mjs`) |
+| `npm test` | Rebuilds and runs the Node test suite (`tests/*.test.mjs`) |
 | `npm run test:py` | Runs the Python carving & AA quality suite (`.venv/bin/python tests/test_aa_stacker.py`) |
 | `npm run test:all` | Runs both TypeScript and Python test suites |
 | `npm run dev:serve` | Starts a local static HTTP server at `http://127.0.0.1:8765` |
 
 ---
 
-## 2. Building Your First Scene (`@aastack/core`)
+## 2. Drop-In 2.5D Isometric & Oblique Overlay (Shortest Path)
+
+Want to drop anti-aliased sprite stacks straight on top of an existing 2D tilemap, Canvas2D, PixiJS, or Phaser game? Set `background: "transparent"`, pick a first-class 2.5D projection preset via `createIsometricCamera()` (`"dimetric-2to1"`, `"isometric"`, `"oblique-stack"`, or `"topdown-3quarter"`), and use our one-line URL loaders (`loadSliceStripUrl` or `loadVoxUrl`):
+
+```ts
+import {
+  AASpriteRenderer,
+  SceneWorld,
+  createIsometricCamera,
+  loadSliceStripUrl,
+  quatFromYawPitchRoll,
+  unprojectScreenToGround,
+} from "@aastack/core";
+
+const renderer = new AASpriteRenderer(canvas, { background: "transparent", quality: "ultra" });
+const world = new SceneWorld({
+  // Presets: "dimetric-2to1" (2:1 diamond grid) | "isometric" (35.264°) | "oblique-stack" (SpriteStack/Nium) | "topdown-3quarter"
+  camera: createIsometricCamera({ preset: "dimetric-2to1", target: [0, 2.4, 0], orthoSize: 10.5 }),
+});
+
+const car = await loadSliceStripUrl("/car_slices.png", { id: "car", slices: 24 });
+// Or MagicaVoxel: const car = await loadVoxUrl("/car.vox", { id: "car" });
+world.registerAsset(car);
+world.applyPatch([
+  { op: "set", path: "aaMode", value: "voxel-dda" },
+  { op: "spawn", entity: { id: "hero", assetId: "car", pos: [0, 2.8, 0], rot: quatFromYawPitchRoll(0.6, 0, 0), scale: 1, outline: true } },
+]);
+
+// Click-to-tile ground picking works identically across dimetric, true iso, oblique, and perspective:
+const hit = unprojectScreenToGround(mouseX, mouseY, world.doc.camera, canvas.clientWidth, canvas.clientHeight, 0);
+
+// Runtime AA quality softswitch ("eco" 2x | "balanced" 4x | "ultra" 8x Retina + full-res JFA):
+renderer.setQuality("ultra", world);
+renderer.render(world);
+```
+
+Try it live at [`/iso/`](/iso/) or inspect the complete starter in [`examples/minimal-2d/`](../examples/minimal-2d/README.md).
+
+---
+
+## 3. Building a Full 6-DOF Scene (`@aastack/core`)
 
 Create an HTML page with a `<canvas id="gl">` and wire up `SceneWorld` + `AASpriteRenderer`:
 

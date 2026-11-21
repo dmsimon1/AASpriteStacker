@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>AASpriteStacker — The First Fully Anti-Aliased Sprite-Stacking Engine</title>
+  <meta name="description" content="The first fully anti-aliased sprite-stacking engine. AASpriteStacker solves rotation aliasing—keeping crisp pixel art at any angle, from classic 2.5D isometric to full 6-DOF." />
+  <meta property="og:title" content="AASpriteStacker — The First Fully Anti-Aliased Sprite-Stacking Engine" />
+  <meta property="og:description" content="AASpriteStacker solves rotation aliasing—keeping crisp pixel art at any angle, from classic 2.5D isometric to full 6-DOF." />
+  <meta property="og:image" content="https://aasprite.com/assets/skystack-chase-8bit.png" />
+  <meta property="og:url" content="https://aasprite.com/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <!--AA_GLOBAL_NAV-->
+
+  <main>
+    <!-- 1. HERO: COMMANDING EDITORIAL HEADLINE ABOVE WIDE LIVE A/B AA STAGE -->
+    <section class="hero">
+      <div class="container hero-stack">
+        <header class="hero-header">
+          <h1>
+            The First Fully Anti-Aliased<br />
+            <span class="grad-text">Sprite-Stacking Engine.</span>
+          </h1>
+          <p class="hero-lead">
+            AASpriteStacker solves rotation aliasing—keeping crisp pixel art at any angle.
+          </p>
+          <p class="hero-solution">
+            Zero shimmer, zero pixel boil, and intact 1px details from classic 2.5D isometric to full 6-DOF.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="/play/">Play 6-DOF Demo →</a>
+            <a class="btn" href="/studio/">Open 4-View Studio</a>
+            <span class="proof-inline">
+              <strong>−58%</strong> shimmer · <strong>0.00 px</strong> drift · <strong>0</strong> runtime deps
+            </span>
+          </div>
+        </header>
+
+        <!-- WIDE CINEMATIC LIVE A/B SPLIT + 4x LOUPE + LIVE AA QUALITY SOFTSWITCH -->
+        <div class="stage-card">
+          <div class="stage-viewport">
+            <canvas id="heroCanvas" role="img" aria-label="Live side-by-side WebGL2 comparison of classic aliased sprite stacking versus AASpriteStacker full anti-aliased sprite stacking"></canvas>
+
+            <!-- Active 50/50 Split Curtain -->
+            <div id="heroSplitOverlay" class="visible">
+              <div id="heroSplitHandle" title="Drag to compare Classic vs Anti-Aliased">
+                <div class="hero-split-knob">⇄</div>
+              </div>
+              <div class="hero-split-tag left">Classic · No AA</div>
+              <div class="hero-split-tag right" id="heroTagRight">AASpriteStacker · 8×</div>
+            </div>
+
+            <!-- Reticle marking what the 4x pixel loupe is inspecting -->
+            <div id="heroLoupeReticle" class="loupe-reticle visible" aria-hidden="true"></div>
+
+            <!-- Live 4x Pixel Magnifier Loupe -->
+            <div id="heroLoupeBox" class="hero-loupe visible" aria-label="4x pixel magnifier comparing aliased left vs anti-aliased right">
+              <canvas id="heroLoupeCanvas" width="160" height="160"></canvas>
+              <div class="hero-loupe-cap" id="heroLoupeCap">4× · No AA | AA 8×</div>
+            </div>
+
+            <div class="stage-hint">Drag divider · Hover to inspect · Drag to orbit</div>
+          </div>
+
+          <div class="stage-dock">
+            <div class="dock-group" role="group" aria-label="Sprite stack subject">
+              <button class="dock-btn" data-hero-subject="cottage" aria-pressed="true" type="button">Cottage</button>
+              <button class="dock-btn" data-hero-subject="jet" aria-pressed="false" type="button">Fighter Jet</button>
+              <button class="dock-btn" data-hero-subject="gate" aria-pressed="false" type="button">Sky Gate</button>
+            </div>
+            <div class="dock-sep" aria-hidden="true"></div>
+            <div class="dock-group" role="group" aria-label="AA quality softswitch">
+              <button class="dock-btn" data-hero-quality="eco" aria-pressed="false" title="Eco thermal mode: 2x RGSS + half-res outlines" type="button">Eco 2×</button>
+              <button class="dock-btn" data-hero-quality="balanced" aria-pressed="false" title="Balanced 60fps mode: 4x RGSS + 1.5x DPR" type="button">Bal 4×</button>
+              <button class="dock-btn" data-hero-quality="ultra" aria-pressed="true" title="Ultra reference AA: 8x RGSS + 2.0x Retina DPR + full-res outlines" type="button">Ultra 8×</button>
+            </div>
+            <div class="dock-sep" aria-hidden="true"></div>
+            <div class="dock-group">
+              <button class="dock-btn" id="heroLoupeBtn" aria-pressed="true" type="button">4× Loupe</button>
+              <button class="dock-btn" id="heroPauseBtn" aria-pressed="false" type="button">Pause</button>
+            </div>
+            <span class="stage-stats" id="heroStats">60 fps</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. SAME SPRITE STACK, HEAD-TO-HEAD VISUAL PROOF -->
+    <section class="band" id="why-aa">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-kicker">Same 24×24×28 Sprite Stack · Rotated 35°</div>
+          <h2>Same pixel-art slices. Night and day when rotated.</h2>
+          <p>
+            Classic 2D slice stacking snaps pixels to a jagged grid—or bleeds black halos if you turn on bilinear
+            filtering. AASpriteStacker raycasts the volume in linear light, keeping authentic pixel-art interiors
+            sharp while eliminating rotation aliasing.
+            <a href="/primer/" style="white-space: nowrap; font-weight: 600;">New to sprite stacking? Read the 2-min primer →</a>
+          </p>
+        </div>
+
+        <div class="compare-grid compare-grid-2" style="margin-bottom: 24px;">
+          <figure class="compare-card">
+            <div class="compare-img-wrap">
+              <img src="/assets/compare-legacy.png" alt="Legacy 1x Nearest sprite stack rotated 35 degrees showing jagged outline, broken weathervane, and missing doorknob" loading="lazy" />
+            </div>
+            <figcaption class="compare-body">
+              <span class="compare-badge warn">Classic Stackers · No AA</span>
+              <h3>Legacy 1× Nearest</h3>
+              <p>
+                Flat 2D slices snapped to nearest pixels. Look at the <strong>jagged staircase outline</strong>, the
+                <strong>broken rooftop weathervane</strong>, and the <strong>missing brass doorknob</strong>—all of
+                which crawl and boil on every degree of rotation.
+              </p>
+            </figcaption>
+          </figure>
+
+          <figure class="compare-card featured">
+            <div class="compare-img-wrap">
+              <img src="/assets/compare-crisp-aa.png" alt="AASpriteStacker 8x RGSS anti-aliased sprite stack rotated 35 degrees showing smooth silhouette, intact weathervane, and clear doorknob" loading="lazy" />
+            </div>
+            <figcaption class="compare-body">
+              <span class="compare-badge cyan">AASpriteStacker · Full AA</span>
+              <h3>Crisp Anti-Aliased Stack (8× RGSS)</h3>
+              <p>
+                Keeps the authentic chunky pixel-art interior intact while supersampling sub-pixel edges in linear
+                light. The <strong>silhouette is razor-smooth</strong>, the <strong>1px weathervane and brass doorknob stay 100% solid</strong>,
+                and 1° rotation shimmer drops by <strong>58%</strong>.
+              </p>
+            </figcaption>
+          </figure>
+        </div>
+
+        <div class="grid-3">
+          <article class="card">
+            <h3>1. Kill Rotation Shimmer</h3>
+            <p>
+              Instead of snapping flat quads to pixel centers, AASpriteStacker raycasts a tight 3D volume with
+              rotated-grid supersampling (<code>RGSS</code>) in linear light—cutting 1° rotation shimmer by 58%.
+            </p>
+          </article>
+          <article class="card">
+            <h3>2. Keep 1px Details, Zero Black Halos</h3>
+            <p>
+              Premultiplied linear blending, RGB edge dilation, and correlated coverage stop transparent pixels from
+              bleeding dark fringes and keep thin posts, roofs, and outlines solid at every angle.
+            </p>
+          </article>
+          <article class="card">
+            <h3>3. Live AA Quality Softswitch (2.5D → 6-DOF)</h3>
+            <p>
+              Continuous 3D volume stepping stays solid at any tilt, and a live <code>setQuality("eco" | "balanced" | "ultra")</code>
+              softswitch lets developers and players dial between battery-cool 2×/4× and full Retina 8× AA on the fly.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. TRY IT IN MOTION OR WITH YOUR OWN ART -->
+    <section class="band" id="demos">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-kicker">Test It Live</div>
+          <h2>See anti-aliased sprite stacking in a real scene — or drop in your own art.</h2>
+        </div>
+
+        <div class="grid-2 demo-grid">
+          <div class="demo-card">
+            <a class="demo-thumb" href="/play/">
+              <picture>
+                <source srcset="/assets/skystack-chase-8bit.webp" type="image/webp" />
+                <img src="/assets/skystack-chase-8bit.png" alt="SkyStack 6-DOF flight demo running anti-aliased sprite stacking at 60 fps" loading="lazy" />
+              </picture>
+            </a>
+            <div class="demo-body">
+              <h3>SkyStack 6-DOF Flight Demo</h3>
+              <p>
+                Fly Chase, Overhead, or Cockpit view at 60 fps (<code>34.6 KB</code> gz) with a live A/B split
+                curtain and <code>Eco 2× / Bal 4× / Ultra 8×</code> AA softswitch mid-flight.
+              </p>
+              <a class="btn btn-primary btn-sm" href="/play/">Play 6-DOF Demo →</a>
+            </div>
+          </div>
+
+          <div class="demo-card">
+            <a class="demo-thumb demo-thumb-studio" href="/studio/">
+              <picture>
+                <source srcset="/assets/studio-preview.webp" type="image/webp" />
+                <img src="/assets/studio-preview.png" alt="4-View A/B anti-aliasing look-dev studio with live split curtain and 4x loupe" loading="lazy" />
+              </picture>
+            </a>
+            <div class="demo-body">
+              <h3>4-View A/B Look-Dev Studio</h3>
+              <p>
+                Drag-and-drop any <strong>MagicaVoxel <code>.vox</code></strong> model or horizontal <code>slices.png</code>
+                strip, inspect AA live with a 4× pixel loupe, and export 16-direction AA sprite sheets.
+              </p>
+              <a class="btn btn-sm" href="/studio/">Open 4-View Studio →</a>
+            </div>
+          </div>
+        </div>
+
+        <p class="ecosystem-note" style="margin-top: 20px;">
+          Building a 2D or isometric game? Try the live <a href="/iso/"><strong>2.5D Isometric &amp; Oblique Transparent Overlay Sandbox →</strong></a>
+          — switch between <code>2:1 Iso</code>, <code>True Iso</code>, <code>Oblique Stack</code>, and <code>3/4 Top-Down</code> over a real Canvas2D tilemap with click-to-tile picking.
+        </p>
+      </div>
+    </section>
+
+    <!-- 4. DROP-IN SDK (15 LINES) -->
+    <section class="band" id="sdk">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-kicker">Open Source · MIT License</div>
+          <h2>Add anti-aliased sprite stacking in 15 lines.</h2>
+          <p>Zero runtime dependencies. Works directly in WebGL2, or convert standard 4-view art / MagicaVoxel <code>.vox</code> files.</p>
+        </div>
+
+        <div class="code-shell">
+          <div class="code-tabs">
+            <div class="tab-list" role="tablist">
+              <button class="tab-btn" role="tab" data-code-tab="sdk" aria-selected="true" type="button">WebGL2 SDK (@aastack/core)</button>
+              <button class="tab-btn" role="tab" data-code-tab="cli" aria-selected="false" type="button">4-View PNG → AA Slices CLI</button>
+            </div>
+            <button class="dock-btn" id="copyCodeBtn" type="button">Copy</button>
+          </div>
+
+          <pre class="code-panel active" data-code-panel="sdk"><code>import { AASpriteRenderer, SceneWorld, createIsometricCamera, loadSliceStripUrl, quatFromYawPitchRoll } from "@aastack/core";
+
+// Drop straight over any existing 2D canvas/tilemap with premultiplied transparent alpha:
+const renderer = new AASpriteRenderer(canvas, { background: "transparent", quality: "ultra" });
+const world = new SceneWorld({
+  // First-class presets: "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter"
+  camera: createIsometricCamera({ preset: "dimetric-2to1", target: [0, 2, 0], orthoSize: 9.5 }),
+});
+
+// Load standard slices.png strips (or MagicaVoxel via loadVoxUrl("/model.vox", { id: "car" })):
+const car = await loadSliceStripUrl("/car_slices.png", { id: "car", slices: 24 });
+world.registerAsset(car);
+world.applyPatch([
+  { op: "set", path: "aaMode", value: "voxel-dda" }, // Crisp pixel-art interior + smooth AA edges
+  { op: "spawn", entity: { id: "hero", assetId: "car", pos: [0, 2.8, 0], rot: quatFromYawPitchRoll(0.6, 0, 0), scale: 1, outline: true } },
+]);
+
+// Runtime AA quality softswitch ("eco" 2x | "balanced" 4x | "ultra" 8x Retina + full-res outlines):
+renderer.setQuality("ultra", world);
+renderer.render(world);</code></pre>
+
+          <pre class="code-panel" data-code-panel="cli"><code># Convert a 4-view orthographic sprite sheet (Front / Right / Back / Left) into edge-dilated AA slices + 3D SDF:
+.venv/bin/python skills/aa-sprite-stacking/scripts/aa_views_to_slices.py \
+  views.png out/slices.png \
+  --slices 36 \
+  --sdf out/sdf.png \
+  --normals out/normals.png \
+  --html out/viewer.html</code></pre>
+        </div>
+
+        <p class="ecosystem-note">
+          Also includes standalone Godot 4 &amp; Unity URP reference shaders (<a href="/docs/architecture/">Architecture Docs</a>),
+          a live <a href="/iso/">2.5D Isometric &amp; Oblique Overlay</a> starter (<code>examples/minimal-2d/</code>), and an optional local MCP bridge for AI coding agents
+          (<a href="/docs/ai-integration/">AI &amp; MCP Guide</a> · <a href="/llms-full.txt"><code>llms-full.txt</code></a>).
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div><strong>AASpriteStacker</strong> · MIT License · Zero Runtime Dependencies</div>
+      <div class="footer-links">
+        <a href="/primer/">Primer</a>
+        <a href="/play/">6-DOF Demo</a>
+        <a href="/studio/">Studio</a>
+        <a href="/docs/">Docs</a>
+        <a href="/llms-full.txt">llms-full.txt</a>
+        <a href="https://github.com/dmsimon1/AASpriteStacker" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="/assets/hero-demo.js"></script>
+</body>
+</html>

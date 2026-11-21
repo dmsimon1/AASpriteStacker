@@ -9,9 +9,13 @@
 import { clamp } from "./math.js";
 import type { AssetProvenance, SocketDef, Vec3, VolumeAsset } from "./types.js";
 
-function edt1dSquared(f: Float32Array, n: number, out: Float32Array): void {
-  const v = new Int32Array(n);
-  const z = new Float32Array(n + 1);
+function edt1dSquared(
+  f: Float32Array,
+  n: number,
+  out: Float32Array,
+  v: Int32Array,
+  z: Float32Array,
+): void {
   let k = 0;
   v[0] = 0;
   z[0] = -1e18;
@@ -56,6 +60,8 @@ export function compute3DSdf(rgba: Uint8Array, w: number, l: number, h: number, 
   const maxDim = Math.max(w, l, h);
   const fBuf = new Float32Array(maxDim);
   const oBuf = new Float32Array(maxDim);
+  const vBuf = new Int32Array(maxDim);
+  const zBuf = new Float32Array(maxDim + 1);
 
   const run3D = (arr: Float32Array) => {
     for (let z = 0; z < h; z++) {
@@ -63,7 +69,7 @@ export function compute3DSdf(rgba: Uint8Array, w: number, l: number, h: number, 
       for (let y = 0; y < l; y++) {
         const rb = zb + y * w;
         for (let x = 0; x < w; x++) fBuf[x] = arr[rb + x];
-        edt1dSquared(fBuf, w, oBuf);
+        edt1dSquared(fBuf, w, oBuf, vBuf, zBuf);
         for (let x = 0; x < w; x++) arr[rb + x] = oBuf[x];
       }
     }
@@ -71,7 +77,7 @@ export function compute3DSdf(rgba: Uint8Array, w: number, l: number, h: number, 
       const zb = z * area;
       for (let x = 0; x < w; x++) {
         for (let y = 0; y < l; y++) fBuf[y] = arr[zb + y * w + x];
-        edt1dSquared(fBuf, l, oBuf);
+        edt1dSquared(fBuf, l, oBuf, vBuf, zBuf);
         for (let y = 0; y < l; y++) arr[zb + y * w + x] = oBuf[y];
       }
     }
@@ -79,7 +85,7 @@ export function compute3DSdf(rgba: Uint8Array, w: number, l: number, h: number, 
       for (let x = 0; x < w; x++) {
         const xy = y * w + x;
         for (let z = 0; z < h; z++) fBuf[z] = arr[z * area + xy];
-        edt1dSquared(fBuf, h, oBuf);
+        edt1dSquared(fBuf, h, oBuf, vBuf, zBuf);
         for (let z = 0; z < h; z++) arr[z * area + xy] = oBuf[z];
       }
     }
@@ -146,24 +152,26 @@ export function compute3DSdf(rgba: Uint8Array, w: number, l: number, h: number, 
 export function dilateRgbEdges3D(rgba: Uint8Array, w: number, l: number, h: number, iterations = 3): Uint8Array {
   const area = w * l;
   const total = h * area;
-  const out = new Uint8Array(rgba);
-  let valid = new Uint8Array(total);
-  for (let i = 0; i < total; i++) valid[i] = out[i * 4 + 3] > 0 ? 1 : 0;
+  let curRgb = new Uint8Array(rgba);
+  let nxtRgb = new Uint8Array(rgba);
+  let curValid = new Uint8Array(total);
+  let nxtValid = new Uint8Array(total);
+  for (let i = 0; i < total; i++) curValid[i] = curRgb[i * 4 + 3] > 0 ? 1 : 0;
 
   const dirs = [
     [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
   ];
 
   for (let it = 0; it < iterations; it++) {
-    const nextValid = new Uint8Array(valid);
-    const nextRgb = new Uint8Array(out);
+    nxtValid.set(curValid);
+    nxtRgb.set(curRgb);
     for (let z = 0; z < h; z++) {
       const zb = z * area;
       for (let y = 0; y < l; y++) {
         const rb = zb + y * w;
         for (let x = 0; x < w; x++) {
           const idx = rb + x;
-          if (valid[idx]) continue;
+          if (curValid[idx]) continue;
           let r = 0, g = 0, b = 0, cnt = 0;
           for (let d = 0; d < 6; d++) {
             const nx = x + dirs[d][0];
@@ -171,25 +179,25 @@ export function dilateRgbEdges3D(rgba: Uint8Array, w: number, l: number, h: numb
             const nz = z + dirs[d][2];
             if (nx < 0 || nx >= w || ny < 0 || ny >= l || nz < 0 || nz >= h) continue;
             const nIdx = nz * area + ny * w + nx;
-            if (valid[nIdx]) {
+            if (curValid[nIdx]) {
               const p = nIdx * 4;
-              r += out[p]; g += out[p + 1]; b += out[p + 2]; cnt++;
+              r += curRgb[p]; g += curRgb[p + 1]; b += curRgb[p + 2]; cnt++;
             }
           }
           if (cnt > 0) {
             const p = idx * 4;
-            nextRgb[p] = (r / cnt) | 0;
-            nextRgb[p + 1] = (g / cnt) | 0;
-            nextRgb[p + 2] = (b / cnt) | 0;
-            nextValid[idx] = 1;
+            nxtRgb[p] = (r / cnt) | 0;
+            nxtRgb[p + 1] = (g / cnt) | 0;
+            nxtRgb[p + 2] = (b / cnt) | 0;
+            nxtValid[idx] = 1;
           }
         }
       }
     }
-    out.set(nextRgb);
-    valid = nextValid;
+    const tmpRgb = curRgb; curRgb = nxtRgb; nxtRgb = tmpRgb;
+    const tmpValid = curValid; curValid = nxtValid; nxtValid = tmpValid;
   }
-  return out;
+  return curRgb;
 }
 
 export function hashBytesFNV1a(bytes: Uint8Array): string {
@@ -213,6 +221,8 @@ export interface CreateVolumeAssetOptions {
   pivot?: Vec3;
   sdfRange?: number;
   smoothSdf?: number;
+  /** Compute full 3D EDT Signed Distance Field (default true). Set false for 5x faster loads on large crisp voxel-dda assets. */
+  computeSdf?: boolean;
   explicitSdf?: Float32Array;
   explicitEmissive?: Uint8Array;
   sockets?: Record<string, SocketDef>;
@@ -224,9 +234,12 @@ export function createVolumeAsset(opts: CreateVolumeAssetOptions): VolumeAsset {
   const area = w * l;
   const total = h * area;
   const sdfRange = opts.sdfRange ?? 6.0;
+  const useSdf = opts.computeSdf !== false || Boolean(opts.explicitSdf);
 
   const rgba = dilateRgbEdges3D(opts.rgba, w, l, h, 3);
-  const sdfF32 = opts.explicitSdf ?? compute3DSdf(rgba, w, l, h, opts.smoothSdf ?? 0.14);
+  const sdfF32 = useSdf
+    ? (opts.explicitSdf ?? compute3DSdf(rgba, w, l, h, opts.smoothSdf ?? 0.14))
+    : new Float32Array(total);
   const sdfU8 = new Uint8Array(total);
   const normAo = new Uint8Array(total * 4);
   const emisU8 = opts.explicitEmissive ? new Uint8Array(opts.explicitEmissive) : new Uint8Array(total);
@@ -242,6 +255,13 @@ export function createVolumeAsset(opts: CreateVolumeAssetOptions): VolumeAsset {
     if (z < 0 || z >= h || y < 0 || y >= l || x < 0 || x >= w) return 0;
     return rgba[(z * area + y * w + x) * 4 + 3] >= 128 ? 1 : 0;
   };
+
+  if (!useSdf) {
+    // Fast O(N) binary occupancy proxy when full 3D EDT is skipped
+    for (let i = 0; i < total; i++) {
+      sdfF32[i] = rgba[i * 4 + 3] >= 128 ? -0.5 : 0.5;
+    }
+  }
 
   const colorCounts = new Map<number, number>();
   let surfCount = 0;

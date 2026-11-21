@@ -75,30 +75,38 @@ flowchart LR
   P3 -->|"Default Framebuffer"| OUT["Display Canvas"]
 ```
 
-### Pass 0: Terrain, Ocean, Cloud Shadows & Sky (`TERRAIN_FS`)
-- Marches a perspective/orthographic ray through the procedural island archipelago heightfield (`terrainHeight`) using the **sin-free Dave Hoskins 2D hash (`hash21`)**, identical bit-for-bit to CPU `sampleTerrainHeight()`.
-- **Zero-Skip Coastline Bisection:** If the ray reaches the ocean plane `Y = 0` (`tWater`) and `terrainHeight(pw.xz) > 0`, it runs a 4-step binary search across `[prevT, tWater]`. This guarantees grazing camera rays never skip over thin coastal beaches.
-- **Multi-Lobe Projected Cloud Shadows:** Projects up to 28 shadow-casting entities (clouds and aircraft) onto land and water along `-uSunDir`, using a 3-lobe organic cloud footprint and hue-shifted deep royal-indigo/cool-teal shadows (never muddy gray).
-- Writes exact `gl_FragDepth` so flying entities, clouds, and contrails occlude naturally behind cliffs and hills.
+### Pass 0: Decoupled Backdrop (`transparent` | `solid` | `studio` | optional `terrain`)
+- **`background: "transparent"`:** Skips `TERRAIN_FS` completely, clears the scene & aux buffers to `(0, 0, 0, 0)`, and outputs premultiplied straight-alpha pixels in Pass 3 so AA sprite stacks layer cleanly over any existing 2D canvas, tilemap, or HTML background with zero dark halos.
+- **`background: "solid"`:** Skips `TERRAIN_FS` and clears cleanly to `backgroundColor` (`[r, g, b]`).
+- **`background: "studio"`:** Renders a clean high-contrast studio cyclorama with soft projected floor contact shadows (`castShadowAt`).
+- **`background: "terrain"` (optional procedural backdrop):** When `terrain.enabled` is true, marches a perspective/orthographic ray through the procedural heightfield (`terrainHeight`) using the **sin-free Dave Hoskins 2D hash (`hash21`)**, identical bit-for-bit to CPU `sampleTerrainHeight()`, with 4-step exact coastline bisection and AABB-accelerated ground shadows (`castShadowAt`).
 
 ### Pass 1: 6-DOF Anti-Aliased Entities (`ENTITY_OBB_VS` / `ENTITY_OBB_FS`)
 - Each visible entity draws a single **12-triangle padded unit cube** (`36` indices) transformed by `uVoxelToWorld`.
-- **Back-Face Culling (`gl.cullFace(gl.FRONT)`):** Rendering only the OBB's back faces guarantees the fragment shader still executes when the camera flies **inside** a volumetric cloud or right up to an actor!
-- **Rotated Grid Supersampling (RGSS):** Traces `1×`, `4×`, or `8×` sub-pixel rays per fragment (`getRgssOffset`), accumulating shaded color in **linear light** (`srgbToLin` → average → `linToSrgb`), outputting true fractional coverage `cov = hits / spp` and closest `gl_FragDepth`.
+- **Back-Face Culling (`gl.cullFace(gl.FRONT)`):** Rendering only the OBB's back faces guarantees the fragment shader still executes when the camera moves **inside** a volumetric object or right up to an actor.
+- **Rotated Grid Supersampling (RGSS):** Traces `1×`, `2×`, `4×`, or `8×` sub-pixel rays per fragment (`getRgssOffset`), accumulating shaded color in **linear light** (`srgbToLin` → average → `linToSrgb`), outputting true fractional coverage `cov = hits / spp` and closest `gl_FragDepth`.
 - **Two Raycast Kernels:**
-  - **Amanatides–Woo 3D Voxel DDA (`voxel-dda`):** Exact voxel traversal with epsilon-gated `stepDir` (fixing `0°/90°/180°/270°` cardinal drift to `0.00 px`), optional local 3D self-shadow rays on hero entities, and smart normal blending (`0.24` smooth blend for crisp faceted planes on outlined actors; `0.78` smooth blend for cohesive billowing shading on soft non-outlined clouds).
-  - **Continuous 3D SDF Sphere Tracing (`smooth-sdf`):** Raymarches the trilinear-filtered 3D SDF texture with tetrahedral central-difference normals and trilinear halo-free albedo for smooth miniature/toy curves.
-- **Distance-Adaptive RGSS LOD:** Hero entities (`tag === "player"` or `dist < 48`) receive full `4×`/`8×` RGSS; mid-range entities drop to `≤ 4×`; far horizon clouds drop to `1×` automatically.
+  - **Amanatides–Woo 3D Voxel DDA (`voxel-dda`):** Exact voxel traversal with epsilon-gated `stepDir` (fixing `0°/90°/180°/270°` cardinal drift to `0.00 px`), optional local 3D self-shadow rays on hero entities, and explicit per-entity `normalSmoothness` (`0..1`, defaulting cleanly to `0.24` crisp hard-surface planes in `arcade-8bit` and `0.45` in `hd-2d`, completely decoupled from `outline`).
+  - **Continuous 3D SDF Sphere Tracing (`smooth-sdf`):** Raymarches the trilinear-filtered 3D SDF texture with tetrahedral central-difference normals and trilinear halo-free albedo.
+- **Distance-Adaptive RGSS LOD:** Entities with `aaPriority: "hero"` (or `tag === "player"` or `dist < 44`) receive full active `samples`; mid-range entities drop to `≤ 2×`; far entities drop to `1×` automatically.
 - **MRT Aux Buffer (`outAux`):** Packs `(outlineObjectId, emissiveMask, legacyFlag, coverage)` alongside `outColor` in a single pass.
 
 ### Pass 2: Depth-Tested 3D Ribbons (`RIBBON_VS` / `RIBBON_FS`)
-- Camera-facing billboard triangle strips generated dynamically from semantic socket histories (`wingtipL`, `wingtipR`, `thrusterL`, `thrusterR`).
-- Tested against the Pass 0 + Pass 1 hardware depth buffer (`depthMask(false)`), so contrails and afterburner flames pass cleanly behind clouds, wings, and cliffs. Emissive ribbons write into `outAux.g` to feed Pass 3 bloom automatically.
+- Camera-facing billboard triangle strips generated dynamically from semantic socket histories.
+- Tested against the Pass 0 + Pass 1 hardware depth buffer (`depthMask(false)`), so trails and plumes pass cleanly behind geometry. Emissive ribbons write into `outAux.g` to feed Pass 3 bloom automatically.
 
-### Pass 3: 16-Bit Packed `RGBA8` 4-Pass JFA Outlines & Composite (`JFA_INIT_FS`, `JFA_STEP_FS`, `COMPOSITE_FS`)
+### Pass 3: 16-Bit Packed `RGBA8` JFA Outlines, Bloom & Premultiplied Composite (`JFA_INIT_FS`, `JFA_STEP_FS`, `COMPOSITE_FS`)
 - **Zero Float-FBO JFA:** Encodes normalized `(u, v)` seed coordinates into two 16-bit integers split across `RGBA8` (`hiX, loX, hiY, loY` — up to `65,535 × 65,535` precision).
-- Runs $\lceil \log_2(\text{outlinePx} + 2) \rceil$ ping-pong Jump Flooding passes (`3–4` fullscreen triangles), yielding exact Euclidean distance-to-silhouette at every pixel.
-- **Anti-Aliased Outline & Bloom Composite:** Applies a smooth `smoothstep(uOutlinePx - 0.65, uOutlinePx + 0.65, distPx)` silhouette outline only outside outlined objects (`aux.r <= 0.002`), adds a 5×5 Gaussian linear-light emissive bloom around thrusters/canopies/gates, and applies the active `RenderStyle` final grade.
+- **Live AA Quality Softswitch (`renderer.setQuality("eco" | "balanced" | "ultra", world)`):**
+  - `"eco"` (`2×` RGSS, `1.25×` DPR) and `"balanced"` (`4×` RGSS, `1.5×` DPR) run **half-resolution JFA** with a 2×2 sub-texel seed probe (`-75%` outline memory bandwidth) to keep laptops and mobile devices cool.
+  - `"ultra"` (`8×` RGSS, `2.0×` native Retina DPR) runs **full-resolution JFA** for razor-smooth outlines even under 4× magnification.
+- **5-Tap Emissive Early-Out + Premultiplied Transparent Composite:** Skips the 25-tap Gaussian bloom loop on ~97% of non-emissive screen pixels; when `background === "transparent"`, un-premultiplies foreground coverage and outputs Porter-Duff premultiplied alpha (`vec4(srgb * finalA, finalA)`) so edges blend seamlessly over any host canvas without dark fringes.
+- **Hardware GPU Timing:** Uses non-blocking `EXT_disjoint_timer_query_webgl2` queries (ring of up to 4 frames) to surface real `EngineTelemetry.gpuMs` and feed the adaptive DRS thermal governor.
+
+### Standalone Engine Reference Shaders (`shaders/`)
+Copy-paste single-quad 4× RGSS 3D Voxel DDA reference shaders for non-WebGL2 engines live directly in:
+- [`shaders/godot4/aa_sprite_stack.gdshader`](../shaders/godot4/aa_sprite_stack.gdshader) (Godot 4 `CanvasItem`)
+- [`shaders/unity-urp/AASpriteStack.shader`](../shaders/unity-urp/AASpriteStack.shader) (Unity URP 2D HLSL)
 
 ---
 

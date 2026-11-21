@@ -7,6 +7,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ## [Unreleased] — Road to `0.1.0`
 
 ### Added
+- **First-Class 2.5D Isometric & Oblique Projection System (`@aastack/core`):**
+  - Added `createIsometricCamera({ preset: "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter", pixelsPerUnit?, viewportHeightCss?, obliqueSkew? })`, `mat4ObliqueOrtho()`, `CameraMode: "oblique"`, `projectWorldToScreen()`, and `unprojectScreenToGround()` ground picking.
+  - Upgraded `examples/minimal-2d/` (and published live at `/iso/`) into an interactive 2.5D Isometric & Oblique Transparent Overlay sandbox synchronized with a real Canvas2D tilemap and click-to-tile picking.
+- **Low-Level GPU & Zero-GC Performance Pass (`@aastack/core`):**
+  - Exact homogeneous column-step RGSS ray setup (`16 -> 2` `mat4*vec4` per pixel at `8×` RGSS, bit-identical).
+  - Same-voxel sample shading cache + mathematically exact back-face self-shadow early-out (`ndotl <= -0.28`).
+  - 6-plane Gribb-Hartmann frustum sphere culling (`extractFrustumPlanes` / `sphereInFrustum`), parallel-projection signed depth sorting, lazy `TERRAIN_FS` shader compilation, lazy `uSdfTex` GPU upload, `renderer.evictAsset()`, `renderer.dispose()`, `webglcontextlost` recovery, `computeSdf?: boolean`, and zero-GC scratch matrices/pools.
+- **True Drop-In WebGL2 Ergonomics (`@aastack/core`):**
+  - Premultiplied transparent overlay mode (`background: "transparent" | "studio" | "solid" | "terrain"` + `backgroundColor` + runtime `renderer.setBackground()`) for layering anti-aliased sprite stacks over existing 2D canvases/tilemaps with zero dark halos.
+  - One-line browser asset loaders: `loadSliceStripUrl()`, `loadSliceStripFromImage()`, and `loadVoxUrl()`.
+  - Live runtime AA quality softswitch (`renderer.setQuality("eco" | "balanced" | "ultra", world)`) toggling `2×` / `4×` / `8×` RGSS, DPR (`1.25×` / `1.5×` / `2.0×`), and half-res vs. full-res JFA outlines on the fly.
+  - Hardware WebGL2 GPU frame timer (`EXT_disjoint_timer_query_webgl2` → `EngineTelemetry.gpuMs`) and 60 fps frame pacing for cool thermal efficiency.
+  - Genre-agnostic engine decoupling: explicit `EntityState.normalSmoothness` and `EntityState.aaPriority` (removing implicit outline-to-cloud coupling), nested partial `SceneWorld` constructor merging, and `VirtualStickState` alias.
+- **Minimal 2.5D Transparent-Overlay Starter (`examples/minimal-2d/`):** ~45-line TypeScript example showing an orthographic AA sprite stack layered cleanly over an existing 2D tilemap.
+- **MagicaVoxel `.vox` Drag-and-Drop & Auto Camera Reset in Studio (`skills/aa-sprite-stacking/scripts/viewer.html`):** Load any `.vox` binary or horizontal `slices.png` strip directly via file picker or drag-and-drop, inspect live with the 4× loupe, export 16-dir AA sheets, and automatically reset camera framing on model or view switches.
+- **Standalone Engine Reference Shaders (`shaders/godot4/` & `shaders/unity-urp/`):** Copy-paste `aa_sprite_stack.gdshader` and `AASpriteStack.shader` reference ports of single-quad 4× RGSS 3D Voxel DDA.
+- **Publish-Ready Package Manifests & Expanded CI:** Added npm publishing metadata across all 4 workspaces (`@aastack/{core,blueprint,bridge,mcp}`), `createCottageBlueprint()` preset, `aasprite.com` static website (`site/` + `/primer/` visual sprite-stacking primer), and tarball verification (`npm pack --dry-run`) in `.github/workflows/ci.yml`.
 - **Isomorphic LLM Bridge Package (`@aastack/bridge`):** Zero-dependency Draft 2020-12 JSON Schemas, vendor-neutral tool adapters (MCP, OpenAI, Anthropic, Gemini), 3D 6-connected-component geometric & socket linter, in-process `executeEngineTool()` dispatcher, and lazy-loaded browser `connectDevBridge()` client with single-frame & 2×2 labeled PNG contact sheet rendering.
 - **Live Localhost WebSocket Relay (`@aastack/mcp`):** Embedded zero-dep RFC 6455 loopback relay (`ws://127.0.0.1:8787`) with automatic multi-agent leader/follower port sharing, strict local `Origin` allowlist, native MCP `image/png` capture responses, and workspace-confined `aastack_save_blueprint` / `aastack_export_scene` tools (18 MCP tools total).
 - **Live Co-Editing UX (`examples/flight-6dof`):** Opt-in `?bridge=1` / IR toggle lazy-loading the dev bridge chunk (`30.7 KB` gz initial load; `0` bridge bytes when off) plus subtle `"Agent Live"` status pill with 1-click `Undo`.

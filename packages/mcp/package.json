@@ -3,6 +3,16 @@
   "version": "0.1.0",
   "description": "Model Context Protocol (MCP) server & zero-dep localhost WebSocket dev bridge for frontier coding agents building games with AASpriteStacker.",
   "license": "MIT",
+  "homepage": "https://aasprite.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dmsimon1/AASpriteStacker.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": "https://github.com/dmsimon1/AASpriteStacker/issues",
+  "keywords": ["mcp", "model-context-protocol", "sprite-stacking", "ai-agents", "gamedev"],
+  "engines": { "node": ">=18.0.0" },
+  "publishConfig": { "access": "public" },
   "type": "module",
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
@@ -27,5 +37,5 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "files": ["dist"]
+  "files": ["dist", "README.md"]
 }

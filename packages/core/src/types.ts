@@ -9,10 +9,13 @@ export type Quat = [number, number, number, number]; // [x, y, z, w]
 export type RGB = [number, number, number]; // 0..255
 
 export type AAMode = "legacy" | "voxel-dda" | "smooth-sdf" | "bandlimited";
+export type AAQuality = "eco" | "balanced" | "ultra";
+export type BackgroundMode = "terrain" | "studio" | "solid" | "transparent";
 export type RenderStyle = "arcade-8bit" | "hd-2d" | "smooth-toy" | "retro-raw";
 export type ShadeStyle = "toon-aa" | "pbr-lite" | "unlit";
-export type CameraMode = "overhead" | "chase" | "cockpit" | "ortho" | "free";
-export type QualityTier = "auto" | "mobile" | "desktop" | "ultra";
+export type CameraMode = "overhead" | "chase" | "cockpit" | "ortho" | "oblique" | "free";
+export type IsometricPreset = "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter";
+export type QualityTier = "auto" | "mobile" | "desktop" | "eco" | "balanced" | "ultra";
 export type DebugOverlay = "none" | "normals" | "depth" | "object-id";
 
 export interface SocketDef {
@@ -70,13 +73,17 @@ export interface EntityState {
   parentSocket?: string;
   /** Optional per-entity AA mode override. */
   aaMode?: AAMode;
-  /** Optional outline toggle (e.g. clouds often disable harsh dark outlines). */
+  /** Optional outline toggle (defaults to true). */
   outline?: boolean;
-  /** Casts shadow onto terrain/water (for clouds & aircraft). */
+  /** Optional blend between crisp cube-face normals (0) and smooth SDF normals (1). Defaults to style preset (~0.24). */
+  normalSmoothness?: number;
+  /** Optional AA LOD priority ("hero" keeps full RGSS sample count; "auto" uses distance-based LOD). */
+  aaPriority?: "hero" | "auto";
+  /** Casts shadow onto ground/terrain plane. */
   castShadow?: boolean;
   /** Emissive intensity override (0..2). */
   emissiveBoost?: number;
-  /** Custom metadata tag (e.g. "player", "cloud", "prop"). */
+  /** Custom user metadata tag (e.g. "player", "npc", "prop"). */
   tag?: string;
   visible?: boolean;
 }
@@ -89,8 +96,12 @@ export interface CameraState {
   up: Vec3;
   /** Vertical field of view in degrees (perspective modes). */
   fovDeg: number;
-  /** Half-height in world units (orthographic mode). */
+  /** Half-height in world units (orthographic / oblique modes). */
   orthoSize: number;
+  /** Vertical slice extrusion ratio for mode === "oblique" (1.0 = 1:1 sprite-stack height, 0.5 = cabinet). */
+  obliqueSkew?: number;
+  /** Horizontal yaw azimuth in degrees for mode === "oblique" (default 0). */
+  obliqueYawDeg?: number;
   near: number;
   far: number;
 }
@@ -159,7 +170,7 @@ export interface SceneDocument {
   /** High-level look-dev softswitch ("arcade-8bit" | "hd-2d" | "smooth-toy" | "retro-raw"). */
   style: RenderStyle;
   aaMode: AAMode;
-  samples: 1 | 4 | 8;
+  samples: 1 | 2 | 4 | 8;
   camera: CameraState;
   lighting: LightingState;
   terrain: TerrainState;
@@ -178,6 +189,8 @@ export type ScenePatchOp =
 export interface EngineTelemetry {
   fps: number;
   frameMs: number;
+  /** Asynchronous GPU execution time in ms (when EXT_disjoint_timer_query_webgl2 is supported). */
+  gpuMs?: number;
   canvasWidth: number;
   canvasHeight: number;
   dpr: number;
@@ -187,6 +200,8 @@ export interface EngineTelemetry {
   totalEntities: number;
   isMobile: boolean;
   backend: "webgl2" | "none";
+  /** Active runtime AA quality softswitch ("eco" | "balanced" | "ultra"). */
+  quality: AAQuality;
   activeSamples: number;
   tick: number;
   time: number;

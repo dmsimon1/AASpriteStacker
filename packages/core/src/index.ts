@@ -5,6 +5,7 @@
 
 export * from "./types.js";
 export * from "./math.js";
+export * from "./camera.js";
 export * from "./volume.js";
 export * from "./loaders.js";
 export * from "./scene.js";

@@ -3,17 +3,26 @@ import test from "node:test";
 
 import {
   SceneWorld,
+  computeCameraViewProj,
+  createIsometricCamera,
+  createVolumeAsset,
+  extractFrustumPlanes,
+  loadSliceStripPixels,
   mat4AssetToLocal,
   mat4Invert,
   mat4TransformPoint,
   parseVox,
+  projectWorldToScreen,
   quatFromYawPitchRoll,
   quatRotateVec3,
   sampleTerrainHeight,
+  sphereInFrustum,
+  unprojectScreenToGround,
 } from "../packages/core/dist/index.js";
 import {
   compileBlueprint,
   createCloudBlueprint,
+  createCottageBlueprint,
   createFighterJetBlueprint,
   createSkyGateBlueprint,
 } from "../packages/blueprint/dist/index.js";
@@ -150,4 +159,109 @@ test("SceneWorld patchable IR, Undo/Redo, Snapshot/Restore, Sockets, and 3D Voxe
     }
   }
   assert.ok(hasOcean && hasLand, "Expected archipelago heightfield to contain both ocean and islands");
+});
+
+test("Drop-in loaders, Cottage preset, and genre-agnostic SceneWorld partial options", () => {
+  // Cottage preset compiles cleanly with sockets & expected dimensions
+  const cottage = compileBlueprint(createCottageBlueprint());
+  assert.deepEqual([cottage.w, cottage.l, cottage.h], [24, 24, 28]);
+  assert.ok(cottage.sockets.chimney && cottage.sockets.vane);
+
+  // Horizontal slice-strip loader decodes W*slices x L pixel buffer accurately
+  const w = 2, l = 2, slices = 3;
+  const strip = new Uint8Array(w * slices * l * 4);
+  // Paint pixel (x=1, y=0) on slice z=2 red
+  const px = (0 * (w * slices) + (2 * w + 1)) * 4;
+  strip[px + 0] = 240; strip[px + 1] = 40; strip[px + 2] = 60; strip[px + 3] = 255;
+  const asset = loadSliceStripPixels(strip, w * slices, l, { id: "strip-test", slices });
+  assert.deepEqual([asset.w, asset.l, asset.h], [2, 2, 3]);
+  const vIdx = (2 * (w * l) + 0 * w + 1) * 4;
+  assert.equal(asset.rgba[vIdx + 0], 240);
+  assert.equal(asset.rgba[vIdx + 3], 255);
+
+  // SceneWorld merges partial camera/terrain options cleanly without clobbering sibling defaults
+  const orthoWorld = new SceneWorld({
+    camera: { mode: "ortho", orthoSize: 8 },
+    terrain: { enabled: false },
+    samples: 2,
+  });
+  assert.equal(orthoWorld.doc.camera.mode, "ortho");
+  assert.equal(orthoWorld.doc.camera.orthoSize, 8);
+  assert.ok(orthoWorld.doc.camera.far > 100);
+  assert.equal(orthoWorld.doc.terrain.enabled, false);
+  assert.equal(orthoWorld.doc.samples, 2);
+});
+
+test("First-class isometric, 2:1 dimetric, oblique sprite-stack & top-down camera projections", () => {
+  const W = 800, H = 600;
+
+  // 1. dimetric-2to1: exact 2:1 pixel-art diamond tile grid aspect ratio
+  const cam2to1 = createIsometricCamera({ preset: "dimetric-2to1", orthoSize: 10 });
+  const o = projectWorldToScreen([0, 0, 0], cam2to1, W, H);
+  const px = projectWorldToScreen([1, 0, 0], cam2to1, W, H);
+  const pz = projectWorldToScreen([0, 0, 1], cam2to1, W, H);
+  const pxz = projectWorldToScreen([1, 0, 1], cam2to1, W, H);
+  const diamondW = Math.abs(px.x - pz.x);
+  const diamondH = Math.abs(pxz.y - o.y);
+  assert.ok(Math.abs(diamondW / diamondH - 2.0) < 1e-4, `Expected exact 2:1 diamond ratio, got ${diamondW / diamondH}`);
+
+  // 2. true isometric: equal screen lengths for unit X, Y, Z axes (35.264 deg axonometric)
+  const camIso = createIsometricCamera({ preset: "isometric", orthoSize: 10 });
+  const io = projectWorldToScreen([0, 0, 0], camIso, W, H);
+  const ix = projectWorldToScreen([1, 0, 0], camIso, W, H);
+  const iy = projectWorldToScreen([0, 1, 0], camIso, W, H);
+  const iz = projectWorldToScreen([0, 0, 1], camIso, W, H);
+  const lenX = Math.hypot(ix.x - io.x, ix.y - io.y);
+  const lenY = Math.hypot(iy.x - io.x, iy.y - io.y);
+  const lenZ = Math.hypot(iz.x - io.x, iz.y - io.y);
+  assert.ok(Math.abs(lenX - lenY) < 1e-3 && Math.abs(lenY - lenZ) < 1e-3, `Expected equal iso axes, got ${lenX}/${lenY}/${lenZ}`);
+
+  // 3. oblique-stack: un-foreshortened XZ footprint + pure vertical slice extrusion + negative OpenGL det
+  const camOb = createIsometricCamera({ preset: "oblique-stack", pixelsPerUnit: 20, viewportHeightCss: H, obliqueSkew: 0.75 });
+  assert.equal(camOb.mode, "oblique");
+  assert.equal(camOb.orthoSize, H / 40);
+  const oo = projectWorldToScreen([0, 0, 0], camOb, W, H);
+  const ox = projectWorldToScreen([1, 0, 0], camOb, W, H);
+  const oz = projectWorldToScreen([0, 0, 1], camOb, W, H);
+  const oy = projectWorldToScreen([0, 1, 0], camOb, W, H);
+  assert.ok(Math.abs((ox.x - oo.x) - 20) < 1e-4, "Oblique +X must be exactly 20px");
+  assert.ok(Math.abs((oz.y - oo.y) - 20) < 1e-4, "Oblique +Z must be strictly un-foreshortened 20px");
+  assert.ok(Math.abs(oy.x - oo.x) < 1e-4 && Math.abs((oo.y - oy.y) - 15) < 1e-4, "Oblique +Y must extrude straight up by skew*px");
+  assert.ok(oy.depth < oo.depth, "Higher oblique slice must be closer in hardware depth");
+
+  // 4. Round-trip projectWorldToScreen <-> unprojectScreenToGround across all presets + perspective
+  const presets = ["dimetric-2to1", "isometric", "oblique-stack", "topdown-3quarter"];
+  for (const preset of presets) {
+    const cam = createIsometricCamera({ preset, orthoSize: 12 });
+    const pt = [3.5, 0, -2.25];
+    const scr = projectWorldToScreen(pt, cam, W, H);
+    const back = unprojectScreenToGround(scr.x, scr.y, cam, W, H, 0);
+    assert.ok(back !== null);
+    assert.ok(Math.hypot(back[0] - pt[0], back[2] - pt[2]) < 1e-3, `Round-trip mismatch for ${preset}`);
+  }
+});
+
+test("6-plane Gribb-Hartmann frustum sphere culling & zero-GC scratch matrix / fast computeSdf:false", () => {
+  const world = new SceneWorld();
+  const vp = computeCameraViewProj(world.doc.camera, 16 / 9);
+  const planes = extractFrustumPlanes(vp);
+  // Target [0, 18, 0] is dead-center in front of camera [0, 26, 42]
+  assert.equal(sphereInFrustum(planes, 0, 18, 0, 2), true);
+  // Point far behind camera (+Z = 120) must be culled
+  assert.equal(sphereInFrustum(planes, 0, 26, 120, 2), false);
+  // Point far off to the right (+X = 400) must be culled
+  assert.equal(sphereInFrustum(planes, 400, 18, 0, 2), false);
+
+  // Fast computeSdf: false volume creation + reusable out buffer on getVoxelToWorldMatrix
+  const rgba = new Uint8Array(4 * 4 * 4 * 4);
+  for (let i = 0; i < 64; i++) {
+    rgba[i * 4 + 0] = 200; rgba[i * 4 + 1] = 120; rgba[i * 4 + 2] = 60; rgba[i * 4 + 3] = 255;
+  }
+  const fastAsset = createVolumeAsset({ id: "fast-cube", w: 4, l: 4, h: 4, rgba, computeSdf: false });
+  assert.equal(fastAsset.w, 4);
+  world.registerAsset(fastAsset);
+  world.applyPatch([{ op: "spawn", entity: { id: "c1", assetId: "fast-cube", pos: [3, 4, 5], rot: [0, 0, 0, 1], scale: 1 } }]);
+  const scratch = new Float32Array(16);
+  const m = world.getVoxelToWorldMatrix(world.getEntity("c1"), scratch);
+  assert.equal(m, scratch);
 });

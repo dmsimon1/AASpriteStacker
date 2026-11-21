@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AASpriteStacker — 2.5D Isometric &amp; Oblique Transparent Overlay</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100dvh; display: grid; place-items: center;
+      background: #0b1220; color: #f1f5f9;
+      font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .demo-wrap { display: flex; flex-direction: column; gap: 12px; align-items: center; padding: 20px; width: min(860px, 96vw); }
+    .demo-head { text-align: center; max-width: 680px; }
+    .demo-head h1 { margin: 0 0 4px; font-size: clamp(1.25rem, 2.4vw, 1.65rem); letter-spacing: -0.02em; }
+    .demo-head p { margin: 0; color: #94a3b8; font-size: 13.5px; }
+    /* Existing 2D Canvas tilemap beneath the transparent WebGL2 anti-aliased sprite-stack overlay */
+    .tilemap-stage {
+      position: relative; width: 100%; aspect-ratio: 16 / 10;
+      border-radius: 14px; overflow: hidden; border: 1px solid rgba(148, 163, 184, 0.28);
+      background: #102016;
+      box-shadow: 0 20px 56px rgba(0, 0, 0, 0.45);
+      cursor: crosshair;
+    }
+    #tilemap2d, #aaCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    #aaCanvas { pointer-events: none; }
+    .stage-badge {
+      position: absolute; top: 12px; left: 12px; z-index: 3; pointer-events: none;
+      padding: 5px 10px; border-radius: 999px;
+      background: rgba(8, 15, 30, 0.78); border: 1px solid rgba(148, 163, 184, 0.28);
+      font: 700 11.5px/1 ui-monospace, monospace; color: #e2e8f0;
+      backdrop-filter: blur(8px);
+    }
+    .controls { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; justify-content: center; }
+    .sep { width: 1px; height: 20px; background: rgba(148, 163, 184, 0.26); margin: 0 2px; }
+    button {
+      padding: 7px 11px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.3);
+      background: #132038; color: #e2e8f0; font: 700 12px/1 ui-monospace, monospace; cursor: pointer;
+    }
+    button:hover { border-color: rgba(56, 189, 248, 0.6); }
+    button[aria-pressed="true"] { background: #38bdf8; color: #04111f; border-color: #38bdf8; }
+    #stats { font: 600 12px/1 ui-monospace, monospace; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="demo-wrap">
+    <div class="demo-head">
+      <h1>2.5D Isometric &amp; Oblique Transparent Overlay</h1>
+      <p>Live WebGL2 anti-aliased sprite stack layered directly over a Canvas2D tilemap via <code>createIsometricCamera()</code> + <code>background: "transparent"</code>. Click any tile to move the cottage.</p>
+    </div>
+    <div class="tilemap-stage" id="stage">
+      <canvas id="tilemap2d" aria-hidden="true"></canvas>
+      <canvas id="aaCanvas" aria-label="Transparent WebGL2 anti-aliased sprite stack layered over an isometric 2D tilemap"></canvas>
+      <div class="stage-badge" id="projBadge">dimetric-2to1 · 30° pitch · exact 2:1 diamond grid</div>
+    </div>
+    <div class="controls">
+      <button data-proj="dimetric-2to1" aria-pressed="true">2:1 Iso</button>
+      <button data-proj="isometric" aria-pressed="false">True Iso</button>
+      <button data-proj="oblique-stack" aria-pressed="false">Oblique Stack</button>
+      <button data-proj="topdown-3quarter" aria-pressed="false">3/4 Top-Down</button>
+      <span class="sep"></span>
+      <button data-q="eco" aria-pressed="false">Eco 2×</button>
+      <button data-q="balanced" aria-pressed="false">Bal 4×</button>
+      <button data-q="ultra" aria-pressed="true">Ultra 8×</button>
+      <button id="splitBtn" aria-pressed="false">A/B Split</button>
+      <span id="stats">60 fps</span>
+    </div>
+  </div>
+  <script type="module" src="./bundle.js"></script>
+</body>
+</html>

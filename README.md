@@ -1,15 +1,16 @@
 # AASpriteStacker (`@aastack/*`)
 
-> **An AI-first, mobile-friendly, anti-aliased 6-DOF & 2.5D sprite-stacking engine SDK.**  
-> Zero polygons. Zero runtime dependencies. ~30.7 KB gzipped full 6-DOF flight demo (`0` dev-bridge bytes when off). Built for game engineers and frontier coding agents.
+> **The first fully anti-aliased sprite-stacking engine SDK for WebGL2 — 2.5D isometric & oblique to full 6-DOF.**  
+> Zero polygons. Zero runtime dependencies. First-class 2:1 isometric / true isometric / classic oblique sprite-stack cameras, premultiplied transparent overlay support for dropping straight into existing 2D games, ~34.6 KB gzipped full 6-DOF flight demo (`0` dev-bridge bytes when off), live AA quality softswitch (`Eco 2× / Bal 4× / Ultra 8×`), and optional MCP co-editing for coding agents.
 
+[![Website: aasprite.com](https://img.shields.io/badge/Website-aasprite.com-38bdf8.svg)](https://aasprite.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![WebGL2 ES 3.00](https://img.shields.io/badge/Renderer-WebGL2%20ES%203.00-0ea5e9.svg)](docs/architecture.md)
 [![Zero Runtime Deps](https://img.shields.io/badge/Runtime%20Deps-0-22c55e.svg)](packages/core/package.json)
 
 ![SkyStack 6-DOF Flight Demo in 8-Bit AA Mode](docs/assets/skystack-chase-8bit.png)
 
-*Flagship [`SkyStack`](examples/flight-6dof/README.md) 6-DOF flight demo running in default **`arcade-8bit`** mode at `120 fps` (`0.1 ms` CPU frame time, `40` draw calls, `2560×1600` WebGL2): swept-wing fighter jet with fiery dual plumes, 3-tone billowing clouds, indigo cloud shadows, terraced islands with clustered 8-bit trees, and razor-crisp shoreline surf foam — rendered with zero triangle meshes.*
+*Flagship [`SkyStack`](examples/flight-6dof/README.md) 6-DOF flight demo running in default **`arcade-8bit`** mode at a locked **`60 fps` (`~5 ms` hardware GPU time, `38–40` draw calls, `1.5×` Retina DPR)** — swept-wing fighter jet with fiery dual plumes, 3-tone billowing clouds, indigo cloud shadows, terraced islands with clustered 8-bit trees, and razor-crisp shoreline surf foam — rendered with zero triangle meshes.*
 
 ---
 
@@ -53,26 +54,31 @@ world.applyPatch([{ op: "set", path: "style", value: "arcade-8bit" }]);
 
 ```text
 packages/
-  core/        # @aastack/core      — Zero-dep WebGL2 6-DOF & 2.5D AA engine, .vox/strip loaders, SceneIR, mobile touch
-  blueprint/   # @aastack/blueprint — Declarative JSON/TS Voxel+3D SDF CSG compiler & presets (Jet, Clouds, SkyGate)
+  core/        # @aastack/core      — Zero-dep WebGL2 6-DOF & 2.5D AA engine, transparent overlay, .vox/strip URL loaders, SceneIR
+  blueprint/   # @aastack/blueprint — Declarative JSON/TS Voxel+3D SDF CSG compiler & presets (Cottage, FighterJet, Clouds, SkyGate)
   bridge/      # @aastack/bridge    — Isomorphic JSON Schemas, 3D geometric linter, vendor-neutral tool dispatcher & browser dev bridge
   mcp/         # @aastack/mcp       — Stdio MCP server + zero-dep localhost RFC 6455 WS relay for frontier coding agents
 examples/
-  flight-6dof/ # Flagship "SkyStack" 6-DOF Overhead/Chase/Cockpit flight sandbox (desktop + mobile, ~30.7 KB gz initial load)
+  minimal-2d/  # Interactive 2.5D Isometric / Oblique transparent-overlay starter over a live Canvas2D tilemap (/iso/)
+  flight-6dof/ # Flagship "SkyStack" 6-DOF Overhead/Chase/Cockpit flight sandbox (desktop + mobile, ~34.6 KB gz initial load)
+shaders/
+  godot4/      # Standalone Godot 4 CanvasItem reference shader (aa_sprite_stack.gdshader)
+  unity-urp/   # Standalone Unity URP 2D HLSL reference shader (AASpriteStack.shader)
+site/          # Zero-framework static site for aasprite.com (live A/B loupe hero, /primer/, /iso/, /play/, /studio/, /docs/)
 skills/
   aa-sprite-stacking/
     SKILL.md                        # Agent skill instructions for 4-view carving & look-dev
-    references/engines.md           # Single-draw-call shaders for Godot 4, Unity URP, WebGL2, Canvas 2D
+    references/engines.md           # Single-draw-call shader notes for Godot 4, Unity URP, WebGL2, Canvas 2D
     scripts/aa_views_to_slices.py   # Soft visual-hull + 3D SDF carver + Python RGSS renderer
-    scripts/viewer.html             # Zero-install Browser Look-Dev & A/B AA Studio
+    scripts/viewer.html             # Zero-install Browser Look-Dev & A/B AA Studio (.vox + slices.png drag-and-drop)
 docs/
-  architecture.md                   # Deep dive: math, 3D EDT, 4-pass WebGL2 pipeline, RenderStyle, mobile DRS
-  getting-started.md                # Complete developer handbook & all 4 asset pipelines
+  architecture.md                   # Deep dive: math, 3D EDT, 4-pass WebGL2 pipeline, RenderStyle, AA quality softswitch
+  getting-started.md                # Complete developer handbook, drop-in transparent overlay, & all 4 asset pipelines
   api-reference.md                  # Full API docs for @aastack/core, @aastack/blueprint, @aastack/bridge, @aastack/mcp
   flight-demo.md                    # Walkthrough of the SkyStack 6-DOF flight demo & ?bridge=1 co-editing
   ai-integration.md                 # Live MCP bridge, 3D geometric linter, 2×2 visual capture & security boundaries
 tests/
-  core.test.mjs                     # 6-DOF math, Blueprint CSG, .vox parser, SceneIR, undo/redo, 3D voxel raycast
+  core.test.mjs                     # 6-DOF math, Blueprint CSG, .vox & strip loaders, SceneIR, undo/redo, 3D voxel raycast
   bridge.test.mjs                   # JSON Schema validators, vendor adapters, 3D geometric linter, security boundaries
   mcp-bridge.test.mjs               # End-to-end Leader+Follower @aastack/mcp <-> WS Relay <-> Browser Bridge test
   test_aa_stacker.py                # Python AA carving suite (0.00px cardinal wobble, 1px post persistence, shimmer RMS)
@@ -113,8 +119,9 @@ npm run dev:serve
 ```
 
 Open in any WebGL2 desktop or mobile browser:
+- **Minimal 2.5D Transparent-Overlay Starter:** `http://127.0.0.1:8765/examples/minimal-2d/index.html`
 - **SkyStack 6-DOF Flight Demo:** `http://127.0.0.1:8765/examples/flight-6dof/index.html`
-- **4-View Look-Dev & A/B Studio:** `http://127.0.0.1:8765/skills/aa-sprite-stacking/scripts/viewer.html`
+- **4-View & `.vox` Look-Dev Studio:** `http://127.0.0.1:8765/skills/aa-sprite-stacking/scripts/viewer.html`
 
 ### 3. Minimal SDK Example (`@aastack/core` + `@aastack/blueprint`)
 
