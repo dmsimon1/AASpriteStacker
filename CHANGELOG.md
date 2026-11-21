@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ## [Unreleased] — Road to `0.1.0`
 
 ### Added
+- **Isomorphic LLM Bridge Package (`@aastack/bridge`):** Zero-dependency Draft 2020-12 JSON Schemas, vendor-neutral tool adapters (MCP, OpenAI, Anthropic, Gemini), 3D 6-connected-component geometric & socket linter, in-process `executeEngineTool()` dispatcher, and lazy-loaded browser `connectDevBridge()` client with single-frame & 2×2 labeled PNG contact sheet rendering.
+- **Live Localhost WebSocket Relay (`@aastack/mcp`):** Embedded zero-dep RFC 6455 loopback relay (`ws://127.0.0.1:8787`) with automatic multi-agent leader/follower port sharing, strict local `Origin` allowlist, native MCP `image/png` capture responses, and workspace-confined `aastack_save_blueprint` / `aastack_export_scene` tools (18 MCP tools total).
+- **Live Co-Editing UX (`examples/flight-6dof`):** Opt-in `?bridge=1` / IR toggle lazy-loading the dev bridge chunk (`30.7 KB` gz initial load; `0` bridge bytes when off) plus subtle `"Agent Live"` status pill with 1-click `Undo`.
+- **`SceneWorld.getSocketWorldDir()` (`@aastack/core`):** Returns normalized world-space direction for named semantic sockets.
 - **Live `RenderStyle` Softswitch (`@aastack/core`):** First-class `SceneDocument.style` (`"arcade-8bit" | "hd-2d" | "smooth-toy" | "retro-raw"`, defaulting to `"arcade-8bit"`), switchable atomically via `world.applyPatch` or live UI (`M` key in demo).
 - **8/16-Bit Arcade Shader Profile:** Derivative-width (`fwidth`) crisp contour bands (`aaBand`), vivid cobalt/azure/turquoise ocean with razor-thin shoreline surf foam, jittered clustered 8-bit highland trees, multi-lobe royal-indigo cloud shadows, cohesive billowing cloud normals, and subtle arcade vibrance/contrast punch.
 - **Flagship Demo Upgrades (`examples/flight-6dof`):**

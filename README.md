@@ -55,9 +55,10 @@ world.applyPatch([{ op: "set", path: "style", value: "arcade-8bit" }]);
 packages/
   core/        # @aastack/core      — Zero-dep WebGL2 6-DOF & 2.5D AA engine, .vox/strip loaders, SceneIR, mobile touch
   blueprint/   # @aastack/blueprint — Declarative JSON/TS Voxel+3D SDF CSG compiler & presets (Jet, Clouds, SkyGate)
-  mcp/         # @aastack/mcp       — Stdio Model Context Protocol server for Claude Code, Cursor, Antigravity, Codex
+  bridge/      # @aastack/bridge    — Isomorphic JSON Schemas, 3D geometric linter, vendor-neutral tool dispatcher & browser dev bridge
+  mcp/         # @aastack/mcp       — Stdio MCP server + zero-dep localhost RFC 6455 WS relay for frontier coding agents
 examples/
-  flight-6dof/ # Flagship "SkyStack" 6-DOF Overhead/Chase/Cockpit flight sandbox (desktop + mobile, ~29 KB gz)
+  flight-6dof/ # Flagship "SkyStack" 6-DOF Overhead/Chase/Cockpit flight sandbox (desktop + mobile, ~30.7 KB gz initial load)
 skills/
   aa-sprite-stacking/
     SKILL.md                        # Agent skill instructions for 4-view carving & look-dev
@@ -170,6 +171,7 @@ frame(1 / 60);
 ### Package READMEs
 - [`packages/core/README.md`](packages/core/README.md)
 - [`packages/blueprint/README.md`](packages/blueprint/README.md)
+- [`packages/bridge/README.md`](packages/bridge/README.md)
 - [`packages/mcp/README.md`](packages/mcp/README.md)
 - [`examples/flight-6dof/README.md`](examples/flight-6dof/README.md)
 

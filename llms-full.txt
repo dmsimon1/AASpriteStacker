@@ -9,7 +9,7 @@ Zero-dependency, mobile-first, anti-aliased 6-DOF & 2.5D sprite-stacking renderi
 
 ## Quickstart (`@aastack/core` + `@aastack/blueprint`)
 ```ts
-import { AASpriteRenderer, SceneWorld, quatFromYawPitchRoll } from "@aastack/core";
+import { AASpriteRenderer, SceneWorld } from "@aastack/core";
 import { compileBlueprint, createFighterJetBlueprint } from "@aastack/blueprint";
 
 const world = new SceneWorld({ seed: 11 });
@@ -32,15 +32,20 @@ function loop(dt: number) {
 1. **Patchable SceneIR:** `world.applyPatch(ops)` (`"set" | "spawn" | "remove" | "updateEntity"`), `world.undo()`, `world.redo()`.
 2. **Deterministic Time-Travel:** `const snap = world.snapshot(); world.restore(snap);`
 3. **Hot-Swappable Asset Registry:** `world.registerAsset(newAsset)` updates GPU 3D textures automatically by content hash.
-4. **Semantic Sockets:** `world.getSocketWorldPos("jet", "wingtipL")` for contrails, turrets, weapons, and `cockpitCam`.
+4. **Semantic Sockets:** `world.getSocketWorldPos("jet", "wingtipL")` & `world.getSocketWorldDir("jet", "thrusterL")`.
 5. **Spatial Queries (1:1 with Rendered Pixels):** `world.sampleTerrainHeight(x, z)` and `world.raycastEntities(ro, rd, maxDist)`.
 6. **Introspection & QA:** `renderer.getStats()` (FPS, frameMs, DRS, DPR, drawCalls, isMobile) and `renderer.captureDataUrl(world)`.
+
+## Live Agent Dev Bridge (`@aastack/bridge` + `@aastack/mcp`)
+- Opt-in browser client (`@aastack/bridge/client`): lazy-load `connectDevBridge({ world, renderer }, { title })` when `?bridge=1` is set (`ws://127.0.0.1:8787`, zero production bloat).
+- Strict Draft 2020-12 JSON Schemas + vendor-neutral adapters (`@aastack/bridge/schemas`): `toOpenAITools()`, `toAnthropicTools()`, `toGeminiFunctionDeclarations()`.
+- 3D Geometric Linter (`@aastack/bridge/linter`): `lintVolumeAsset()` detects floating disconnected voxel islands (3D BFS), out-of-bounds/detached sockets, empty volumes, and mobile VRAM budgets.
+- MCP Server (`@aastack/mcp` -> `node packages/mcp/dist/server.js`): embedded zero-dep RFC 6455 localhost WebSocket relay with multi-agent leader/follower port sharing.
+  - **Live tools:** `aastack_live_sessions`, `aastack_live_state`, `aastack_live_patch`, `aastack_live_undo`, `aastack_live_redo`, `aastack_live_hot_swap_blueprint`, `aastack_live_query`, `aastack_live_snapshot`, `aastack_live_restore`, `aastack_live_capture` (native MCP `image/png`), `aastack_live_capture_views` (2x2 labeled PNG contact sheet: `turntable` or `scene`).
+  - **Offline & Persistence tools:** `aastack_compile_blueprint`, `aastack_save_blueprint`, `aastack_export_scene`, `aastack_inspect_vox`, `aastack_carve_4view`, `aastack_validate_scene_ir`, `aastack_get_sdk_spec`.
 
 ## Asset Ingest Formats
 - **Declarative Blueprints (`@aastack/blueprint`):** `compileBlueprint({ id, size: [W,L,H], voxelScale, ops: [box|sphere|ellipsoid|capsule|wedge|torus|paint], sockets })`. Supports `subtract: true` (hollow cavities), `mirrorX: true`, `emissive: true`.
 - **MagicaVoxel `.vox`:** `parseVox(arrayBuffer, { id, voxelScale })`.
 - **Horizontal `slices.png` strips:** `loadSliceStripPixels(rgba, stripW, stripH, { id, slices })`.
 - **4-View Orthographic PNGs (Python CLI):** `python3 skills/aa-sprite-stacking/scripts/aa_views_to_slices.py views.png slices.png --slices 36 --sdf sdf.png --preview check.png`.
-
-## MCP Server (`@aastack/mcp`)
-Tools: `aastack_compile_blueprint`, `aastack_inspect_vox`, `aastack_carve_4view`, `aastack_validate_scene_ir`, `aastack_get_sdk_spec`.
