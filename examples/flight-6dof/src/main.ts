@@ -29,6 +29,7 @@ import {
   createFighterJetBlueprint,
   createSkyGateBlueprint,
 } from "@aastack/blueprint";
+import type { BridgeConnectionStatus, DevBridgeHandle } from "@aastack/bridge/client";
 
 const stage = document.getElementById("stage") as HTMLElement;
 const glCanvas = document.getElementById("glCanvas") as HTMLCanvasElement;
@@ -49,6 +50,10 @@ const todBtn = document.getElementById("todBtn") as HTMLButtonElement;
 const inspectorBtn = document.getElementById("inspectorBtn") as HTMLButtonElement;
 const inspectorDrawer = document.getElementById("inspectorDrawer") as HTMLElement;
 const irPreview = document.getElementById("irPreview") as HTMLElement;
+const agentPill = document.getElementById("agentPill") as HTMLElement;
+const agentMsg = document.getElementById("agentMsg") as HTMLElement;
+const agentUndoBtn = document.getElementById("agentUndoBtn") as HTMLButtonElement;
+const bridgeToggleBtn = document.getElementById("bridgeToggleBtn") as HTMLButtonElement;
 
 const mobileBoostBtn = document.getElementById("mobileBoostBtn") as HTMLButtonElement;
 const mobileRollBtn = document.getElementById("mobileRollBtn") as HTMLButtonElement;
@@ -1162,7 +1167,8 @@ function frame(now: number): void {
           aaMode: world.doc.aaMode,
           splitCompare: world.doc.splitCompare,
           entities: world.doc.entities.length,
-          jetSockets: Object.keys(jetAsset.sockets),
+          jetSockets: Object.keys(world.getAsset("fighter-jet")?.sockets ?? jetAsset.sockets),
+          bridgeStatus: devBridge?.getStatus() ?? "off",
         },
         null,
         2,
@@ -1204,6 +1210,107 @@ document.addEventListener("visibilitychange", () => {
   else resume();
 });
 
+// 8. Opt-in Live Agent Dev Bridge (?bridge=1 or IR toggle -> ws://127.0.0.1:8787)
+let devBridge: DevBridgeHandle | null = null;
+let pausedByAgent = false;
+
+function updateBridgePill(status: BridgeConnectionStatus, customMsg?: string, showUndo?: boolean): void {
+  const active = devBridge !== null;
+  agentPill.classList.toggle("visible", active);
+  agentPill.dataset.state = status;
+  bridgeToggleBtn.setAttribute("aria-pressed", String(active));
+  bridgeToggleBtn.textContent = active ? (status === "connected" ? "Bridge: Live" : "Bridge: Wait") : "Bridge: Off";
+  inspectorDrawer.style.top = active ? "98px" : "";
+  if (customMsg) {
+    agentMsg.textContent = customMsg;
+  } else if (status === "connected") {
+    agentMsg.textContent = `Agent Live (${devBridge?.sessionId ?? "tab"})`;
+  } else if (status === "connecting") {
+    agentMsg.textContent = "Agent Bridge: Connecting…";
+  } else {
+    agentMsg.textContent = "Agent Bridge: Waiting for @aastack/mcp…";
+  }
+  if (showUndo !== undefined) {
+    agentUndoBtn.classList.toggle("visible", showUndo);
+  }
+}
+
+let bridgeEnabling = false;
+async function enableDevBridge(): Promise<void> {
+  if (devBridge || bridgeEnabling) return;
+  bridgeEnabling = true;
+  updateBridgePill("connecting", "Loading @aastack/bridge…");
+  try {
+    const { connectDevBridge } = await import("@aastack/bridge/client");
+    devBridge = connectDevBridge(
+      {
+        world,
+        renderer,
+        setCameraMode: (m) => {
+          flight.camMode = m;
+          syncControlsUI();
+        },
+        getCameraMode: () => flight.camMode,
+        setStyle: (s) => {
+          applyRenderStyle(s);
+        },
+        setPaused: (p) => {
+          pausedByAgent = p;
+          if (p) pause();
+          else if (!document.hidden) resume();
+        },
+        getOverlayCanvas: () => {
+          if (flight.camMode !== "cockpit") return null;
+          drawCockpitHud();
+          return hudCanvas;
+        },
+        onSyncUI: () => {
+          const jet = world.getEntity("jet");
+          if (jet) flight.pos = [...jet.pos] as Vec3;
+          syncControlsUI();
+        },
+        onAgentEvent: (ev) => {
+          updateBridgePill(devBridge?.getStatus() ?? "connected", ev.summary, ev.canUndo);
+        },
+      },
+      {
+        title: "SkyStack 6-DOF Flight Demo",
+        onStatusChange: (st) => updateBridgePill(st),
+      },
+    );
+    updateBridgePill(devBridge.getStatus());
+  } finally {
+    bridgeEnabling = false;
+  }
+}
+
+function disableDevBridge(): void {
+  if (!devBridge) return;
+  devBridge.disconnect();
+  devBridge = null;
+  agentUndoBtn.classList.remove("visible");
+  updateBridgePill("disconnected");
+}
+
+bridgeToggleBtn.addEventListener("click", () => {
+  if (devBridge) disableDevBridge();
+  else enableDevBridge();
+});
+
+agentUndoBtn.addEventListener("click", () => {
+  if (world.undo()) {
+    const jet = world.getEntity("jet");
+    if (jet) flight.pos = [...jet.pos] as Vec3;
+    syncControlsUI();
+    updateBridgePill(devBridge?.getStatus() ?? "connected", "Undid agent edit", false);
+  }
+});
+
+// Auto-connect when launched with ?bridge=1
+if (new URLSearchParams(window.location.search).get("bridge") === "1") {
+  enableDevBridge();
+}
+
 // Expose live engine handle for AI/console scripting & automated visual verification!
 (window as unknown as Record<string, unknown>).__AASTACK__ = {
   world,
@@ -1224,6 +1331,9 @@ document.addEventListener("visibilitychange", () => {
     flight.forceThrust = on;
   },
   toggleSplit: toggleSplitCompare,
+  enableBridge: enableDevBridge,
+  disableBridge: disableDevBridge,
+  isPausedByAgent: () => pausedByAgent,
 };
 
 syncControlsUI();

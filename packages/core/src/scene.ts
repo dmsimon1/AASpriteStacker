@@ -293,6 +293,18 @@ export class SceneWorld {
     return mat4TransformPoint(v2w, sock.pos);
   }
 
+  /** Query normalized world-space direction of a named semantic socket (defaults to asset +Y nose). */
+  getSocketWorldDir(entityId: string, socketName: string): Vec3 | null {
+    const ent = this.getEntity(entityId);
+    if (!ent) return null;
+    const asset = this.assets.get(ent.assetId);
+    const sock = asset?.sockets[socketName];
+    if (!asset || !sock) return null;
+    const v2w = this.getVoxelToWorldMatrix(ent);
+    if (!v2w) return null;
+    return vec3Norm(mat4TransformDir(v2w, sock.dir ?? [0, 1, 0]));
+  }
+
   /** Query terrain height matching the GPU archipelago shader 1:1. */
   sampleTerrainHeight(x: number, z: number): number {
     return sampleTerrainHeight(x, z, this.doc.terrain);

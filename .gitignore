@@ -8,3 +8,5 @@ __pycache__/
 examples/out/
 examples/flight-6dof/bundle.js
 examples/flight-6dof/bundle.js.map
+examples/flight-6dof/dev-bridge*.js
+examples/flight-6dof/dev-bridge*.js.map

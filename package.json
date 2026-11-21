@@ -10,8 +10,8 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces && node scripts/bundle-demos.mjs",
-    "typecheck": "tsc -b packages/core packages/blueprint packages/mcp",
-    "test": "npm run build && node --test tests/core.test.mjs",
+    "typecheck": "tsc -b packages/core packages/blueprint packages/bridge packages/mcp",
+    "test": "npm run build && node --test tests/*.test.mjs",
     "test:py": ".venv/bin/python tests/test_aa_stacker.py",
     "test:all": "npm test && npm run test:py",
     "dev:serve": "python3 -m http.server 8765 --bind 127.0.0.1"

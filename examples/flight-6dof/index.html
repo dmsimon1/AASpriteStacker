@@ -196,6 +196,30 @@
     margin: 0; font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
     white-space: pre-wrap; overflow-wrap: anywhere;
   }
+
+  /* Subtle Co-Editing "Agent Live" Pill (?bridge=1 or IR toggle) */
+  #agentPill {
+    position: absolute; left: max(12px, env(safe-area-inset-left, 12px));
+    top: max(56px, calc(env(safe-area-inset-top, 10px) + 46px));
+    z-index: 6; display: none; align-items: center; gap: 8px; max-width: min(360px, calc(100vw - 24px));
+    padding: 5px 9px; border-radius: 999px; background: var(--ui-bg);
+    border: 1px solid var(--ui-border); backdrop-filter: blur(10px);
+    font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  #agentPill.visible { display: inline-flex; }
+  .agent-dot {
+    width: 8px; height: 8px; border-radius: 999px; flex: none; background: #94a3b8;
+  }
+  #agentPill[data-state="connected"] .agent-dot {
+    background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.85);
+  }
+  #agentPill[data-state="connecting"] .agent-dot { background: #f59e0b; }
+  #agentMsg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #agentUndoBtn {
+    min-block-size: 24px; min-inline-size: 24px; padding: 3px 8px; border-radius: 999px;
+    font-size: 10px; display: none;
+  }
+  #agentUndoBtn.visible { display: inline-block; }
 </style>
 </head>
 <body>
@@ -225,11 +249,18 @@
     <div class="split-tag right" id="tagRight">8-Bit AA · 8×</div>
   </div>
 
+  <div id="agentPill" class="hud-interactive" data-state="disconnected" aria-live="polite">
+    <span class="agent-dot" aria-hidden="true"></span>
+    <span id="agentMsg">Agent Bridge: Connecting…</span>
+    <button id="agentUndoBtn" title="Undo last agent edit">Undo</button>
+  </div>
+
   <aside id="inspectorDrawer" class="hud-interactive" aria-label="Live SceneIR Inspector">
     <div class="ir-actions">
       <button id="snapBtn">Snapshot</button>
       <button id="restoreBtn" disabled>Rewind</button>
       <button id="debugNormBtn">Normals Overlay</button>
+      <button id="bridgeToggleBtn" aria-pressed="false">Bridge: Off</button>
     </div>
     <pre id="irPreview"></pre>
   </aside>
