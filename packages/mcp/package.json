@@ -1,0 +1,19 @@
+{
+  "name": "@aastack/mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol (MCP) server for frontier coding agents building games with AASpriteStacker.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/server.js",
+  "bin": {
+    "aastack-mcp": "./dist/server.js"
+  },
+  "dependencies": {
+    "@aastack/core": "0.1.0",
+    "@aastack/blueprint": "0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "files": ["dist"]
+}

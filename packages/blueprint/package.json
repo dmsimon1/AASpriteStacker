@@ -1,0 +1,22 @@
+{
+  "name": "@aastack/blueprint",
+  "version": "0.1.0",
+  "description": "Frontier-AI-friendly declarative Voxel + 3D SDF Blueprint DSL for AASpriteStacker.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@aastack/core": "0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "files": ["dist"]
+}

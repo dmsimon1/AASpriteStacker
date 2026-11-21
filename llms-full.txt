@@ -1,0 +1,45 @@
+# AASpriteStacker (@aastack/*) — Frontier AI Agent SDK Specification
+
+Zero-dependency, mobile-first, anti-aliased 6-DOF & 2.5D sprite-stacking rendering engine for WebGL2.
+
+## Coordinate Convention
+- **World Space:** Right-handed Y-up (`+X` right, `+Y` up/altitude, `-Z` forward).
+- **Voxel Asset Space:** `[0..W, 0..L, 0..H]` (`+X` right, `+Y` nose/forward, `+Z` up/roof).
+  - `mat4AssetToLocal` maps asset `(x, y, z)` to world `(x - pivotX, z - pivotZ, -(y - pivotY)) * voxelScale`.
+
+## Quickstart (`@aastack/core` + `@aastack/blueprint`)
+```ts
+import { AASpriteRenderer, SceneWorld, quatFromYawPitchRoll } from "@aastack/core";
+import { compileBlueprint, createFighterJetBlueprint } from "@aastack/blueprint";
+
+const world = new SceneWorld({ seed: 11 });
+const renderer = new AASpriteRenderer(canvas, { quality: "auto", adaptiveDpr: true });
+
+world.registerAsset(compileBlueprint(createFighterJetBlueprint("jet-asset")));
+world.applyPatch([
+  { op: "set", path: "aaMode", value: "voxel-dda" }, // "voxel-dda" | "smooth-sdf" | "legacy"
+  { op: "spawn", entity: { id: "jet", assetId: "jet-asset", pos: [0, 30, 0], rot: [0, 0, 0, 1], scale: 1, outline: true, castShadow: true, tag: "player" } },
+]);
+
+function loop(dt: number) {
+  world.stepClock(dt);
+  renderer.render(world);
+}
+```
+
+## First-Principles Iterative Hooks
+1. **Patchable SceneIR:** `world.applyPatch(ops)` (`"set" | "spawn" | "remove" | "updateEntity"`), `world.undo()`, `world.redo()`.
+2. **Deterministic Time-Travel:** `const snap = world.snapshot(); world.restore(snap);`
+3. **Hot-Swappable Asset Registry:** `world.registerAsset(newAsset)` updates GPU 3D textures automatically by content hash.
+4. **Semantic Sockets:** `world.getSocketWorldPos("jet", "wingtipL")` for contrails, turrets, weapons, and `cockpitCam`.
+5. **Spatial Queries (1:1 with Rendered Pixels):** `world.sampleTerrainHeight(x, z)` and `world.raycastEntities(ro, rd, maxDist)`.
+6. **Introspection & QA:** `renderer.getStats()` (FPS, frameMs, DRS, DPR, drawCalls, isMobile) and `renderer.captureDataUrl(world)`.
+
+## Asset Ingest Formats
+- **Declarative Blueprints (`@aastack/blueprint`):** `compileBlueprint({ id, size: [W,L,H], voxelScale, ops: [box|sphere|ellipsoid|capsule|wedge|torus|paint], sockets })`. Supports `subtract: true` (hollow cavities), `mirrorX: true`, `emissive: true`.
+- **MagicaVoxel `.vox`:** `parseVox(arrayBuffer, { id, voxelScale })`.
+- **Horizontal `slices.png` strips:** `loadSliceStripPixels(rgba, stripW, stripH, { id, slices })`.
+- **4-View Orthographic PNGs (Python CLI):** `python3 skills/aa-sprite-stacking/scripts/aa_views_to_slices.py views.png slices.png --slices 36 --sdf sdf.png --preview check.png`.
+
+## MCP Server (`@aastack/mcp`)
+Tools: `aastack_compile_blueprint`, `aastack_inspect_vox`, `aastack_carve_4view`, `aastack_validate_scene_ir`, `aastack_get_sdk_spec`.

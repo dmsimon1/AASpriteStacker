@@ -1,0 +1,19 @@
+{
+  "name": "@aastack/core",
+  "version": "0.1.0",
+  "description": "Zero-dependency, mobile-friendly WebGL2 anti-aliased 6-DOF & 2.5D sprite-stacking rendering engine SDK.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "files": ["dist"]
+}

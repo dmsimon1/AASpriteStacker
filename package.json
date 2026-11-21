@@ -1,0 +1,24 @@
+{
+  "name": "aa-sprite-stacker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-first, mobile-friendly, anti-aliased 6-DOF & 2.5D sprite-stacking engine SDK for WebGL2, Godot, Unity, and coding agents.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces && node scripts/bundle-demos.mjs",
+    "typecheck": "tsc -b packages/core packages/blueprint packages/mcp",
+    "test": "npm run build && node --test tests/core.test.mjs",
+    "test:py": ".venv/bin/python tests/test_aa_stacker.py",
+    "test:all": "npm test && npm run test:py",
+    "dev:serve": "python3 -m http.server 8765 --bind 127.0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}

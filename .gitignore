@@ -1,0 +1,10 @@
+.venv/
+node_modules/
+packages/*/dist/
+packages/*/*.tsbuildinfo
+__pycache__/
+*.pyc
+.DS_Store
+examples/out/
+examples/flight-6dof/bundle.js
+examples/flight-6dof/bundle.js.map

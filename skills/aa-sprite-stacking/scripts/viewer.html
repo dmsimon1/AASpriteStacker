@@ -1,0 +1,2568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<title>AASpriteStacker — Anti-Aliased Sprite Stack Studio</title>
+<style>
+  :root {
+    --bg-light: #eef2f7;
+    --bg-dark: #0e131d;
+    --surface-light: #ffffff;
+    --surface-dark: #151c2a;
+    --border-light: #d7dfe9;
+    --border-dark: #273247;
+    --text-light: #111827;
+    --text-dark: #eef2f9;
+    --muted-light: #526075;
+    --muted-dark: #93a3bd;
+    --accent-light: #1d4ed8;
+    --accent-dark: #60a5fa;
+    --accent-text-light: #ffffff;
+    --accent-text-dark: #091322;
+    --hover-light: #f3f6fb;
+    --hover-dark: #1d2638;
+    --scroll-track-light: #e5eaf1;
+    --scroll-track-dark: #151c2a;
+    --scroll-thumb-light: #6e7b8f;
+    --scroll-thumb-dark: #7a8aa4;
+
+    /* Mandatory fallback before light-dark() progressive enhancement */
+    --bg: var(--bg-light);
+    --surface: var(--surface-light);
+    --border: var(--border-light);
+    --text: var(--text-light);
+    --muted: var(--muted-light);
+    --accent: var(--accent-light);
+    --accent-text: var(--accent-text-light);
+    --hover: var(--hover-light);
+    --scroll-track: var(--scroll-track-light);
+    --scroll-thumb: var(--scroll-thumb-light);
+
+    @media (prefers-color-scheme: dark) {
+      --bg: var(--bg-dark);
+      --surface: var(--surface-dark);
+      --border: var(--border-dark);
+      --text: var(--text-dark);
+      --muted: var(--muted-dark);
+      --accent: var(--accent-dark);
+      --accent-text: var(--accent-text-dark);
+      --hover: var(--hover-dark);
+      --scroll-track: var(--scroll-track-dark);
+      --scroll-thumb: var(--scroll-thumb-dark);
+    }
+
+    @supports (color: light-dark(white, black)) {
+      --bg: light-dark(var(--bg-light), var(--bg-dark));
+      --surface: light-dark(var(--surface-light), var(--surface-dark));
+      --border: light-dark(var(--border-light), var(--border-dark));
+      --text: light-dark(var(--text-light), var(--text-dark));
+      --muted: light-dark(var(--muted-light), var(--muted-dark));
+      --accent: light-dark(var(--accent-light), var(--accent-dark));
+      --accent-text: light-dark(var(--accent-text-light), var(--accent-text-dark));
+      --hover: light-dark(var(--hover-light), var(--hover-dark));
+      --scroll-track: light-dark(var(--scroll-track-light), var(--scroll-track-dark));
+      --scroll-thumb: light-dark(var(--scroll-thumb-light), var(--scroll-thumb-dark));
+    }
+
+    color-scheme: light dark;
+    accent-color: var(--accent);
+    scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+  }
+
+  @supports not (scrollbar-color: auto) {
+    * { scrollbar-width: auto; }
+    *::-webkit-scrollbar { width: 10px; height: 10px; }
+    *::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 5px; }
+    *::-webkit-scrollbar-track { background: var(--scroll-track); }
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%; margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.4 ui-sans-serif, -apple-system, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { display: grid; grid-template-rows: auto 1fr auto; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    padding: 9px 14px; border-bottom: 1px solid var(--border); background: var(--surface);
+    z-index: 5;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; }
+  .title { font-weight: 700; letter-spacing: -0.015em; }
+  .badge {
+    font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600;
+    padding: 3px 6px; border-radius: 4px; background: var(--accent); color: var(--accent-text);
+    letter-spacing: 0.03em;
+  }
+  .meta { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .group { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+
+  button, label.btn, select {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    padding: 4px 9px; border-radius: 5px; font: inherit; font-size: 12px; line-height: 1.25;
+    cursor: pointer; user-select: none;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+  button, label.btn { appearance: none; }
+  select { padding-right: 8px; }
+  button:hover, label.btn:hover, select:hover { background: var(--hover); }
+  button:focus-visible, label.btn:focus-visible, select:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+
+  main {
+    position: relative; display: grid; place-items: center; overflow: hidden;
+    cursor: grab; touch-action: none;
+    background: var(--stage-bg, var(--bg));
+    content-visibility: auto;
+    contain-intrinsic-size: auto none auto 520px;
+  }
+  main:active { cursor: grabbing; }
+  main.dragging-split { cursor: ew-resize; }
+  #view { display: block; max-width: 100%; max-height: 100%; }
+
+  .toolbar-float {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 6px; padding: 5px 9px; flex-wrap: wrap;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border); border-radius: 9px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+    z-index: 4; max-width: calc(100% - 24px);
+  }
+  .toolbar-float .lbl { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); user-select: none; }
+  .pill { display: inline-flex; align-items: center; gap: 2px; }
+  .pill button { padding: 3px 7px; font-size: 11px; }
+
+  .split-labels {
+    position: absolute; inset: 0; pointer-events: none; z-index: 3; display: none;
+  }
+  .split-labels.visible { display: block; }
+  .split-tag {
+    position: absolute; bottom: 16px; padding: 4px 8px; border-radius: 5px;
+    font: 11px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border: 1px solid var(--border); color: var(--text);
+    backdrop-filter: blur(6px);
+  }
+  .split-tag.left { left: 16px; }
+  .split-tag.right { right: 16px; border-color: var(--accent); }
+  .split-handle {
+    position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent);
+    pointer-events: auto; cursor: ew-resize; transform: translateX(-1px);
+  }
+  .split-knob {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 28px; height: 28px; border-radius: 999px;
+    background: var(--accent); color: var(--accent-text);
+    display: grid; place-items: center; font-size: 11px; font-weight: 700;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+  }
+
+  .loupe {
+    position: absolute; right: 16px; top: 64px; width: 156px; height: 156px;
+    border-radius: 10px; border: 2px solid var(--accent); overflow: hidden;
+    background: var(--stage-bg, var(--bg)); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.24);
+    pointer-events: none; z-index: 4; display: none;
+  }
+  .loupe.visible { display: block; }
+  .loupe canvas { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+  .loupe-cap {
+    position: absolute; left: 6px; bottom: 5px; padding: 2px 5px; border-radius: 3px;
+    font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: rgba(0, 0, 0, 0.65); color: #fff;
+  }
+
+  .readout {
+    position: absolute; left: 16px; bottom: 14px;
+    font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums;
+    color: var(--readout-color, var(--muted)); pointer-events: none;
+  }
+  .split-labels.visible ~ .readout { bottom: 46px; }
+
+  .drop-hint {
+    position: absolute; inset: 16px; border: 2px dashed var(--accent); border-radius: 10px;
+    display: none; place-items: center;
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+    color: var(--text); font-weight: 600; z-index: 10;
+  }
+  body.dragging .drop-hint { display: grid; }
+
+  footer {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    padding: 9px 14px; border-top: 1px solid var(--border); background: var(--surface);
+    z-index: 5;
+  }
+  .ctrl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; user-select: none; }
+  .ctrl output {
+    min-width: 34px; text-align: right; color: var(--text);
+    font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums;
+  }
+  .sep { width: 1px; height: 18px; background: var(--border); }
+  input[type="range"] { width: 78px; margin: 0; }
+  input[type="number"] {
+    width: 48px; padding: 3px 5px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface); color: var(--text);
+    font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  input[type="checkbox"] { margin: 0; }
+  .spacer { flex: 1; }
+  #fileInput { display: none; }
+
+  /* Brand-consistent form control fallback for browsers without accent-color */
+  @supports not (accent-color: #1d4ed8) {
+    input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 6px; border-radius: 3px;
+      background: linear-gradient(to right, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%));
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+      background: var(--accent); margin-top: -4px; cursor: pointer;
+    }
+    input[type="checkbox"].branded-chk {
+      position: absolute !important; clip-path: inset(50%) !important; overflow: hidden !important;
+      width: 1px !important; height: 1px !important; margin: -1px !important;
+    }
+    .chk-wrap { position: relative; padding-left: 18px; cursor: pointer; }
+    .chk-wrap input[type="checkbox"] + span::before {
+      content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+      width: 13px; height: 13px; border: 1.5px solid var(--border); border-radius: 3px; background: var(--surface);
+    }
+    .chk-wrap input[type="checkbox"]:checked + span::before { background: var(--accent); border-color: var(--accent); }
+    .chk-wrap input[type="checkbox"]:checked + span::after {
+      content: "✓"; position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
+      font-size: 10px; font-weight: 700; color: var(--accent-text);
+    }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="title" id="titleText">AASpriteStacker</span>
+    <span class="badge" id="backendBadge">WebGL2</span>
+    <span class="meta" id="metaText">Loading…</span>
+  </div>
+
+  <div class="group" role="group" aria-label="Preset models" id="presetGroup">
+    <button data-preset="cottage" aria-pressed="true">Cottage + 1px Vane</button>
+    <button data-preset="car" aria-pressed="false">Sports Car</button>
+    <button data-preset="lighthouse" aria-pressed="false">Lighthouse</button>
+  </div>
+
+  <div class="group" role="group" aria-label="View mode">
+    <button data-view="compare" aria-pressed="true">A/B Compare</button>
+    <button data-view="turntable" aria-pressed="false">Turntable</button>
+    <button data-view="scan" aria-pressed="false">Slice Scan</button>
+    <button data-view="exploded" aria-pressed="false">Exploded</button>
+  </div>
+
+  <div class="group">
+    <button id="loupeBtn" aria-pressed="false" title="4x pixel inspection loupe on hover">Loupe</button>
+    <button id="playBtn" title="Space">Pause</button>
+    <button id="exportBtn" title="Export anti-aliased 16-angle sprite sheet PNG">Export 16-dir AA</button>
+    <label class="btn" for="fileInput">Load Strip</label>
+    <input id="fileInput" type="file" accept="image/png,image/webp" />
+  </div>
+</header>
+
+<main id="stage">
+  <div class="toolbar-float" id="aaBar">
+    <span class="lbl" id="modeALabel">Left:</span>
+    <select id="modeASelect" aria-label="Left comparison renderer">
+      <option value="0" selected>Legacy 1× Nearest</option>
+      <option value="1">AA Crisp Voxel (RGSS DDA)</option>
+      <option value="2">AA Fat-Pixel Slices (Bandlimited)</option>
+      <option value="3">AA CleanEdge Slices</option>
+      <option value="4">AA Smooth SDF Hull</option>
+    </select>
+    <span class="lbl" id="modeBLabel">Right:</span>
+    <select id="modeBSelect" aria-label="Primary or right anti-aliased renderer">
+      <option value="1" selected>AA Crisp Voxel (RGSS DDA)</option>
+      <option value="2">AA Fat-Pixel Slices (Bandlimited)</option>
+      <option value="3">AA CleanEdge Slices</option>
+      <option value="4">AA Smooth SDF Hull</option>
+      <option value="0">Legacy 1× Nearest</option>
+    </select>
+    <span class="sep"></span>
+    <span class="lbl">MSAA</span>
+    <span class="pill" role="group" aria-label="Supersampling samples">
+      <button data-samples="1" aria-pressed="false">1×</button>
+      <button data-samples="4" aria-pressed="false">4×</button>
+      <button data-samples="8" aria-pressed="true">8×</button>
+      <button data-samples="16" aria-pressed="false">16×</button>
+    </span>
+    <span class="sep"></span>
+    <span class="lbl">Shade</span>
+    <select id="shadeSelect" aria-label="Shading model">
+      <option value="0" selected>AA Toon 3-Band</option>
+      <option value="1">Smooth PBR-Lite</option>
+      <option value="2">Unlit Flat</option>
+    </select>
+  </div>
+
+  <canvas id="view" role="img" aria-label="Interactive anti-aliased sprite stack viewport"></canvas>
+
+  <div class="split-labels visible" id="splitOverlay">
+    <div class="split-handle" id="splitHandle" style="left: 50%">
+      <div class="split-knob">⇄</div>
+    </div>
+    <div class="split-tag left" id="tagLeft">Legacy 1× Nearest</div>
+    <div class="split-tag right" id="tagRight">AA Crisp Voxel (8× RGSS)</div>
+  </div>
+
+  <div class="loupe" id="loupeBox">
+    <canvas id="loupeCanvas" width="156" height="156"></canvas>
+    <div class="loupe-cap">4× Zoom</div>
+  </div>
+
+  <div class="readout" id="readout"></div>
+  <div class="drop-hint">Drop any horizontal slice strip PNG (standard or AA)</div>
+</main>
+
+<footer>
+  <label class="ctrl">Angle
+    <input id="angleRange" type="range" min="0" max="360" step="0.5" value="35" />
+    <output id="angleOut">35°</output>
+  </label>
+  <label class="ctrl">Squash
+    <input id="squashRange" type="range" min="0.40" max="1.00" step="0.01" value="0.75" />
+    <output id="squashOut">0.75</output>
+  </label>
+  <label class="ctrl">Spacing
+    <input id="spacingRange" type="range" min="0.25" max="3.00" step="0.05" value="1.00" />
+    <output id="spacingOut">1.00</output>
+  </label>
+  <label class="ctrl">Scale
+    <input id="scaleRange" type="range" min="2" max="14" step="0.5" value="7" />
+    <output id="scaleOut">7.0×</output>
+  </label>
+  <label class="ctrl">Slices
+    <input id="slicesInput" type="number" min="1" max="256" value="34" />
+  </label>
+  <span class="sep"></span>
+  <label class="ctrl">Outline
+    <input id="outlineRange" type="range" min="0" max="2.5" step="0.05" value="0.85" />
+    <output id="outlineOut">0.85</output>
+  </label>
+  <label class="ctrl" title="Day -> Sunset -> Night">Time
+    <input id="timeRange" type="range" min="0" max="100" step="1" value="0" />
+    <output id="timeOut">Day</output>
+  </label>
+  <label class="ctrl" title="Sun direction (or Shift+drag stage)">Sun
+    <input id="sunRange" type="range" min="0" max="360" step="1" value="42" />
+    <output id="sunOut">42°</output>
+  </label>
+  <label class="ctrl chk-wrap"><input id="shadowChk" class="branded-chk" type="checkbox" checked /><span>Shadow</span></label>
+  <label class="ctrl chk-wrap"><input id="selfShadowChk" class="branded-chk" type="checkbox" checked /><span>3D Self-Shadow</span></label>
+  <span class="spacer"></span>
+  <span class="meta">Drag: orbit · Shift+drag: sun · Drag divider: A/B · Space: pause</span>
+</footer>
+
+<script>
+const EMBEDDED = /*__EMBEDDED_STACK__*/null;
+
+const MODE_NAMES = [
+  "Legacy 1× Nearest",
+  "AA Crisp Voxel (RGSS DDA)",
+  "AA Fat-Pixel Slices",
+  "AA CleanEdge Slices",
+  "AA Smooth SDF Hull",
+];
+
+const state = {
+  view: "compare",        // "compare" | "turntable" | "scan" | "exploded"
+  modeA: 0,               // Left side in compare mode
+  modeB: 1,               // Primary mode (and right side in compare mode)
+  samples: 8,             // 1, 4, 8, 16
+  shadeStyle: 0,          // 0 = AA Toon, 1 = Smooth PBR-Lite, 2 = Unlit
+  splitPos: 0.5,          // 0..1 across canvas
+  playing: true,
+  loupe: false,
+  hoverX: 0.5,
+  hoverY: 0.5,
+  angle: 35,
+  squash: 0.75,
+  spacing: 1.0,
+  scale: 7.0,
+  slices: 34,
+  outlineWidth: 0.85,
+  timeOfDay: 0,
+  sunAngle: 42,
+  shadow: true,
+  selfShadow: true,
+  scanZ: 34,
+  explodePhase: 0,
+  vol: null,
+  dirty: true,
+  pausedByVisibility: false,
+  lastFrameMs: 0,
+  fps: 60,
+  preset: "cottage",
+};
+
+const stage = document.getElementById("stage");
+const canvas = document.getElementById("view");
+const loupeBox = document.getElementById("loupeBox");
+const loupeCanvas = document.getElementById("loupeCanvas");
+const loupeCtx = loupeCanvas.getContext("2d");
+const splitOverlay = document.getElementById("splitOverlay");
+const splitHandle = document.getElementById("splitHandle");
+const tagLeft = document.getElementById("tagLeft");
+const tagRight = document.getElementById("tagRight");
+const readout = document.getElementById("readout");
+const titleText = document.getElementById("titleText");
+const metaText = document.getElementById("metaText");
+const backendBadge = document.getElementById("backendBadge");
+
+const els = {
+  modeA: document.getElementById("modeASelect"),
+  modeB: document.getElementById("modeBSelect"),
+  modeALabel: document.getElementById("modeALabel"),
+  modeBLabel: document.getElementById("modeBLabel"),
+  shade: document.getElementById("shadeSelect"),
+  angle: document.getElementById("angleRange"),
+  angleOut: document.getElementById("angleOut"),
+  squash: document.getElementById("squashRange"),
+  squashOut: document.getElementById("squashOut"),
+  spacing: document.getElementById("spacingRange"),
+  spacingOut: document.getElementById("spacingOut"),
+  scale: document.getElementById("scaleRange"),
+  scaleOut: document.getElementById("scaleOut"),
+  slices: document.getElementById("slicesInput"),
+  outline: document.getElementById("outlineRange"),
+  outlineOut: document.getElementById("outlineOut"),
+  time: document.getElementById("timeRange"),
+  timeOut: document.getElementById("timeOut"),
+  sun: document.getElementById("sunRange"),
+  sunOut: document.getElementById("sunOut"),
+  shadow: document.getElementById("shadowChk"),
+  selfShadow: document.getElementById("selfShadowChk"),
+  play: document.getElementById("playBtn"),
+  loupe: document.getElementById("loupeBtn"),
+  exportBtn: document.getElementById("exportBtn"),
+};
+
+// WebKit fallback for range --progress CSS variable when accent-color unsupported
+function syncRangeProgress(input) {
+  const min = parseFloat(input.min || "0");
+  const max = parseFloat(input.max || "100");
+  const val = parseFloat(input.value || "0");
+  const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+  input.style.setProperty("--progress", `${pct}%`);
+}
+if (!CSS.supports("accent-color", "#1d4ed8")) {
+  document.querySelectorAll('input[type="range"]').forEach((r) => {
+    syncRangeProgress(r);
+    r.addEventListener("input", () => syncRangeProgress(r));
+  });
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+// ============================================================
+// LIGHTING ENVIRONMENT
+// ============================================================
+function getLightingEnv(timeOfDay, sunAngleDeg) {
+  const t = timeOfDay / 100;
+  const sunsetW = Math.max(0, 1 - Math.abs(t - 0.5) * 2.4);
+  const nightW = Math.max(0, (t - 0.48) / 0.52);
+  const elevDeg = t <= 0.5 ? lerp(56, 18, t * 2) : lerp(18, 42, (t - 0.5) * 2);
+  const elev = (elevDeg * Math.PI) / 180;
+  const az = (sunAngleDeg * Math.PI) / 180;
+  const cosE = Math.cos(elev);
+  const lx = Math.cos(az) * cosE;
+  const ly = Math.sin(az) * cosE;
+  const lz = Math.sin(elev);
+
+  let bgR, bgG, bgB;
+  if (t <= 0.5) {
+    const u = t * 2;
+    bgR = lerp(238, 236, u); bgG = lerp(242, 214, u); bgB = lerp(248, 200, u);
+  } else {
+    const u = (t - 0.5) * 2;
+    bgR = lerp(236, 14, u); bgG = lerp(214, 20, u); bgB = lerp(200, 36, u);
+  }
+  const shR = lerp(lerp(148, 134, sunsetW), 5, nightW);
+  const shG = lerp(lerp(164, 114, sunsetW), 8, nightW);
+  const shB = lerp(lerp(186, 132, sunsetW), 18, nightW);
+
+  const olR = lerp(22, 6, nightW);
+  const olG = lerp(26, 9, nightW);
+  const olB = lerp(36, 18, nightW);
+
+  const shMul = [
+    lerp(lerp(0.64, 0.54, sunsetW), 0.20, nightW),
+    lerp(lerp(0.70, 0.50, sunsetW), 0.25, nightW),
+    lerp(lerp(0.84, 0.72, sunsetW), 0.44, nightW),
+  ];
+  const midMul = [
+    lerp(lerp(0.96, 1.00, sunsetW), 0.36, nightW),
+    lerp(lerp(0.97, 0.85, sunsetW), 0.43, nightW),
+    lerp(lerp(1.00, 0.80, sunsetW), 0.62, nightW),
+  ];
+  const litMul = [
+    lerp(lerp(1.13, 1.28, sunsetW), 0.58, nightW),
+    lerp(lerp(1.10, 1.04, sunsetW), 0.67, nightW),
+    lerp(lerp(1.03, 0.82, sunsetW), 0.90, nightW),
+  ];
+  const emisGlow = clamp((t - 0.30) / 0.44, 0, 1);
+
+  return {
+    t, sunsetW, nightW, emisGlow,
+    lx, ly, lz,
+    bg: [bgR / 255, bgG / 255, bgB / 255],
+    bgHex: `rgb(${Math.round(bgR)}, ${Math.round(bgG)}, ${Math.round(bgB)})`,
+    shCol: [shR / 255, shG / 255, shB / 255],
+    olCol: [olR / 255, olG / 255, olB / 255],
+    shMul, midMul, litMul,
+  };
+}
+
+function updateStageTheme() {
+  const env = getLightingEnv(state.timeOfDay, state.sunAngle);
+  stage.style.setProperty("--stage-bg", env.bgHex);
+  stage.style.setProperty("--readout-color", env.nightW > 0.45 ? "#9aa8c7" : "#4b5563");
+  els.timeOut.textContent = state.timeOfDay < 25 ? "Day" : (state.timeOfDay < 72 ? "Sunset" : "Night");
+}
+
+// ============================================================
+// FAST 3D SDF, EDGE DILATION & NORMAL COMPUTATION IN JS
+// (Works on BOTH embedded AA strips AND any dropped legacy strip!)
+// ============================================================
+function edt1dSquared(f, n, out) {
+  // Exact O(n) Felzenszwalb-Huttenlocher 1D squared distance transform
+  const v = new Int32Array(n);
+  const z = new Float32Array(n + 1);
+  let k = 0;
+  v[0] = 0;
+  z[0] = -1e18;
+  z[1] = 1e18;
+  for (let q = 1; q < n; q++) {
+    let s;
+    while (true) {
+      const r = v[k];
+      s = ((f[q] + q * q) - (f[r] + r * r)) / (2 * (q - r));
+      if (s <= z[k]) {
+        k--;
+      } else {
+        break;
+      }
+    }
+    k++;
+    v[k] = q;
+    z[k] = s;
+    z[k + 1] = 1e18;
+  }
+  k = 0;
+  for (let q = 0; q < n; q++) {
+    while (z[k + 1] < q) k++;
+    const d = q - v[k];
+    out[q] = d * d + f[v[k]];
+  }
+}
+
+function compute3DSdfFromAlpha(rgba, w, h, n) {
+  // Exact 3D Euclidean Signed Distance Field via 3 separable O(N) FH passes!
+  const area = w * h;
+  const total = n * area;
+  const INF = 1e9;
+  const dOut = new Float32Array(total);
+  const dIn = new Float32Array(total);
+  for (let i = 0; i < total; i++) {
+    const inside = rgba[i * 4 + 3] >= 128;
+    dOut[i] = inside ? 0 : INF;
+    dIn[i] = inside ? INF : 0;
+  }
+
+  const maxDim = Math.max(w, h, n);
+  const fBuf = new Float32Array(maxDim);
+  const oBuf = new Float32Array(maxDim);
+
+  const run3D = (arr) => {
+    // X pass
+    for (let z = 0; z < n; z++) {
+      const zb = z * area;
+      for (let y = 0; y < h; y++) {
+        const rb = zb + y * w;
+        for (let x = 0; x < w; x++) fBuf[x] = arr[rb + x];
+        edt1dSquared(fBuf, w, oBuf);
+        for (let x = 0; x < w; x++) arr[rb + x] = oBuf[x];
+      }
+    }
+    // Y pass
+    for (let z = 0; z < n; z++) {
+      const zb = z * area;
+      for (let x = 0; x < w; x++) {
+        for (let y = 0; y < h; y++) fBuf[y] = arr[zb + y * w + x];
+        edt1dSquared(fBuf, h, oBuf);
+        for (let y = 0; y < h; y++) arr[zb + y * w + x] = oBuf[y];
+      }
+    }
+    // Z pass
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const xy = y * w + x;
+        for (let z = 0; z < n; z++) fBuf[z] = arr[z * area + xy];
+        edt1dSquared(fBuf, n, oBuf);
+        for (let z = 0; z < n; z++) arr[z * area + xy] = oBuf[z];
+      }
+    }
+  };
+
+  run3D(dOut);
+  run3D(dIn);
+
+  const sdf = new Float32Array(total);
+  for (let z = 0; z < n; z++) {
+    const dzB = Math.min(z + 1, n - z);
+    const zb = z * area;
+    for (let y = 0; y < h; y++) {
+      const dyB = Math.min(dzB, y + 1, h - y);
+      const rb = zb + y * w;
+      for (let x = 0; x < w; x++) {
+        const i = rb + x;
+        const a = rgba[i * 4 + 3] / 255;
+        const bDist = Math.min(dyB, x + 1, w - x);
+        const din = Math.min(Math.sqrt(dIn[i]), bDist);
+        let d = a >= 0.5 ? -(din - 0.5) : (Math.sqrt(dOut[i]) - 0.5);
+        if (a > 0.01 && a < 0.99 && Math.abs(d) <= 1.0) d = 0.5 - a;
+        sdf[i] = d;
+      }
+    }
+  }
+
+  // Gentle 1-pass separable 3D smoothing so voxel staircases become organic smooth curves in SDF mode
+  const tmp = new Float32Array(total);
+  const wS = 0.14, wM = 1 - 2 * wS;
+  // X
+  for (let z = 0; z < n; z++) {
+    const zb = z * area;
+    for (let y = 0; y < h; y++) {
+      const rb = zb + y * w;
+      for (let x = 0; x < w; x++) {
+        const xm = x > 0 ? x - 1 : 0, xp = x < w - 1 ? x + 1 : w - 1;
+        tmp[rb + x] = wM * sdf[rb + x] + wS * (sdf[rb + xm] + sdf[rb + xp]);
+      }
+    }
+  }
+  // Y
+  for (let z = 0; z < n; z++) {
+    const zb = z * area;
+    for (let y = 0; y < h; y++) {
+      const ym = y > 0 ? y - 1 : 0, yp = y < h - 1 ? y + 1 : h - 1;
+      for (let x = 0; x < w; x++) {
+        sdf[zb + y * w + x] = wM * tmp[zb + y * w + x] + wS * (tmp[zb + ym * w + x] + tmp[zb + yp * w + x]);
+      }
+    }
+  }
+  // Z
+  for (let z = 0; z < n; z++) {
+    const zm = z > 0 ? z - 1 : 0, zp = z < n - 1 ? z + 1 : n - 1;
+    for (let i = 0; i < area; i++) {
+      tmp[z * area + i] = wM * sdf[z * area + i] + wS * (sdf[zm * area + i] + sdf[zp * area + i]);
+    }
+  }
+  return tmp;
+}
+
+function dilateRgbEdges3D(rgba, w, h, n, iters = 3) {
+  const area = w * h;
+  const total = n * area;
+  const out = new Uint8Array(rgba);
+  let valid = new Uint8Array(total);
+  for (let i = 0; i < total; i++) valid[i] = out[i * 4 + 3] > 0 ? 1 : 0;
+
+  const dirs = [
+    [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+  ];
+  for (let it = 0; it < iters; it++) {
+    const nextValid = new Uint8Array(valid);
+    const nextRgb = new Uint8Array(out);
+    for (let z = 0; z < n; z++) {
+      const zb = z * area;
+      for (let y = 0; y < h; y++) {
+        const rb = zb + y * w;
+        for (let x = 0; x < w; x++) {
+          const idx = rb + x;
+          if (valid[idx]) continue;
+          let r = 0, g = 0, b = 0, cnt = 0;
+          for (let d = 0; d < 6; d++) {
+            const nx = x + dirs[d][0], ny = y + dirs[d][1], nz = z + dirs[d][2];
+            if (nx < 0 || nx >= w || ny < 0 || ny >= h || nz < 0 || nz >= n) continue;
+            const nIdx = nz * area + ny * w + nx;
+            if (valid[nIdx]) {
+              const p = nIdx * 4;
+              r += out[p]; g += out[p + 1]; b += out[p + 2]; cnt++;
+            }
+          }
+          if (cnt > 0) {
+            const p = idx * 4;
+            nextRgb[p] = (r / cnt) | 0;
+            nextRgb[p + 1] = (g / cnt) | 0;
+            nextRgb[p + 2] = (b / cnt) | 0;
+            nextValid[idx] = 1;
+          }
+        }
+      }
+    }
+    out.set(nextRgb);
+    valid = nextValid;
+  }
+  return out;
+}
+
+function buildVolumePack(w, h, n, rawRgba, explicitSdf = null, sdfRange = 6.0, explicitEmis = null) {
+  const area = w * h;
+  const total = n * area;
+  const rgba = dilateRgbEdges3D(rawRgba, w, h, n, 3);
+  const sdfF32 = explicitSdf || compute3DSdfFromAlpha(rgba, w, h, n);
+
+  const sdfU8 = new Uint8Array(total);
+  const normAo = new Uint8Array(total * 4);
+  const emisU8 = explicitEmis ? new Uint8Array(explicitEmis) : new Uint8Array(total);
+
+  const atSdf = (z, y, x) => {
+    const oob = (z < 0 || z >= n || y < 0 || y >= h || x < 0 || x >= w) ? 1.0 : 0.0;
+    const cz = clamp(z, 0, n - 1), cy = clamp(y, 0, h - 1), cx = clamp(x, 0, w - 1);
+    return sdfF32[cz * area + cy * w + cx] + oob;
+  };
+  const atOcc = (z, y, x) => {
+    if (z < 0 || z >= n || y < 0 || y >= h || x < 0 || x >= w) return 0;
+    return rgba[(z * area + y * w + x) * 4 + 3] >= 128 ? 1 : 0;
+  };
+
+  // Compute packed SDF, smooth SDF normals, AO, and auto-emissive
+  const colorCounts = new Map();
+  let surfCount = 0;
+  const isSurf = new Uint8Array(total);
+
+  for (let z = 0; z < n; z++) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = z * area + y * w + x;
+        const dNorm = clamp(sdfF32[idx] / sdfRange, -1, 1);
+        sdfU8[idx] = clamp(Math.round(dNorm * 127 + 128), 0, 255);
+
+        let gx = atSdf(z, y, x + 1) - atSdf(z, y, x - 1);
+        let gy = atSdf(z, y + 1, x) - atSdf(z, y - 1, x);
+        let gz = atSdf(z + 1, y, x) - atSdf(z - 1, y, x);
+        const mag = Math.hypot(gx, gy, gz);
+        if (mag > 1e-4) { gx /= mag; gy /= mag; gz /= mag; }
+        else { gx = 0; gy = 0; gz = 1; }
+
+        const upOcc = atOcc(z + 1, y, x) + atOcc(z + 1, y - 1, x) + atOcc(z + 1, y + 1, x)
+          + atOcc(z + 1, y, x - 1) + atOcc(z + 1, y, x + 1);
+        const ao = clamp(1.0 - upOcc * 0.045, 0.72, 1.0);
+
+        const p = idx * 4;
+        normAo[p] = clamp(Math.round((gx * 0.5 + 0.5) * 255), 0, 255);
+        normAo[p + 1] = clamp(Math.round((gy * 0.5 + 0.5) * 255), 0, 255);
+        normAo[p + 2] = clamp(Math.round((gz * 0.5 + 0.5) * 255), 0, 255);
+        normAo[p + 3] = clamp(Math.round(ao * 255), 0, 255);
+
+        if (!explicitEmis && rgba[p + 3] >= 128) {
+          const interior = atOcc(z - 1, y, x) && atOcc(z + 1, y, x) && atOcc(z, y - 1, x)
+            && atOcc(z, y + 1, x) && atOcc(z, y, x - 1) && atOcc(z, y, x + 1);
+          if (!interior) {
+            isSurf[idx] = 1;
+            surfCount++;
+            const key = (rgba[p] << 16) | (rgba[p + 1] << 8) | rgba[p + 2];
+            colorCounts.set(key, (colorCounts.get(key) || 0) + 1);
+          }
+        }
+      }
+    }
+  }
+
+  if (!explicitEmis && surfCount > 0) {
+    const dominant = new Set();
+    for (const [k, c] of colorCounts.entries()) {
+      if (c / surfCount > 0.14) dominant.add(k);
+    }
+    for (let i = 0; i < total; i++) {
+      if (!isSurf[i]) continue;
+      const p = i * 4;
+      const key = (rgba[p] << 16) | (rgba[p + 1] << 8) | rgba[p + 2];
+      if (dominant.has(key)) continue;
+      const r = rgba[p], g = rgba[p + 1], b = rgba[p + 2];
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+      const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
+      const sat = (maxC - minC) / (maxC || 1);
+      if ((luma >= 180 && (sat >= 0.30 || luma >= 232)) || (maxC >= 215 && sat >= 0.62 && luma >= 110)) {
+        emisU8[i] = 255;
+      }
+    }
+  }
+
+  return { w, h, n, sdfRange, rgba, sdfF32, sdfU8, normAo, emisU8 };
+}
+
+// ============================================================
+// BUILT-IN PROCEDURAL SHOWCASE VOLUMES (Designed to stress-test AA!)
+// ============================================================
+function makePresetVolume(name) {
+  if (name === "cottage") {
+    // Cozy cottage with pitched blue slate roof, windows, glowing doorway, AND a 1px iron weathervane!
+    // (1px weathervane blinks & vanishes in Legacy 1x Nearest, stays rock-solid silky smooth in AA!)
+    const W = 28, L = 32, H = 34;
+    const rgba = new Uint8Array(W * L * H * 4);
+    const emis = new Uint8Array(W * L * H);
+    const put = (z, y, x, r, g, b, em = 0) => {
+      if (z < 0 || z >= H || y < 0 || y >= L || x < 0 || x >= W) return;
+      const idx = z * W * L + y * W + x;
+      const p = idx * 4;
+      rgba[p] = r; rgba[p + 1] = g; rgba[p + 2] = b; rgba[p + 3] = 255;
+      if (em) emis[idx] = 255;
+    };
+
+    // Rounded grass garden plinth (z = 0..2) with stepping stones & flowers
+    for (let z = 0; z < 3; z++) {
+      for (let y = 1; y < L - 1; y++) {
+        for (let x = 1; x < W - 1; x++) {
+          const dx = Math.max(0, Math.abs(x - 13.5) - 9.0);
+          const dy = Math.max(0, Math.abs(y - 15.5) - 11.0);
+          if (Math.hypot(dx, dy) <= 4.2) {
+            if (z < 2) {
+              put(z, y, x, 92, 64, 48); // soil plinth
+            } else {
+              const tuft = ((x * 7 + y * 13) & 3) === 0;
+              put(z, y, x, tuft ? 114 : 86, tuft ? 176 : 156, tuft ? 74 : 68);
+              if ((x === 4 && y === 5) || (x === 23 && y === 26)) put(z, y, x, 255, 224, 92);
+              if ((x === 23 && y === 6) || (x === 5 && y === 25)) put(z, y, x, 245, 118, 152);
+              if (x >= 12 && x <= 15 && y >= 24 && y <= 29 && ((y & 1) === 0)) put(z, y, x, 166, 174, 188);
+            }
+          }
+        }
+      }
+    }
+    // Stone foundation + timber-framed plaster walls (z = 3..14)
+    for (let z = 3; z < 15; z++) {
+      for (let y = 6; y <= 23; y++) {
+        for (let x = 6; x <= 21; x++) {
+          if (z <= 4) {
+            const brick = ((x + y + z) & 1) ? 10 : -8;
+            put(z, y, x, 126 + brick, 134 + brick, 148 + brick);
+            continue;
+          }
+          const isCorner = (x === 6 || x === 21) && (y === 6 || y === 23);
+          const isBeam = isCorner || z === 14 || (z === 9 && (x === 6 || x === 21));
+          if (isBeam) {
+            put(z, y, x, 108, 72, 48);
+          } else {
+            put(z, y, x, 238, 226, 202);
+          }
+          // Front glowing door + warm windows (y === 23)
+          if (y === 23 && x >= 12 && x <= 15 && z >= 5 && z <= 11) {
+            const glass = z >= 8 && z <= 10 && (x === 13 || x === 14);
+            put(z, y, x, glass ? 255 : 52, glass ? 228 : 132, glass ? 132 : 126, glass ? 1 : 0);
+          }
+          if ((y === 23 || y === 6) && ((x >= 8 && x <= 10) || (x >= 17 && x <= 19)) && z >= 8 && z <= 11) {
+            const mullion = x === 9 || x === 18 || z === 9;
+            put(z, y, x, mullion ? 92 : 255, mullion ? 64 : 230, mullion ? 48 : 140, mullion ? 0 : 1);
+          }
+          // Side windows (x === 6 or x === 21)
+          if ((x === 6 || x === 21) && ((y >= 9 && y <= 12) || (y >= 17 && y <= 20)) && z >= 8 && z <= 11) {
+            const frame = y === 9 || y === 12 || y === 17 || y === 20;
+            put(z, y, x, frame ? 92 : 255, frame ? 64 : 226, frame ? 48 : 135, frame ? 0 : 1);
+          }
+        }
+      }
+    }
+    // Pitched blue slate gable roof (z = 14..24) with diagonal slopes (great AA stress test!)
+    for (let z = 14; z <= 24; z++) {
+      const inset = z - 14;
+      const x0 = 4 + inset;
+      const x1 = 23 - inset;
+      if (x0 > x1) break;
+      for (let y = 5; y <= 24; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const isRoofEdge = x === x0 || x === x1 || y === 5 || y === 24 || z === 24;
+          const isGable = (y === 6 || y === 23) && x > x0 && x < x1;
+          if (isGable) {
+            const isAtticWin = z >= 16 && z <= 19 && x >= 12 && x <= 15;
+            put(z, y, x, isAtticWin ? 255 : 234, isAtticWin ? 232 : 218, isAtticWin ? 148 : 190, isAtticWin ? 1 : 0);
+          } else if (isRoofEdge || y === 5 || y === 24) {
+            const stripe = ((y & 1) === 0) ? 14 : -10;
+            const ridge = z >= 23 ? 28 : 0;
+            put(z, y, x, clamp(76 + stripe + ridge, 0, 255), clamp(102 + stripe + ridge, 0, 255), clamp(148 + stripe + ridge, 0, 255));
+          } else {
+            put(z, y, x, 64, 86, 128);
+          }
+        }
+      }
+    }
+    // Brick chimney (z = 20..28)
+    for (let z = 20; z <= 28; z++) {
+      const r = z === 28 ? 2 : 1;
+      for (let y = 10 - r; y <= 10 + r; y++) {
+        for (let x = 16 - r; x <= 16 + r; x++) {
+          const mortar = ((x + y + z) & 1) === 0;
+          put(z, y, x, mortar ? 178 : 146, mortar ? 76 : 58, mortar ? 64 : 52);
+        }
+      }
+    }
+    // 1-voxel-wide iron weathervane spire & arrow (z = 25..33) — classic blinking failure case!
+    for (let z = 25; z <= 33; z++) {
+      put(z, 19, 13, 46, 54, 68);
+    }
+    for (let y = 16; y <= 22; y++) {
+      put(31, y, 13, 245, 196, 66);
+    }
+    put(32, 22, 13, 245, 196, 66);
+    put(30, 22, 13, 245, 196, 66);
+
+    return buildVolumePack(W, L, H, rgba, null, 6.0, emis);
+  }
+
+  if (name === "car") {
+    // Sleek crimson retro sports coupe with curved fenders, twin racing stripes, spoiler, & glowing headlights/taillights
+    const W = 24, L = 44, H = 20;
+    const rgba = new Uint8Array(W * L * H * 4);
+    const emis = new Uint8Array(W * L * H);
+    const put = (z, y, x, r, g, b, em = 0) => {
+      if (z < 0 || z >= H || y < 0 || y >= L || x < 0 || x >= W) return;
+      const idx = z * W * L + y * W + x;
+      const p = idx * 4;
+      rgba[p] = r; rgba[p + 1] = g; rgba[p + 2] = b; rgba[p + 3] = 255;
+      if (em) emis[idx] = 255;
+    };
+
+    // Wheels (4 chunky tires with silver rims)
+    const wheelYs = [10, 33];
+    for (const wy of wheelYs) {
+      for (let z = 0; z < 6; z++) {
+        for (let y = wy - 3; y <= wy + 3; y++) {
+          const dy = y - wy, dz = z - 2.5;
+          if (dy * dy + dz * dz <= 9.5) {
+            const isRim = dy * dy + dz * dz <= 2.6;
+            for (const x of [1, 2, 3, W - 4, W - 3, W - 2]) {
+              const outer = x === 1 || x === W - 2;
+              if (isRim && outer) put(z, y, x, 196, 206, 222);
+              else put(z, y, x, 30, 34, 42);
+            }
+          }
+        }
+      }
+    }
+    // Chassis + curved body (z = 2..10)
+    for (let z = 2; z < 11; z++) {
+      const zTaper = z >= 9 ? 1.5 : 0;
+      for (let y = 2; y < L - 2; y++) {
+        const noseTaper = y > 35 ? (y - 35) * 0.45 : (y < 6 ? (6 - y) * 0.35 : 0);
+        const halfW = 10.2 - noseTaper - zTaper * 0.4;
+        for (let x = 2; x < W - 2; x++) {
+          if (Math.abs(x - 11.5) <= halfW) {
+            const isStripe = (x === 10 || x === 13);
+            if (z <= 3) put(z, y, x, 46, 52, 66);
+            else if (isStripe && z >= 9) put(z, y, x, 245, 244, 240);
+            else put(z, y, x, 214, 44, 58);
+          }
+        }
+      }
+    }
+    // Glowing front headlights (y = L - 3, z = 6..8) and rear taillights (y = 2, z = 6..7)
+    for (let z = 6; z <= 8; z++) {
+      for (const x of [5, 6, 7, W - 8, W - 7, W - 6]) {
+        put(z, L - 3, x, 255, 244, 172, 1);
+      }
+    }
+    for (let z = 6; z <= 7; z++) {
+      for (const x of [4, 5, 6, 7, W - 8, W - 7, W - 6, W - 5]) {
+        put(z, 2, x, 255, 58, 72, 1);
+      }
+    }
+    // Sloped cabin + tinted wraparound windshield (z = 10..17)
+    for (let z = 10; z < 17; z++) {
+      const t = (z - 10) / 6;
+      const y0 = Math.round(10 + t * 5);
+      const y1 = Math.round(31 - t * 6);
+      const xHalf = 8.4 - t * 1.9;
+      for (let y = y0; y <= y1; y++) {
+        for (let x = 3; x < W - 3; x++) {
+          if (Math.abs(x - 11.5) <= xHalf) {
+            const isRoof = z >= 15;
+            const isPillar = Math.abs(Math.abs(x - 11.5) - xHalf) < 1.1 && (y === y0 || y === y1);
+            const isGlass = !isRoof && !isPillar && (y <= y0 + 2 || y >= y1 - 2 || Math.abs(Math.abs(x - 11.5) - xHalf) < 1.1);
+            if (isRoof) {
+              const stripe = x === 10 || x === 13;
+              put(z, y, x, stripe ? 245 : 222, stripe ? 244 : 52, stripe ? 240 : 66);
+            } else if (isGlass) {
+              const spec = ((x + z) % 5 === 0) ? 40 : 0;
+              put(z, y, x, 58 + spec, 108 + spec, 148 + spec);
+            } else {
+              put(z, y, x, 192, 38, 52);
+            }
+          }
+        }
+      }
+    }
+    // Raised rear spoiler with 1px struts!
+    for (let z = 10; z <= 13; z++) {
+      put(z, 5, 6, 40, 44, 54);
+      put(z, 5, W - 7, 40, 44, 54);
+    }
+    for (let y = 3; y <= 6; y++) {
+      for (let x = 3; x <= W - 4; x++) {
+        put(13, y, x, 214, 44, 58);
+      }
+    }
+    return buildVolumePack(W, L, H, rgba, null, 6.0, emis);
+  }
+
+  // Lighthouse (round circular tower on rocky sea plinth — stress-tests circular AA & Smooth SDF!)
+  const W = 28, L = 28, H = 42;
+  const rgba = new Uint8Array(W * L * H * 4);
+  const emis = new Uint8Array(W * L * H);
+  const cx = 13.5, cy = 13.5;
+  const put = (z, y, x, r, g, b, em = 0) => {
+    if (z < 0 || z >= H || y < 0 || y >= L || x < 0 || x >= W) return;
+    const idx = z * W * L + y * W + x;
+    const p = idx * 4;
+    rgba[p] = r; rgba[p + 1] = g; rgba[p + 2] = b; rgba[p + 3] = 255;
+    if (em) emis[idx] = 255;
+  };
+  for (let z = 0; z < 6; z++) {
+    const rRock = 12.2 - z * 0.7;
+    for (let y = 0; y < L; y++) for (let x = 0; x < W; x++) {
+      const ang = Math.atan2(y - cy, x - cx);
+      const d = Math.hypot(x - cx, y - cy);
+      if (d <= rRock * (1 + 0.08 * Math.sin(ang * 5 + z * 0.4))) {
+        if (z === 5) put(z, y, x, 86, 152, 74);
+        else {
+          const v = ((x * 5 + y * 9 + z * 3) & 3) * 6;
+          put(z, y, x, 108 + v, 118 + v, 134 + v);
+        }
+      }
+    }
+  }
+  // Tapered circular red-and-white striped tower (z = 6..29)
+  for (let z = 6; z < 30; z++) {
+    const frac = (z - 6) / 24;
+    const rad = lerp(6.8, 4.4, frac);
+    const band = Math.floor((z - 6) / 5) & 1;
+    for (let y = 0; y < L; y++) for (let x = 0; x < W; x++) {
+      const d = Math.hypot(x - cx, y - cy);
+      if (d <= rad) {
+        if (band === 0) put(z, y, x, 240, 242, 248);
+        else put(z, y, x, 214, 52, 58);
+        if (y > cy + rad - 1.5 && Math.abs(x - cx) < 1.3 && (z === 13 || z === 14 || z === 22 || z === 23)) {
+          put(z, y, x, 46, 58, 82);
+        }
+      }
+    }
+  }
+  // Gallery deck + handrail (z = 30..31)
+  for (let y = 0; y < L; y++) for (let x = 0; x < W; x++) {
+    const d = Math.hypot(x - cx, y - cy);
+    if (d <= 6.2) put(30, y, x, 58, 68, 86);
+    if (d <= 6.2 && d >= 5.1) put(31, y, x, 42, 50, 66);
+  }
+  // Glowing glass lantern room (z = 31..35)
+  for (let z = 31; z <= 35; z++) {
+    for (let y = 0; y < L; y++) for (let x = 0; x < W; x++) {
+      const d = Math.hypot(x - cx, y - cy);
+      if (d <= 3.6) {
+        const core = d <= 2.2;
+        put(z, y, x, 255, core ? 248 : 226, core ? 182 : 124, 1);
+      }
+    }
+  }
+  // Conical red dome roof + lightning rod (z = 36..41)
+  for (let z = 36; z <= 39; z++) {
+    const r = 4.6 - (z - 36) * 1.15;
+    for (let y = 0; y < L; y++) for (let x = 0; x < W; x++) {
+      if (Math.hypot(x - cx, y - cy) <= r) put(z, y, x, 198, 46, 56);
+    }
+  }
+  put(40, 13, 13, 245, 196, 66);
+  put(41, 13, 13, 245, 196, 66);
+  return buildVolumePack(W, L, H, rgba, null, 6.0, emis);
+}
+
+// ============================================================
+// WEBGL2 MULTI-PASS AA RENDERING ENGINE
+// Pass 1: Unified Multi-Mode Raycast / Bandlimited Slice / CleanEdge / SDF + MRT
+// Pass 2: 2D Jump Flooding Algorithm (JFA) for exact display-space SDF Outlines
+// Pass 3: Linear-RGB Final Composite + SDF AA Outline + Night Bloom + A/B Curtain
+// ============================================================
+
+const FULLSCREEN_VS = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2((gl_VertexID & 1) << 2, (gl_VertexID & 2) << 1) - 1.0;
+  vUv = p * 0.5 + 0.5;
+  gl_Position = vec4(p, 0.0, 1.0);
+}`;
+
+const MAIN_FS = `#version 300 es
+precision highp float;
+precision highp sampler3D;
+
+uniform sampler3D uAlbedoTex;
+uniform sampler3D uSdfTex;
+uniform sampler3D uNormalTex;
+uniform sampler3D uEmisTex;
+
+uniform vec3 uVolSize;       // (W, L, H)
+uniform float uMaxSlices;    // active slice limit (for Slice Scan)
+uniform vec2 uResolution;    // display canvas pixels
+uniform vec2 uOrigin;        // (cx_art, baseY_art)
+uniform float uScale;        // display pixels per art pixel
+uniform float uAngleRad;
+uniform float uSquash;
+uniform float uSpacing;
+uniform float uSlabThick;    // 1.0 solid, < 1.0 exploded
+uniform float uSdfRange;     // packed SDF scale
+
+uniform int uModeA;
+uniform int uModeB;
+uniform float uSplitX;       // -1.0 when not comparing, else [0..1]
+uniform int uSamples;        // 1, 4, 8, 16
+uniform int uShadeStyle;     // 0 = AA Toon, 1 = Smooth PBR-Lite, 2 = Unlit
+uniform int uShadowOn;
+uniform int uSelfShadowOn;
+
+uniform vec3 uSunWorld;      // world unit sun dir
+uniform vec3 uShMul;
+uniform vec3 uMidMul;
+uniform vec3 uLitMul;
+uniform float uEmisGlow;
+
+layout(location = 0) out vec4 outBody; // premultiplied linear RGB + alpha
+layout(location = 1) out vec4 outAux;  // r=shadow, g=emissive, b=legacyFlag, a=1
+
+vec3 srgbToLin(vec3 c) {
+  vec3 lo = c / 12.92;
+  vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));
+  return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));
+}
+
+vec3 linToSrgb(vec3 c) {
+  c = clamp(c, 0.0, 1.0);
+  vec3 lo = c * 12.92;
+  vec3 hi = 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055;
+  return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));
+}
+
+vec2 getSampleOffset(int idx, int count) {
+  if (count <= 1) return vec2(0.0);
+  if (count == 4) {
+    const vec2 rgss4[4] = vec2[4](
+      vec2(-0.375, -0.125), vec2(0.125, -0.375),
+      vec2( 0.375,  0.125), vec2(-0.125, 0.375)
+    );
+    return rgss4[idx];
+  }
+  if (count == 8) {
+    const vec2 msaa8[8] = vec2[8](
+      vec2( 1.0, -3.0), vec2(-1.0,  3.0), vec2( 5.0,  1.0), vec2(-3.0, -5.0),
+      vec2(-5.0,  5.0), vec2(-7.0, -1.0), vec2( 3.0,  7.0), vec2( 7.0, -7.0)
+    );
+    return msaa8[idx] / 16.0;
+  }
+  int gx = idx & 3;
+  int gy = idx >> 2;
+  float fx = (-0.5 + (float(gx) + 0.5) * 0.25) * 0.92 + (float(gy) - 1.5) * 0.055;
+  float fy = (-0.5 + (float(gy) + 0.5) * 0.25) * 0.92 - (float(gx) - 1.5) * 0.055;
+  return vec2(fx, fy);
+}
+
+vec3 shadeColor(vec3 baseLin, vec3 nrm, float ao, float zFrac, float emisFlag, float shadowFactor, bool hardToon, vec3 objLight) {
+  if (uShadeStyle == 2) return baseLin;
+  if (emisFlag > 0.5 && uEmisGlow > 0.05) {
+    float boost = 1.0 + uEmisGlow * 0.75;
+    return baseLin * boost + vec3(0.09, 0.07, 0.04) * uEmisGlow;
+  }
+  float ndotl = dot(nrm, objLight);
+  // Modulate lit factor by 3D self-shadow
+  float litBias = mix(ndotl, min(ndotl, -0.25), shadowFactor * 0.85);
+  vec3 tint;
+  if (hardToon) {
+    if (litBias > 0.36) tint = uLitMul;
+    else if (litBias > -0.14) tint = uMidMul;
+    else tint = uShMul;
+  } else if (uShadeStyle == 0) {
+    // Anti-aliased 3-band toon shading (eliminates hard rotation pop!)
+    float tSh = smoothstep(-0.28, 0.02, litBias);
+    float tLit = smoothstep(0.20, 0.50, litBias);
+    tint = mix(mix(uShMul, uMidMul, tSh), uLitMul, tLit);
+  } else {
+    // Smooth hemisphere + directional PBR-lite
+    float diff = smoothstep(-0.75, 0.95, litBias);
+    float rim = pow(clamp(1.0 - max(nrm.z, 0.0), 0.0, 1.0), 2.5) * 0.08;
+    tint = mix(uShMul, uLitMul, diff) + vec3(rim);
+  }
+  float hAo = mix(0.87, 1.0, zFrac) * ao;
+  return baseLin * srgbToLin(clamp(tint, 0.0, 2.0)) * hAo;
+}
+
+// Fast 3D Amanatides-Woo DDA shadow ray against voxel occupancy
+bool traceVoxelShadow(vec3 ro, vec3 rd) {
+  vec3 invD = vec3(
+    abs(rd.x) > 1e-6 ? 1.0 / rd.x : 1e20,
+    abs(rd.y) > 1e-6 ? 1.0 / rd.y : 1e20,
+    abs(rd.z) > 1e-6 ? 1.0 / rd.z : 1e20
+  );
+  vec3 bMax = vec3(uVolSize.xy, uMaxSlices);
+  vec3 t0 = (vec3(0.0) - ro) * invD;
+  vec3 t1 = (bMax - ro) * invD;
+  vec3 tmin = min(t0, t1);
+  vec3 tmax = max(t0, t1);
+  float tEnter = max(max(tmin.x, tmin.y), max(tmin.z, 0.0));
+  float tExit = min(min(tmax.x, tmax.y), tmax.z);
+  if (tExit <= tEnter + 1e-4) return false;
+
+  vec3 pos = ro + rd * (tEnter + 1e-3);
+  ivec3 cell = clamp(ivec3(floor(pos)), ivec3(0), ivec3(bMax) - 1);
+  ivec3 stepDir = ivec3(
+    abs(rd.x) > 1e-6 ? (rd.x > 0.0 ? 1 : -1) : 0,
+    abs(rd.y) > 1e-6 ? (rd.y > 0.0 ? 1 : -1) : 0,
+    abs(rd.z) > 1e-6 ? (rd.z > 0.0 ? 1 : -1) : 0
+  );
+  vec3 tDelta = abs(invD);
+  vec3 nextB = vec3(cell) + max(vec3(stepDir), vec3(0.0));
+  vec3 tMax = (nextB - pos) * invD;
+  if (stepDir.x == 0) tMax.x = 1e20;
+  if (stepDir.y == 0) tMax.y = 1e20;
+  if (stepDir.z == 0) tMax.z = 1e20;
+
+  for (int i = 0; i < 96; i++) {
+    if (texelFetch(uAlbedoTex, cell, 0).a >= 0.5) return true;
+    if (tMax.x <= tMax.y && tMax.x <= tMax.z) {
+      cell.x += stepDir.x; tMax.x += tDelta.x;
+    } else if (tMax.y <= tMax.z) {
+      cell.y += stepDir.y; tMax.y += tDelta.y;
+    } else {
+      cell.z += stepDir.z; tMax.z += tDelta.z;
+    }
+    if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(bMax)))) break;
+  }
+  return false;
+}
+
+// ============================================================
+// MODE 0: LEGACY 1x NEAREST (faithful danielwh2 baseline)
+// ============================================================
+void evalLegacy(vec2 fragPx, float ca, float sa, vec3 objLight, out vec4 body, out float sh, out float em) {
+  vec2 artPx = floor(fragPx / uScale);
+  float cx = floor(uOrigin.x);
+  float baseY = floor(uOrigin.y);
+  float dx = artPx.x - cx;
+  float invSq = 1.0 / max(uSquash, 0.1);
+  int nSlices = int(uMaxSlices);
+  ivec3 vs = ivec3(uVolSize);
+
+  body = vec4(0.0);
+  sh = 0.0;
+  em = 0.0;
+
+  // Projected shadow (integer nearest, matches legacy viewer)
+  if (uShadowOn == 1) {
+    float shLen = clamp(0.52 / max(uSunWorld.z / max(length(uSunWorld.xy), 0.1), 0.35), 0.28, 1.55);
+    vec2 shVec = -normalize(uSunWorld.xy + vec2(1e-5)) * shLen;
+    for (int z = 0; z < 256; z++) {
+      if (z >= nSlices) break;
+      float scx = cx + float(z) * uSpacing * shVec.x;
+      float scy = baseY + 1.0 + float(z) * uSpacing * shVec.y * uSquash;
+      float dy = (artPx.y - scy) * invSq;
+      float sx = (artPx.x - scx) * ca + dy * sa + uVolSize.x * 0.5;
+      float sy = -(artPx.x - scx) * sa + dy * ca + uVolSize.y * 0.5;
+      ivec2 c = ivec2(floor(vec2(sx, sy)));
+      if (c.x >= 0 && c.x < vs.x && c.y >= 0 && c.y < vs.y) {
+        if (texelFetch(uAlbedoTex, ivec3(c, z), 0).a >= 0.5) { sh = 1.0; break; }
+      }
+    }
+  }
+
+  for (int z = 0; z < 256; z++) {
+    if (z >= nSlices) break;
+    float lift = floor(float(z) * uSpacing + 0.5);
+    float dy = (artPx.y - (baseY - lift)) * invSq;
+    float sx = dx * ca + dy * sa + uVolSize.x * 0.5;
+    float sy = -dx * sa + dy * ca + uVolSize.y * 0.5;
+    ivec2 c = ivec2(floor(vec2(sx, sy)));
+    if (c.x >= 0 && c.x < vs.x && c.y >= 0 && c.y < vs.y) {
+      vec4 tex = texelFetch(uAlbedoTex, ivec3(c, z), 0);
+      if (tex.a >= 0.5) {
+        vec4 na = texelFetch(uNormalTex, ivec3(c, z), 0);
+        float ef = texelFetch(uEmisTex, ivec3(c, z), 0).r;
+        vec3 nrm = normalize(na.xyz * 2.0 - 1.0);
+        vec3 col = shadeColor(srgbToLin(tex.rgb), nrm, na.a, float(z) / max(uVolSize.z - 1.0, 1.0), ef, 0.0, true, objLight);
+        body = vec4(col, 1.0);
+        em = ef;
+      }
+    }
+  }
+}
+
+// ============================================================
+// MODE 1: AA CRISP VOXEL (ORTHOGRAPHIC 3D DDA + RGSS SUPERSAMPLING)
+// ============================================================
+void evalVoxelDDA(vec2 artCoord, float ca, float sa, vec3 objLight, out vec4 body, out float sh, out float em) {
+  body = vec4(0.0);
+  sh = 0.0;
+  em = 0.0;
+  float invSq = 1.0 / max(uSquash, 0.1);
+  vec3 bMax = vec3(uVolSize.xy, uMaxSlices);
+  float v0 = (artCoord.y + bMax.z * uSpacing) * invSq;
+  vec3 ro = vec3(
+    uVolSize.x * 0.5 + artCoord.x * ca + v0 * sa,
+    uVolSize.y * 0.5 - artCoord.x * sa + v0 * ca,
+    bMax.z
+  );
+  vec3 rd = vec3(-uSpacing * sa, -uSpacing * ca, -uSquash);
+  vec3 invD = vec3(
+    abs(rd.x) > 1e-6 ? 1.0 / rd.x : 1e20,
+    abs(rd.y) > 1e-6 ? 1.0 / rd.y : 1e20,
+    abs(rd.z) > 1e-6 ? 1.0 / rd.z : 1e20
+  );
+
+  // Ground shadow ray at z = 0
+  if (uShadowOn == 1) {
+    vec3 gPos = vec3(
+      uVolSize.x * 0.5 + artCoord.x * ca + (artCoord.y * invSq) * sa,
+      uVolSize.y * 0.5 - artCoord.x * sa + (artCoord.y * invSq) * ca,
+      0.02
+    );
+    if (traceVoxelShadow(gPos, objLight)) sh = 1.0;
+  }
+
+  vec3 t0 = (vec3(0.0) - ro) * invD;
+  vec3 t1 = (bMax - ro) * invD;
+  vec3 tmin = min(t0, t1);
+  vec3 tmax = max(t0, t1);
+  float tEnter = max(max(tmin.x, tmin.y), max(tmin.z, 0.0));
+  float tExit = min(min(tmax.x, tmax.y), tmax.z);
+  if (tExit <= tEnter + 1e-4) return;
+
+  vec3 pos = ro + rd * (tEnter + 1e-4);
+  ivec3 cell = clamp(ivec3(floor(pos)), ivec3(0), ivec3(bMax) - 1);
+  ivec3 stepDir = ivec3(
+    abs(rd.x) > 1e-6 ? (rd.x > 0.0 ? 1 : -1) : 0,
+    abs(rd.y) > 1e-6 ? (rd.y > 0.0 ? 1 : -1) : 0,
+    abs(rd.z) > 1e-6 ? (rd.z > 0.0 ? 1 : -1) : 0
+  );
+  vec3 tDelta = abs(invD);
+  vec3 nextB = vec3(cell) + max(vec3(stepDir), vec3(0.0));
+  vec3 tMax = (nextB - pos) * invD;
+  if (stepDir.x == 0) tMax.x = 1e20;
+  if (stepDir.y == 0) tMax.y = 1e20;
+  if (stepDir.z == 0) tMax.z = 1e20;
+
+  vec3 faceN = vec3(0.0, 0.0, 1.0);
+  if (tmin.x >= tmin.y && tmin.x >= tmin.z) faceN = vec3(-float(stepDir.x), 0.0, 0.0);
+  else if (tmin.y >= tmin.x && tmin.y >= tmin.z) faceN = vec3(0.0, -float(stepDir.y), 0.0);
+  else faceN = vec3(0.0, 0.0, -float(stepDir.z));
+
+  float tCur = 0.0;
+  for (int i = 0; i < 160; i++) {
+    vec4 tex = texelFetch(uAlbedoTex, cell, 0);
+    bool hit = tex.a >= 0.5;
+    if (hit && uSlabThick < 0.999) {
+      float tNext = min(min(tMax.x, tMax.y), tMax.z);
+      float zA = pos.z + tCur * rd.z - float(cell.z);
+      float zB = pos.z + tNext * rd.z - float(cell.z);
+      hit = min(zA, zB) <= uSlabThick && max(zA, zB) >= 0.0;
+    }
+    if (hit) {
+      vec4 na = texelFetch(uNormalTex, cell, 0);
+      float ef = texelFetch(uEmisTex, cell, 0).r;
+      vec3 smoothN = normalize(na.xyz * 2.0 - 1.0);
+      // Blend crisp voxel face normal with smooth 3D SDF normal
+      vec3 nrm = normalize(mix(faceN, smoothN, 0.42));
+      float selfSh = 0.0;
+      if (uSelfShadowOn == 1 && uShadeStyle != 2 && ef < 0.5) {
+        vec3 hitP = pos + rd * tCur + faceN * 0.08;
+        if (traceVoxelShadow(hitP, objLight)) selfSh = 1.0;
+      }
+      vec3 col = shadeColor(srgbToLin(tex.rgb), nrm, na.a, float(cell.z) / max(uVolSize.z - 1.0, 1.0), ef, selfSh, false, objLight);
+      body = vec4(col, 1.0);
+      em = ef;
+      return;
+    }
+    if (tMax.x <= tMax.y && tMax.x <= tMax.z) {
+      tCur = tMax.x; cell.x += stepDir.x; tMax.x += tDelta.x;
+      faceN = vec3(-float(stepDir.x), 0.0, 0.0);
+    } else if (tMax.y <= tMax.z) {
+      tCur = tMax.y; cell.y += stepDir.y; tMax.y += tDelta.y;
+      faceN = vec3(0.0, -float(stepDir.y), 0.0);
+    } else {
+      tCur = tMax.z; cell.z += stepDir.z; tMax.z += tDelta.z;
+      faceN = vec3(0.0, 0.0, -float(stepDir.z));
+    }
+    if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(bMax)))) break;
+  }
+}
+
+// ============================================================
+// MODE 2: AA FAT-PIXEL SLICES (EXACT EUCLIDEAN JACOBIAN + CORRELATED-COVERAGE OVER)
+// ============================================================
+void evalBandlimitedSlices(vec2 artCoord, float ca, float sa, vec3 objLight, out vec4 body, out float sh, out float em) {
+  float invSq = 1.0 / max(uSquash, 0.1);
+  // Exact Euclidean L2 Jacobian filter width in texel space (avoids 1.414x fwidth over-blur at 45 deg!)
+  float wu = sqrt(ca * ca + (sa * invSq) * (sa * invSq)) / max(uScale, 0.5);
+  float wv = sqrt(sa * sa + (ca * invSq) * (ca * invSq)) / max(uScale, 0.5);
+  vec2 fw = max(vec2(wu, wv), vec2(0.02));
+
+  int nSlices = int(uMaxSlices);
+  int subSteps = uSlabThick < 0.999 ? 1 : 2;
+  vec3 accRgb = vec3(0.0);
+  float accA = 0.0;
+  em = 0.0;
+  sh = 0.0;
+
+  if (uShadowOn == 1) {
+    vec3 gPos = vec3(
+      uVolSize.x * 0.5 + artCoord.x * ca + (artCoord.y * invSq) * sa,
+      uVolSize.y * 0.5 - artCoord.x * sa + (artCoord.y * invSq) * ca,
+      0.02
+    );
+    if (traceVoxelShadow(gPos, objLight)) sh = 1.0;
+  }
+
+  for (int z = 0; z < 256; z++) {
+    if (z >= nSlices) break;
+    for (int sub = 0; sub < 2; sub++) {
+      if (sub >= subSteps) break;
+      float zf = float(z) + (float(sub) + 0.5) / float(subSteps);
+      float dy = (artCoord.y + zf * uSpacing) * invSq;
+      vec2 p = vec2(
+        artCoord.x * ca + dy * sa + uVolSize.x * 0.5,
+        -artCoord.x * sa + dy * ca + uVolSize.y * 0.5
+      );
+      if (p.x < -0.5 || p.x > uVolSize.x + 0.5 || p.y < -0.5 || p.y > uVolSize.y + 0.5) continue;
+
+      // Bandlimited fat-pixel UV warping (Themaister / t3ssel8r analytical edge ramp)
+      vec2 pShift = p - 0.5;
+      vec2 base = floor(pShift);
+      vec2 f = pShift - base;
+      vec2 edgeT = clamp((f - 0.5) / fw + 0.5, 0.0, 1.0);
+      vec2 aaUv = (base + 0.5 + edgeT) / uVolSize.xy;
+      float zUv = (float(z) + 0.5) / uVolSize.z;
+
+      // Edge-dilated RGB prevents black halos during linear interpolation!
+      vec4 tex = texture(uAlbedoTex, vec3(aaUv, zUv));
+      // Clip cleanly at texture domain boundary
+      vec2 bDist = min(p, uVolSize.xy - p);
+      float bMask = clamp(min(bDist.x / fw.x, bDist.y / fw.y), 0.0, 1.0);
+      float az = tex.a * bMask;
+      if (az < 0.005) continue;
+
+      ivec3 ic = clamp(ivec3(floor(p), z), ivec3(0), ivec3(uVolSize) - 1);
+      vec4 na = texelFetch(uNormalTex, ic, 0);
+      float ef = texelFetch(uEmisTex, ic, 0).r;
+      vec3 nrm = normalize(na.xyz * 2.0 - 1.0);
+      vec3 col = shadeColor(srgbToLin(tex.rgb), nrm, na.a, float(z) / max(uVolSize.z - 1.0, 1.0), ef, 0.0, false, objLight);
+
+      // CORRELATED-COVERAGE OVER OPERATOR:
+      // Prevents vertical-wall alpha buildup (1 - (1 - a)^N -> 1.0) while preserving exact nested edge blending!
+      float newA = max(accA, az);
+      float w = az / max(newA, 1e-5);
+      accRgb = mix(accRgb, col, w);
+      accA = newA;
+      em = mix(em, ef, w);
+    }
+  }
+  body = vec4(accRgb * accA, accA);
+}
+
+// ============================================================
+// MODE 3: AA CLEANEDGE SLICES (DIAGONAL SLOPE RECONSTRUCTION + CORRELATED COVERAGE)
+// ============================================================
+bool colSim(vec4 a, vec4 b) {
+  if ((a.a < 0.5) != (b.a < 0.5)) return false;
+  if (a.a < 0.5 && b.a < 0.5) return true;
+  return dot(a.rgb - b.rgb, a.rgb - b.rgb) < 0.035;
+}
+
+vec4 sampleCleanEdgeSlice(vec2 p, int z, float fw) {
+  ivec2 vs = ivec2(uVolSize.xy);
+  ivec2 c = ivec2(floor(p));
+  vec2 f = fract(p) - 0.5; // [-0.5, 0.5]
+
+  // Fetch 3x3 neighborhood safely (zero alpha outside bounds)
+  #define FETCH(ox, oy) ( (c.x+(ox)>=0 && c.x+(ox)<vs.x && c.y+(oy)>=0 && c.y+(oy)<vs.y) ? texelFetch(uAlbedoTex, ivec3(c.x+(ox), c.y+(oy), z), 0) : vec4(0.0) )
+  vec4 mc = FETCH( 0,  0);
+  vec4 tc = FETCH( 0, -1);
+  vec4 bc = FETCH( 0,  1);
+  vec4 ml = FETCH(-1,  0);
+  vec4 mr = FETCH( 1,  0);
+  vec4 tl = FETCH(-1, -1);
+  vec4 tr = FETCH( 1, -1);
+  vec4 bl = FETCH(-1,  1);
+  vec4 br = FETCH( 1,  1);
+  #undef FETCH
+
+  // Determine active quadrant sign (sx, sy) in {-1, +1}
+  float sx = f.x >= 0.0 ? 1.0 : -1.0;
+  float sy = f.y >= 0.0 ? 1.0 : -1.0;
+  vec4 adjX = sx > 0.0 ? mr : ml;
+  vec4 adjY = sy > 0.0 ? bc : tc;
+  vec4 oppX = sx > 0.0 ? ml : mr;
+  vec4 oppY = sy > 0.0 ? tc : bc;
+  vec4 diag1 = (sx > 0.0) ? (sy > 0.0 ? bl : tl) : (sy > 0.0 ? br : tr);
+  vec4 diag2 = (sx > 0.0) ? (sy > 0.0 ? tr : br) : (sy > 0.0 ? tl : bl);
+  vec2 qf = vec2(abs(f.x), abs(f.y));
+
+  // Staircase diagonal rule: reconstruct smooth 45-degree edge only on diagonals/curves (preserve 90-deg box corners!)
+  if (colSim(adjX, adjY) && !colSim(mc, adjX) && !colSim(adjX, oppX) && !colSim(adjY, oppY)) {
+    bool isStaircase = colSim(mc, diag1) || colSim(mc, diag2);
+    if (isStaircase) {
+      float sd = ((qf.x + qf.y) - 0.5) * 0.70710678;
+      float t = smoothstep(-0.5 * fw, 0.5 * fw, sd);
+      vec4 bridge = 0.5 * (adjX + adjY);
+      // Use edge-dilated RGB when transitioning to transparent so no dark fringe forms
+      vec3 c0 = mc.a >= 0.5 ? mc.rgb : bridge.rgb;
+      vec3 c1 = bridge.a >= 0.5 ? bridge.rgb : mc.rgb;
+      return vec4(mix(c0, c1, t), mix(mc.a >= 0.5 ? 1.0 : 0.0, bridge.a >= 0.5 ? 1.0 : 0.0, t));
+    }
+  }
+
+  // Otherwise crisp analytical axis-aligned edge anti-aliasing against adjX / adjY
+  float tx = smoothstep(0.5 - 0.5 * fw, 0.5 + 0.5 * fw, qf.x);
+  float ty = smoothstep(0.5 - 0.5 * fw, 0.5 + 0.5 * fw, qf.y);
+  float a0 = mc.a >= 0.5 ? 1.0 : 0.0;
+  float ax = adjX.a >= 0.5 ? 1.0 : 0.0;
+  float ay = adjY.a >= 0.5 ? 1.0 : 0.0;
+  vec3 rgbX = mix(mc.a >= 0.5 ? mc.rgb : adjX.rgb, adjX.a >= 0.5 ? adjX.rgb : mc.rgb, tx);
+  float aX = mix(a0, ax, tx);
+  vec3 rgbY = mix(aX > 0.01 ? rgbX : adjY.rgb, adjY.a >= 0.5 ? adjY.rgb : rgbX, ty);
+  float aY = mix(aX, ay, ty);
+  return vec4(rgbY, aY);
+}
+
+void evalCleanEdgeSlices(vec2 artCoord, float ca, float sa, vec3 objLight, out vec4 body, out float sh, out float em) {
+  float invSq = 1.0 / max(uSquash, 0.1);
+  float fw = max(sqrt(1.0 + invSq * invSq) * 0.7071 / max(uScale, 0.5), 0.025);
+  int nSlices = int(uMaxSlices);
+  int subSteps = uSlabThick < 0.999 ? 1 : 2;
+  vec3 accRgb = vec3(0.0);
+  float accA = 0.0;
+  em = 0.0;
+  sh = 0.0;
+
+  if (uShadowOn == 1) {
+    vec3 gPos = vec3(
+      uVolSize.x * 0.5 + artCoord.x * ca + (artCoord.y * invSq) * sa,
+      uVolSize.y * 0.5 - artCoord.x * sa + (artCoord.y * invSq) * ca,
+      0.02
+    );
+    if (traceVoxelShadow(gPos, objLight)) sh = 1.0;
+  }
+
+  for (int z = 0; z < 256; z++) {
+    if (z >= nSlices) break;
+    for (int sub = 0; sub < 2; sub++) {
+      if (sub >= subSteps) break;
+      float zf = float(z) + (float(sub) + 0.5) / float(subSteps);
+      float dy = (artCoord.y + zf * uSpacing) * invSq;
+      vec2 p = vec2(
+        artCoord.x * ca + dy * sa + uVolSize.x * 0.5,
+        -artCoord.x * sa + dy * ca + uVolSize.y * 0.5
+      );
+      if (p.x < -0.6 || p.x > uVolSize.x + 0.6 || p.y < -0.6 || p.y > uVolSize.y + 0.6) continue;
+      vec4 ce = sampleCleanEdgeSlice(p, z, fw);
+      if (ce.a < 0.005) continue;
+
+      ivec3 ic = clamp(ivec3(floor(p), z), ivec3(0), ivec3(uVolSize) - 1);
+      vec4 na = texelFetch(uNormalTex, ic, 0);
+      float ef = texelFetch(uEmisTex, ic, 0).r;
+      vec3 nrm = normalize(na.xyz * 2.0 - 1.0);
+      vec3 col = shadeColor(srgbToLin(ce.rgb), nrm, na.a, float(z) / max(uVolSize.z - 1.0, 1.0), ef, 0.0, false, objLight);
+
+      float newA = max(accA, ce.a);
+      float w = ce.a / max(newA, 1e-5);
+      accRgb = mix(accRgb, col, w);
+      accA = newA;
+      em = mix(em, ef, w);
+    }
+  }
+  body = vec4(accRgb * accA, accA);
+}
+
+// ============================================================
+// MODE 4: AA SMOOTH SDF HULL (3D SPHERE TRACING + SOFT SHADOWS)
+// ============================================================
+float sampleSdf(vec3 p) {
+  vec3 bMax = vec3(uVolSize.xy, uMaxSlices);
+  vec3 dBoxV = max(-p, p - bMax);
+  float dBox = max(max(dBoxV.x, dBoxV.y), dBoxV.z);
+  vec3 uv = clamp(p / uVolSize, vec3(0.0), vec3(1.0));
+  float d = (texture(uSdfTex, uv).r - 128.0 / 255.0) * (255.0 / 127.0) * uSdfRange;
+  return max(d, dBox);
+}
+
+float softSdfShadow(vec3 ro, vec3 rd) {
+  float res = 1.0;
+  float t = 0.6;
+  vec3 bMax = vec3(uVolSize.xy, uMaxSlices);
+  for (int i = 0; i < 36; i++) {
+    vec3 p = ro + rd * t;
+    if (any(lessThan(p, vec3(-1.0))) || any(greaterThan(p, bMax + vec3(1.0)))) break;
+    float d = sampleSdf(p);
+    if (d < 0.02) return 1.0;
+    res = min(res, 5.0 * d / t);
+    t += clamp(d * 0.8, 0.25, 2.5);
+  }
+  return 1.0 - clamp(res, 0.0, 1.0);
+}
+
+void evalSmoothSdf(vec2 artCoord, float ca, float sa, vec3 objLight, out vec4 body, out float sh, out float em) {
+  body = vec4(0.0);
+  sh = 0.0;
+  em = 0.0;
+  float invSq = 1.0 / max(uSquash, 0.1);
+  vec3 bMax = vec3(uVolSize.xy, uMaxSlices);
+  float v0 = (artCoord.y + bMax.z * uSpacing) * invSq;
+  vec3 ro = vec3(
+    uVolSize.x * 0.5 + artCoord.x * ca + v0 * sa,
+    uVolSize.y * 0.5 - artCoord.x * sa + v0 * ca,
+    bMax.z + 0.5
+  );
+  vec3 rd = normalize(vec3(-uSpacing * sa, -uSpacing * ca, -uSquash));
+
+  if (uShadowOn == 1) {
+    vec3 gPos = vec3(
+      uVolSize.x * 0.5 + artCoord.x * ca + (artCoord.y * invSq) * sa,
+      uVolSize.y * 0.5 - artCoord.x * sa + (artCoord.y * invSq) * ca,
+      0.08
+    );
+    sh = softSdfShadow(gPos, objLight);
+  }
+
+  vec3 invD = 1.0 / mix(rd, vec3(1e-6), lessThan(abs(rd), vec3(1e-6)));
+  vec3 t0 = (vec3(-0.6) - ro) * invD;
+  vec3 t1 = (bMax + vec3(0.6) - ro) * invD;
+  float tEnter = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), max(min(t0.z, t1.z), 0.0));
+  float tExit = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
+  if (tExit <= tEnter + 1e-4) return;
+
+  float t = tEnter;
+  bool hit = false;
+  for (int i = 0; i < 84; i++) {
+    vec3 p = ro + rd * t;
+    float d = sampleSdf(p);
+    if (d <= 0.015) {
+      // One Newton/secant zero-crossing refinement step
+      t = max(tEnter, t + d * 0.65);
+      hit = true;
+      break;
+    }
+    t += max(d * 0.72, 0.12);
+    if (t > tExit) break;
+  }
+  if (!hit) return;
+
+  vec3 hp = ro + rd * t;
+  // Tetrahedral analytical SDF gradient normal (4 taps)
+  const float e = 0.28;
+  vec3 nrm = normalize(
+    vec3( 1, -1, -1) * sampleSdf(hp + vec3( e, -e, -e)) +
+    vec3(-1, -1,  1) * sampleSdf(hp + vec3(-e, -e,  e)) +
+    vec3(-1,  1, -1) * sampleSdf(hp + vec3(-e,  e, -e)) +
+    vec3( 1,  1,  1) * sampleSdf(hp + vec3( e,  e,  e))
+  );
+  vec3 uv = clamp(hp / uVolSize, vec3(0.0), vec3(1.0));
+  vec3 albedo = texture(uAlbedoTex, uv).rgb;
+  ivec3 ic = clamp(ivec3(floor(hp)), ivec3(0), ivec3(uVolSize) - 1);
+  float ef = texelFetch(uEmisTex, ic, 0).r;
+  float ao = texture(uNormalTex, uv).a;
+
+  float selfSh = 0.0;
+  if (uSelfShadowOn == 1 && uShadeStyle != 2 && ef < 0.5) {
+    selfSh = softSdfShadow(hp + nrm * 0.35, objLight);
+  }
+  vec3 col = shadeColor(srgbToLin(albedo), nrm, ao, clamp(hp.z / max(uVolSize.z, 1.0), 0.0, 1.0), ef, selfSh, false, objLight);
+  body = vec4(col, 1.0);
+  em = ef;
+}
+
+void main() {
+  vec2 fragPx = vec2(gl_FragCoord.x, uResolution.y - gl_FragCoord.y);
+  int mode = (uSplitX >= 0.0 && (fragPx.x / uResolution.x) < uSplitX) ? uModeA : uModeB;
+
+  float ca = cos(uAngleRad);
+  float sa = sin(uAngleRad);
+  vec3 objLight = normalize(vec3(
+    uSunWorld.x * ca + uSunWorld.y * sa,
+    -uSunWorld.x * sa + uSunWorld.y * ca,
+    uSunWorld.z
+  ));
+
+  if (mode == 0) {
+    vec4 b; float sh; float em;
+    evalLegacy(fragPx, ca, sa, objLight, b, sh, em);
+    vec3 srgbB = b.a > 1e-4 ? linToSrgb(b.rgb / b.a) : vec3(0.0);
+    outBody = vec4(srgbB, b.a);
+    outAux = vec4(sh, em, 1.0, 1.0); // b=1.0 marks Legacy side for legacy 1-art-px outline
+    return;
+  }
+
+  // Bandlimited & CleanEdge already perform analytical XY anti-aliasing; cap extra RGSS to 4x for speed
+  int spp = (mode == 2 || mode == 3) ? min(uSamples, 4) : uSamples;
+  vec4 accBody = vec4(0.0);
+  float accSh = 0.0;
+  float accEm = 0.0;
+
+  for (int i = 0; i < 16; i++) {
+    if (i >= spp) break;
+    vec2 off = getSampleOffset(i, spp);
+    vec2 artCoord = ((fragPx + off) / uScale) - uOrigin;
+    vec4 b; float sh; float em;
+    if (mode == 1) evalVoxelDDA(artCoord, ca, sa, objLight, b, sh, em);
+    else if (mode == 2) evalBandlimitedSlices(artCoord, ca, sa, objLight, b, sh, em);
+    else if (mode == 3) evalCleanEdgeSlices(artCoord, ca, sa, objLight, b, sh, em);
+    else evalSmoothSdf(artCoord, ca, sa, objLight, b, sh, em);
+    accBody += b;
+    accSh += sh;
+    accEm += em;
+  }
+  float invSpp = 1.0 / float(spp);
+  vec4 avgBody = accBody * invSpp;
+  // Store unpremultiplied sRGB + alpha in RGBA8 to preserve full precision in dark shadows!
+  vec3 srgbAvg = avgBody.a > 1e-4 ? linToSrgb(avgBody.rgb / avgBody.a) : vec3(0.0);
+  outBody = vec4(srgbAvg, clamp(avgBody.a, 0.0, 1.0));
+  outAux = vec4(accSh * invSpp, accEm * invSpp, 0.0, 1.0);
+}`;
+
+// JFA Init: packs 16-bit normalized seed coordinates into standard RGBA8 (no float FBO extension required!)
+const JFA_INIT_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uBodyTex;
+uniform vec2 uResolution;
+in vec2 vUv;
+out vec4 outSeed;
+
+vec4 encodeSeed(vec2 uv) {
+  vec2 q = clamp(floor(uv * 65535.0 + 0.5), 0.0, 65535.0);
+  vec2 hi = floor(q / 256.0) / 255.0;
+  vec2 lo = mod(q, 256.0) / 255.0;
+  return vec4(hi.x, lo.x, hi.y, lo.y);
+}
+
+void main() {
+  float a = texture(uBodyTex, vUv).a;
+  if (a > 0.14) {
+    // Sub-pixel contour nudge along alpha gradient toward the 0.5 iso-contour
+    vec2 px = 1.0 / uResolution;
+    float ax = texture(uBodyTex, vUv + vec2(px.x, 0.0)).a - texture(uBodyTex, vUv - vec2(px.x, 0.0)).a;
+    float ay = texture(uBodyTex, vUv + vec2(0.0, px.y)).a - texture(uBodyTex, vUv - vec2(0.0, px.y)).a;
+    vec2 g = vec2(ax, ay);
+    float gl = length(g);
+    vec2 nudge = (gl > 1e-4 && a < 0.99) ? (g / gl) * clamp(0.5 - a, -0.45, 0.45) * px : vec2(0.0);
+    outSeed = encodeSeed(vUv + nudge);
+  } else {
+    outSeed = vec4(0.0); // 0 encodes "no seed"
+  }
+}`;
+
+const JFA_STEP_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uSeedTex;
+uniform vec2 uResolution;
+uniform float uStep;
+in vec2 vUv;
+out vec4 outSeed;
+
+vec2 decodeSeed(vec4 s) {
+  vec2 hi = floor(s.xz * 255.0 + 0.5);
+  vec2 lo = floor(s.yw * 255.0 + 0.5);
+  return (hi * 256.0 + lo) / 65535.0;
+}
+
+void main() {
+  vec2 px = 1.0 / uResolution;
+  vec2 myPx = vUv * uResolution;
+  vec4 bestSeed = vec4(0.0);
+  float bestD2 = 1e20;
+
+  for (int dy = -1; dy <= 1; dy++) {
+    for (int dx = -1; dx <= 1; dx++) {
+      vec2 suv = vUv + vec2(float(dx), float(dy)) * uStep * px;
+      if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
+      vec4 s = texture(uSeedTex, suv);
+      if (dot(s, vec4(1.0)) <= 0.0001) continue;
+      vec2 sp = decodeSeed(s) * uResolution;
+      vec2 diff = sp - myPx;
+      float d2 = dot(diff, diff);
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        bestSeed = s;
+      }
+    }
+  }
+  outSeed = bestSeed;
+}`;
+
+const COMPOSITE_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uBodyTex;
+uniform sampler2D uAuxTex;
+uniform sampler2D uSeedTex;
+
+uniform vec2 uResolution;
+uniform float uScale;
+uniform float uOutlineWidth;
+uniform vec3 uBgSrgb;
+uniform vec3 uShadowSrgb;
+uniform vec3 uOutlineSrgb;
+uniform float uEmisGlow;
+uniform int uTransparentBg;
+
+in vec2 vUv;
+out vec4 fragColor;
+
+vec3 srgbToLin(vec3 c) {
+  vec3 lo = c / 12.92;
+  vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));
+  return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));
+}
+
+vec3 linToSrgb(vec3 c) {
+  c = clamp(c, 0.0, 1.0);
+  vec3 lo = c * 12.92;
+  vec3 hi = 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055;
+  return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));
+}
+vec2 decodeSeed(vec4 s) {
+  vec2 hi = floor(s.xz * 255.0 + 0.5);
+  vec2 lo = floor(s.yw * 255.0 + 0.5);
+  return (hi * 256.0 + lo) / 65535.0;
+}
+
+void main() {
+  vec4 body = texture(uBodyTex, vUv);  // premultiplied linear RGB + alpha
+  vec4 aux = texture(uAuxTex, vUv);    // r=shadow, g=emis, b=legacyFlag
+  float isLegacy = aux.b;
+  vec2 px = 1.0 / uResolution;
+
+  // Outline coverage: Legacy uses jagged 4-neighbor 1-art-px ring; AA uses exact 2D JFA Euclidean SDF!
+  float olAlpha = 0.0;
+  if (uOutlineWidth > 0.02) {
+    if (isLegacy > 0.5) {
+      float stepArt = uScale;
+      float n1 = texture(uBodyTex, vUv + vec2( stepArt, 0.0) * px).a;
+      float n2 = texture(uBodyTex, vUv + vec2(-stepArt, 0.0) * px).a;
+      float n3 = texture(uBodyTex, vUv + vec2(0.0,  stepArt) * px).a;
+      float n4 = texture(uBodyTex, vUv + vec2(0.0, -stepArt) * px).a;
+      olAlpha = (body.a < 0.5 && max(max(n1, n2), max(n3, n4)) >= 0.5) ? 1.0 : 0.0;
+    } else {
+      vec4 seed = texture(uSeedTex, vUv);
+      if (dot(seed, vec4(1.0)) > 0.0001) {
+        float distPx = length(decodeSeed(seed) * uResolution - vUv * uResolution);
+        float radiusPx = uOutlineWidth * uScale;
+        // 1-display-pixel smooth anti-aliased outer outline edge!
+        olAlpha = 1.0 - smoothstep(radiusPx - 0.65, radiusPx + 0.65, distPx);
+      }
+    }
+  }
+
+  // Smooth night emissive bloom halo
+  vec3 bloomLin = vec3(0.0);
+  if (uEmisGlow > 0.08) {
+    float rStep = max(1.0, uScale * 0.75);
+    for (int dy = -2; dy <= 2; dy++) {
+      for (int dx = -2; dx <= 2; dx++) {
+        vec2 off = vec2(float(dx), float(dy)) * rStep * px;
+        float e = texture(uAuxTex, vUv + off).g;
+        if (e > 0.05) {
+          float w = exp(-0.42 * float(dx * dx + dy * dy));
+          vec4 nb = texture(uBodyTex, vUv + off);
+          bloomLin += srgbToLin(nb.rgb) * nb.a * e * w;
+        }
+      }
+    }
+    bloomLin *= uEmisGlow * 0.14;
+  }
+
+  vec3 shLin = srgbToLin(uShadowSrgb);
+  vec3 olLin = srgbToLin(uOutlineSrgb);
+  vec3 bgLin = srgbToLin(uBgSrgb);
+  vec3 bodyLinPremul = srgbToLin(body.rgb) * body.a;
+
+  // Porter-Duff Linear Compositing: Shadow -> SDF AA Outline -> Premultiplied Body -> Night Bloom
+  float shA = clamp(aux.r * 0.55, 0.0, 1.0);
+  vec3 compRgb = shLin * shA;
+  float compA = shA;
+
+  compRgb = olLin * olAlpha + compRgb * (1.0 - olAlpha);
+  compA = olAlpha + compA * (1.0 - olAlpha);
+
+  compRgb = bodyLinPremul + compRgb * (1.0 - body.a);
+  compA = body.a + compA * (1.0 - body.a);
+
+  if (uTransparentBg == 1) {
+    compRgb += bloomLin * compA;
+    vec3 outSrgb = compA > 1e-4 ? linToSrgb(compRgb / compA) : vec3(0.0);
+    fragColor = vec4(outSrgb, clamp(compA, 0.0, 1.0));
+  } else {
+    vec3 finalLin = compRgb + bgLin * (1.0 - compA) + bloomLin;
+    fragColor = vec4(linToSrgb(finalLin), 1.0);
+  }
+}`;
+
+// WebGL2 Engine Wrapper
+const glCtx = {
+  gl: null,
+  ready: false,
+  progs: {},
+  tex3d: { albedo: null, sdf: null, norm: null, emis: null },
+  fbo: { main: null, body: null, aux: null, jfaA: null, jfaB: null, seedA: null, seedB: null, w: 0, h: 0 },
+  vao: null,
+};
+
+function compileShader(gl, type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error("Shader error:", gl.getShaderInfoLog(s));
+    gl.deleteShader(s);
+    return null;
+  }
+  return s;
+}
+
+function createProgram(gl, vsSrc, fsSrc) {
+  const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc);
+  const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSrc);
+  if (!vs || !fs) return null;
+  const p = gl.createProgram();
+  gl.attachShader(p, vs);
+  gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    console.error("Link error:", gl.getProgramInfoLog(p));
+    return null;
+  }
+  const uniforms = {};
+  const count = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < count; i++) {
+    const info = gl.getActiveUniform(p, i);
+    uniforms[info.name] = gl.getUniformLocation(p, info.name);
+  }
+  return { program: p, u: uniforms };
+}
+
+function initWebGL2() {
+  const gl = canvas.getContext("webgl2", { alpha: true, antialias: false, preserveDrawingBuffer: true });
+  if (!gl) {
+    backendBadge.textContent = "Canvas2D Fallback";
+    return false;
+  }
+  glCtx.gl = gl;
+  glCtx.vao = gl.createVertexArray();
+  glCtx.progs.main = createProgram(gl, FULLSCREEN_VS, MAIN_FS);
+  glCtx.progs.jfaInit = createProgram(gl, FULLSCREEN_VS, JFA_INIT_FS);
+  glCtx.progs.jfaStep = createProgram(gl, FULLSCREEN_VS, JFA_STEP_FS);
+  glCtx.progs.comp = createProgram(gl, FULLSCREEN_VS, COMPOSITE_FS);
+  if (!glCtx.progs.main || !glCtx.progs.jfaInit || !glCtx.progs.jfaStep || !glCtx.progs.comp) {
+    backendBadge.textContent = "Shader Fallback";
+    return false;
+  }
+  glCtx.ready = true;
+  backendBadge.textContent = "WebGL2 GPU";
+  return true;
+}
+
+function create2DTex(gl, w, h, filter = gl.NEAREST) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+
+function ensureFBOs(w, h) {
+  const gl = glCtx.gl;
+  const f = glCtx.fbo;
+  if (f.w === w && f.h === h && f.main) return;
+  for (const k of ["body", "aux", "seedA", "seedB"]) if (f[k]) gl.deleteTexture(f[k]);
+  for (const k of ["main", "jfaA", "jfaB"]) if (f[k]) gl.deleteFramebuffer(f[k]);
+
+  f.w = w; f.h = h;
+  f.body = create2DTex(gl, w, h, gl.NEAREST);
+  f.aux = create2DTex(gl, w, h, gl.NEAREST);
+  f.seedA = create2DTex(gl, w, h, gl.NEAREST);
+  f.seedB = create2DTex(gl, w, h, gl.NEAREST);
+
+  f.main = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, f.main);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, f.body, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, f.aux, 0);
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+
+  f.jfaA = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, f.jfaA);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, f.seedA, 0);
+
+  f.jfaB = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, f.jfaB);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, f.seedB, 0);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+function uploadVolumeToGPU(vol) {
+  if (!glCtx.ready) return;
+  const gl = glCtx.gl;
+  const { w, h, n, rgba, sdfU8, normAo, emisU8 } = vol;
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+
+  const make3D = (oldTex, internalFmt, fmt, data, filter) => {
+    if (oldTex) gl.deleteTexture(oldTex);
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_3D, t);
+    gl.texImage3D(gl.TEXTURE_3D, 0, internalFmt, w, h, n, 0, fmt, gl.UNSIGNED_BYTE, data);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    return t;
+  };
+
+  glCtx.tex3d.albedo = make3D(glCtx.tex3d.albedo, gl.RGBA8, gl.RGBA, rgba, gl.LINEAR);
+  glCtx.tex3d.sdf = make3D(glCtx.tex3d.sdf, gl.R8, gl.RED, sdfU8, gl.LINEAR);
+  glCtx.tex3d.norm = make3D(glCtx.tex3d.norm, gl.RGBA8, gl.RGBA, normAo, gl.LINEAR);
+  glCtx.tex3d.emis = make3D(glCtx.tex3d.emis, gl.R8, gl.RED, emisU8, gl.NEAREST);
+}
+
+function renderWebGLFrame({
+  angleDeg = state.angle,
+  squash = state.squash,
+  spacing = state.spacing,
+  scale = state.scale,
+  maxSlices = state.slices,
+  slabThick = 1.0,
+  splitX = state.view === "compare" ? state.splitPos : -1.0,
+  modeA = state.modeA,
+  modeB = state.modeB,
+  transparentBg = false,
+  dpr = Math.min(window.devicePixelRatio || 1, 2),
+} = {}) {
+  const vol = state.vol;
+  if (!vol || !glCtx.ready) return;
+  const gl = glCtx.gl;
+  const env = getLightingEnv(state.timeOfDay, state.sunAngle);
+
+  const diag = Math.ceil(Math.hypot(vol.w, vol.h)) + 10;
+  const liftMax = Math.ceil(vol.n * Math.max(spacing, state.view === "exploded" ? 2.6 : 1.0));
+  const shadowPad = state.shadow ? Math.ceil(vol.n * 0.95) : 0;
+  const artW = diag + 14 + shadowPad;
+  const artH = Math.ceil(diag * squash) + liftMax + 18 + Math.ceil(shadowPad * squash * 0.5);
+
+  const effScale = scale * dpr;
+  const cw = Math.max(64, Math.round(artW * effScale));
+  const ch = Math.max(64, Math.round(artH * effScale));
+
+  if (canvas.width !== cw || canvas.height !== ch) {
+    canvas.width = cw;
+    canvas.height = ch;
+    canvas.style.width = `${Math.round(cw / dpr)}px`;
+    canvas.style.height = `${Math.round(ch / dpr)}px`;
+  }
+  ensureFBOs(cw, ch);
+
+  const cxArt = artW * 0.5;
+  const baseYArt = artH - diag * squash * 0.5 - 8.0;
+
+  gl.bindVertexArray(glCtx.vao);
+  gl.viewport(0, 0, cw, ch);
+
+  // PASS 1: Main multi-mode render -> fbo.main (MRT: body + aux)
+  const mp = glCtx.progs.main;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, glCtx.fbo.main);
+  gl.useProgram(mp.program);
+
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_3D, glCtx.tex3d.albedo); gl.uniform1i(mp.u.uAlbedoTex, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D, glCtx.tex3d.sdf);    gl.uniform1i(mp.u.uSdfTex, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_3D, glCtx.tex3d.norm);   gl.uniform1i(mp.u.uNormalTex, 2);
+  gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_3D, glCtx.tex3d.emis);   gl.uniform1i(mp.u.uEmisTex, 3);
+
+  gl.uniform3f(mp.u.uVolSize, vol.w, vol.h, vol.n);
+  gl.uniform1f(mp.u.uMaxSlices, maxSlices);
+  gl.uniform2f(mp.u.uResolution, cw, ch);
+  gl.uniform2f(mp.u.uOrigin, cxArt, baseYArt);
+  gl.uniform1f(mp.u.uScale, effScale);
+  gl.uniform1f(mp.u.uAngleRad, (angleDeg * Math.PI) / 180);
+  gl.uniform1f(mp.u.uSquash, squash);
+  gl.uniform1f(mp.u.uSpacing, spacing);
+  gl.uniform1f(mp.u.uSlabThick, slabThick);
+  gl.uniform1f(mp.u.uSdfRange, vol.sdfRange);
+  gl.uniform1i(mp.u.uModeA, modeA);
+  gl.uniform1i(mp.u.uModeB, modeB);
+  gl.uniform1f(mp.u.uSplitX, splitX);
+  gl.uniform1i(mp.u.uSamples, state.samples);
+  gl.uniform1i(mp.u.uShadeStyle, state.shadeStyle);
+  gl.uniform1i(mp.u.uShadowOn, state.shadow ? 1 : 0);
+  gl.uniform1i(mp.u.uSelfShadowOn, state.selfShadow ? 1 : 0);
+  gl.uniform3f(mp.u.uSunWorld, env.lx, env.ly, env.lz);
+  gl.uniform3fv(mp.u.uShMul, env.shMul);
+  gl.uniform3fv(mp.u.uMidMul, env.midMul);
+  gl.uniform3fv(mp.u.uLitMul, env.litMul);
+  gl.uniform1f(mp.u.uEmisGlow, env.emisGlow);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // PASS 2: Exact 2D Euclidean SDF Outline via Jump Flooding Algorithm (JFA)
+  let finalSeedTex = glCtx.fbo.seedA;
+  if (state.outlineWidth > 0.02) {
+    const ji = glCtx.progs.jfaInit;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, glCtx.fbo.jfaA);
+    gl.useProgram(ji.program);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, glCtx.fbo.body); gl.uniform1i(ji.u.uBodyTex, 0);
+    gl.uniform2f(ji.u.uResolution, cw, ch);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    const maxRad = Math.ceil(state.outlineWidth * effScale) + 3;
+    let step = 1;
+    while (step * 2 < maxRad) step *= 2;
+    const js = glCtx.progs.jfaStep;
+    gl.useProgram(js.program);
+    gl.uniform2f(js.u.uResolution, cw, ch);
+
+    let readTex = glCtx.fbo.seedA;
+    let writeFbo = glCtx.fbo.jfaB;
+    let writeTex = glCtx.fbo.seedB;
+    for (let s = step; s >= 1; s >>= 1) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, writeFbo);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, readTex); gl.uniform1i(js.u.uSeedTex, 0);
+      gl.uniform1f(js.u.uStep, s);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      finalSeedTex = writeTex;
+      if (writeFbo === glCtx.fbo.jfaB) {
+        readTex = glCtx.fbo.seedB; writeFbo = glCtx.fbo.jfaA; writeTex = glCtx.fbo.seedA;
+      } else {
+        readTex = glCtx.fbo.seedA; writeFbo = glCtx.fbo.jfaB; writeTex = glCtx.fbo.seedB;
+      }
+    }
+  }
+
+  // PASS 3: Final Linear-Light Composite + SDF AA Outline + Emissive Bloom
+  const cp = glCtx.progs.comp;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.useProgram(cp.program);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, glCtx.fbo.body); gl.uniform1i(cp.u.uBodyTex, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, glCtx.fbo.aux);  gl.uniform1i(cp.u.uAuxTex, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, finalSeedTex);   gl.uniform1i(cp.u.uSeedTex, 2);
+  gl.uniform2f(cp.u.uResolution, cw, ch);
+  gl.uniform1f(cp.u.uScale, effScale);
+  gl.uniform1f(cp.u.uOutlineWidth, state.outlineWidth);
+  gl.uniform3fv(cp.u.uBgSrgb, env.bg);
+  gl.uniform3fv(cp.u.uShadowSrgb, env.shCol);
+  gl.uniform3fv(cp.u.uOutlineSrgb, env.olCol);
+  gl.uniform1f(cp.u.uEmisGlow, env.emisGlow);
+  gl.uniform1i(cp.u.uTransparentBg, transparentBg ? 1 : 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+function updateLoupe() {
+  if (!state.loupe || !canvas.width || !canvas.height) return;
+  const sw = 39, sh = 39;
+  const sx = clamp(Math.round(state.hoverX * canvas.width - sw * 0.5), 0, Math.max(0, canvas.width - sw));
+  const sy = clamp(Math.round(state.hoverY * canvas.height - sh * 0.5), 0, Math.max(0, canvas.height - sh));
+  loupeCtx.imageSmoothingEnabled = false;
+  loupeCtx.clearRect(0, 0, loupeCanvas.width, loupeCanvas.height);
+  loupeCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, loupeCanvas.width, loupeCanvas.height);
+  // Subtle crosshair
+  loupeCtx.strokeStyle = "rgba(37, 99, 235, 0.55)";
+  loupeCtx.lineWidth = 1;
+  loupeCtx.beginPath();
+  loupeCtx.moveTo(78, 0); loupeCtx.lineTo(78, 156);
+  loupeCtx.moveTo(0, 78); loupeCtx.lineTo(156, 78);
+  loupeCtx.stroke();
+}
+
+function syncSplitHandlePosition() {
+  const sr = stage.getBoundingClientRect();
+  const cr = canvas.getBoundingClientRect();
+  if (cr.width > 0 && sr.width > 0) {
+    const px = (cr.left - sr.left) + cr.width * state.splitPos;
+    splitHandle.style.left = `${px.toFixed(1)}px`;
+  } else {
+    splitHandle.style.left = `${(state.splitPos * 100).toFixed(2)}%`;
+  }
+}
+
+function syncUI() {
+  const isCompare = state.view === "compare";
+  splitOverlay.classList.toggle("visible", isCompare);
+  els.modeA.style.display = isCompare ? "inline-block" : "none";
+  els.modeALabel.style.display = isCompare ? "inline" : "none";
+  els.modeBLabel.textContent = isCompare ? "Right:" : "Renderer:";
+
+  const mA = MODE_NAMES[state.modeA];
+  const mB = MODE_NAMES[state.modeB];
+  const spTag = (m) => (m === 0 ? "" : ` · ${m === 2 || m === 3 ? Math.min(state.samples, 4) : state.samples}×`);
+  tagLeft.textContent = `${mA}${spTag(state.modeA)}`;
+  tagRight.textContent = `${mB}${spTag(state.modeB)}`;
+  syncSplitHandlePosition();
+  loupeBox.classList.toggle("visible", state.loupe);
+}
+
+function drawFrame() {
+  if (!state.vol) return;
+  const t0 = performance.now();
+  const isExploded = state.view === "exploded";
+  const spacing = isExploded && state.playing
+    ? 1.0 + (0.5 - 0.5 * Math.cos(state.explodePhase)) * 1.8
+    : state.spacing;
+  const slabThick = isExploded ? Math.min(1.0, 0.85 / Math.max(spacing, 0.85)) : 1.0;
+  const maxSlices = state.view === "scan" ? Math.max(1, Math.min(state.slices, Math.round(state.scanZ))) : state.slices;
+
+  renderWebGLFrame({ spacing, slabThick, maxSlices });
+  if (state.view === "compare") syncSplitHandlePosition();
+  updateLoupe();
+
+  const dtMs = performance.now() - t0;
+  state.lastFrameMs = state.lastFrameMs * 0.8 + dtMs * 0.2;
+  const angStr = `${Math.round(((state.angle % 360) + 360) % 360)}°`;
+  const scanStr = state.view === "scan" ? ` · Z ${maxSlices}/${state.slices}` : "";
+  readout.textContent = `${angStr}${scanStr} · squash ${state.squash.toFixed(2)} · spacing ${spacing.toFixed(2)} · ${state.lastFrameMs.toFixed(2)} ms/frame`;
+}
+
+// ============================================================
+// ASSET LOADING (Embedded / Presets / Dropped Strip PNG)
+// ============================================================
+function loadImage(src) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = src;
+  });
+}
+
+function applyVolume(vol, name) {
+  state.vol = vol;
+  state.slices = vol.n;
+  state.scanZ = vol.n;
+  els.slices.value = String(vol.n);
+  titleText.textContent = name;
+  metaText.textContent = `${vol.n} slices · ${vol.w}×${vol.h}px`;
+  const ideal = clamp(Math.round((300 / Math.max(vol.w, vol.h, vol.n * 1.4)) * 2) / 2, 3, 10);
+  state.scale = ideal;
+  els.scale.value = String(ideal);
+  els.scaleOut.textContent = `${ideal.toFixed(1)}×`;
+  uploadVolumeToGPU(vol);
+  state.dirty = true;
+}
+
+async function loadStripImages(sheetImg, count, name, sdfImg = null, sdfRange = 6.0) {
+  const w = Math.floor(sheetImg.width / count);
+  const h = sheetImg.height;
+  if (w < 1 || h < 1) return;
+
+  const off = document.createElement("canvas");
+  off.width = sheetImg.width;
+  off.height = h;
+  const octx = off.getContext("2d", { willReadFrequently: true });
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(sheetImg, 0, 0);
+
+  const area = w * h;
+  const rgba = new Uint8Array(count * area * 4);
+  for (let z = 0; z < count; z++) {
+    const slice = octx.getImageData(z * w, 0, w, h).data;
+    rgba.set(slice, z * area * 4);
+  }
+
+  let explicitSdf = null;
+  if (sdfImg && sdfImg.width === sheetImg.width && sdfImg.height === h) {
+    octx.clearRect(0, 0, off.width, off.height);
+    octx.drawImage(sdfImg, 0, 0);
+    explicitSdf = new Float32Array(count * area);
+    for (let z = 0; z < count; z++) {
+      const sd = octx.getImageData(z * w, 0, w, h).data;
+      const base = z * area;
+      for (let i = 0; i < area; i++) {
+        explicitSdf[base + i] = ((sd[i * 4] - 128.0) / 127.0) * sdfRange;
+      }
+    }
+  }
+
+  const vol = buildVolumePack(w, h, count, rgba, explicitSdf, sdfRange);
+  applyVolume(vol, name);
+}
+
+function loadPreset(presetName) {
+  state.preset = presetName;
+  document.querySelectorAll("[data-preset]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.preset === presetName))
+  );
+  const titles = { cottage: "Cottage + 1px Weathervane", car: "Sports Car", lighthouse: "Striped Lighthouse" };
+  applyVolume(makePresetVolume(presetName), titles[presetName] || presetName);
+}
+
+// ============================================================
+// EFFICIENT BACKGROUND PROCESSING (content-visibility + visibilitychange)
+// ============================================================
+let rafId = 0;
+let lastT = performance.now();
+
+function tick(now) {
+  rafId = 0;
+  if (state.pausedByVisibility) return;
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+
+  if (state.vol) {
+    let needs = state.dirty;
+    if (state.playing) {
+      if (state.view === "compare" || state.view === "turntable") {
+        state.angle = (state.angle + dt * 38) % 360;
+        els.angle.value = state.angle.toFixed(1);
+        els.angleOut.textContent = `${Math.round(state.angle)}°`;
+        needs = true;
+      } else if (state.view === "scan") {
+        state.scanZ += dt * Math.max(8, state.slices * 0.42);
+        if (state.scanZ > state.slices + 6) state.scanZ = 1;
+        needs = true;
+      } else if (state.view === "exploded") {
+        state.explodePhase += dt * 1.5;
+        state.angle = (state.angle + dt * 24) % 360;
+        needs = true;
+      }
+    }
+    if (needs) {
+      drawFrame();
+      state.dirty = false;
+    }
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+function resumeLoop() {
+  state.pausedByVisibility = false;
+  lastT = performance.now();
+  if (!rafId) rafId = requestAnimationFrame(tick);
+}
+
+function pauseLoop() {
+  state.pausedByVisibility = true;
+  if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+}
+
+// Direct listener on content-visibility: auto element (per Modern Web Guidance)
+stage.addEventListener("contentvisibilityautostatechange", (e) => {
+  if (e.skipped) pauseLoop(); else resumeLoop();
+});
+if (!("contentVisibility" in document.documentElement.style)) {
+  const io = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) resumeLoop(); else pauseLoop();
+  }, { rootMargin: "200px" });
+  io.observe(stage);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) pauseLoop(); else resumeLoop();
+});
+
+// ============================================================
+// INTERACTIONS (Orbit, Shift+Sun, A/B Split Drag, Hover Loupe, Export)
+// ============================================================
+let drag = null;
+let draggingSplit = false;
+
+splitHandle.addEventListener("pointerdown", (e) => {
+  e.stopPropagation();
+  draggingSplit = true;
+  stage.classList.add("dragging-split");
+  splitHandle.setPointerCapture(e.pointerId);
+});
+splitHandle.addEventListener("pointermove", (e) => {
+  if (!draggingSplit) return;
+  const r = canvas.getBoundingClientRect();
+  state.splitPos = clamp((e.clientX - r.left) / Math.max(r.width, 1), 0.05, 0.95);
+  syncUI();
+  state.dirty = true;
+});
+splitHandle.addEventListener("pointerup", () => {
+  draggingSplit = false;
+  stage.classList.remove("dragging-split");
+});
+
+stage.addEventListener("pointerdown", (e) => {
+  if (e.target.closest(".toolbar-float") || e.target.closest(".split-handle")) return;
+  stage.setPointerCapture(e.pointerId);
+  drag = { x: e.clientX, y: e.clientY, angle: state.angle, squash: state.squash, sun: state.sunAngle, shift: e.shiftKey };
+  if (!e.shiftKey) {
+    state.playing = false;
+    els.play.textContent = "Play";
+  }
+});
+stage.addEventListener("pointermove", (e) => {
+  const r = canvas.getBoundingClientRect();
+  if (r.width > 0 && r.height > 0) {
+    state.hoverX = clamp((e.clientX - r.left) / r.width, 0, 1);
+    state.hoverY = clamp((e.clientY - r.top) / r.height, 0, 1);
+    if (state.loupe) updateLoupe();
+  }
+  if (!drag) return;
+  if (drag.shift) {
+    state.sunAngle = ((drag.sun + (e.clientX - drag.x) * 0.7) % 360 + 360) % 360;
+    els.sun.value = String(Math.round(state.sunAngle));
+    els.sunOut.textContent = `${Math.round(state.sunAngle)}°`;
+  } else {
+    state.angle = ((drag.angle + (e.clientX - drag.x) * 0.55) % 360 + 360) % 360;
+    state.squash = clamp(drag.squash + (e.clientY - drag.y) * 0.0022, 0.4, 1.0);
+    els.angle.value = state.angle.toFixed(1);
+    els.angleOut.textContent = `${Math.round(state.angle)}°`;
+    els.squash.value = state.squash.toFixed(2);
+    els.squashOut.textContent = state.squash.toFixed(2);
+  }
+  state.dirty = true;
+});
+stage.addEventListener("pointerup", () => { drag = null; });
+
+document.querySelectorAll("[data-preset]").forEach((btn) => {
+  btn.addEventListener("click", () => loadPreset(btn.dataset.preset));
+});
+document.querySelectorAll("[data-view]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.view = btn.dataset.view;
+    document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+    if (state.view === "scan") state.scanZ = 1;
+    if (state.view === "exploded") state.explodePhase = 0;
+    syncUI();
+    state.dirty = true;
+  });
+});
+document.querySelectorAll("[data-samples]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.samples = Number(btn.dataset.samples);
+    document.querySelectorAll("[data-samples]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+    syncUI();
+    state.dirty = true;
+  });
+});
+
+els.modeA.addEventListener("change", () => { state.modeA = Number(els.modeA.value); syncUI(); state.dirty = true; });
+els.modeB.addEventListener("change", () => { state.modeB = Number(els.modeB.value); syncUI(); state.dirty = true; });
+els.shade.addEventListener("change", () => { state.shadeStyle = Number(els.shade.value); state.dirty = true; });
+els.loupe.addEventListener("click", () => {
+  state.loupe = !state.loupe;
+  els.loupe.setAttribute("aria-pressed", String(state.loupe));
+  syncUI();
+  if (state.loupe) updateLoupe();
+});
+els.play.addEventListener("click", () => {
+  state.playing = !state.playing;
+  els.play.textContent = state.playing ? "Pause" : "Play";
+  state.dirty = true;
+});
+window.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.code === "Space") { e.preventDefault(); els.play.click(); }
+});
+
+els.angle.addEventListener("input", () => {
+  state.angle = Number(els.angle.value);
+  els.angleOut.textContent = `${Math.round(state.angle)}°`;
+  state.playing = false; els.play.textContent = "Play";
+  state.dirty = true;
+});
+els.squash.addEventListener("input", () => { state.squash = Number(els.squash.value); els.squashOut.textContent = state.squash.toFixed(2); state.dirty = true; });
+els.spacing.addEventListener("input", () => { state.spacing = Number(els.spacing.value); els.spacingOut.textContent = state.spacing.toFixed(2); state.dirty = true; });
+els.scale.addEventListener("input", () => { state.scale = Number(els.scale.value); els.scaleOut.textContent = `${state.scale.toFixed(1)}×`; state.dirty = true; });
+els.outline.addEventListener("input", () => { state.outlineWidth = Number(els.outline.value); els.outlineOut.textContent = state.outlineWidth.toFixed(2); state.dirty = true; });
+els.time.addEventListener("input", () => { state.timeOfDay = Number(els.time.value); updateStageTheme(); state.dirty = true; });
+els.sun.addEventListener("input", () => { state.sunAngle = Number(els.sun.value); els.sunOut.textContent = `${state.sunAngle}°`; state.dirty = true; });
+els.shadow.addEventListener("change", () => { state.shadow = els.shadow.checked; state.dirty = true; });
+els.selfShadow.addEventListener("change", () => { state.selfShadow = els.selfShadow.checked; state.dirty = true; });
+
+let loadedStripImg = null;
+let loadedStripName = "";
+els.slices.addEventListener("change", () => {
+  const n = Math.max(1, Number(els.slices.value) || 1);
+  if (loadedStripImg) loadStripImages(loadedStripImg, n, loadedStripName);
+});
+
+async function handleFile(file) {
+  const url = URL.createObjectURL(file);
+  const img = await loadImage(url);
+  loadedStripImg = img;
+  loadedStripName = file.name.replace(/\.[^.]+$/, "");
+  // Heuristic: guess square-ish slice count when width >= 2 * height
+  const guessed = img.height > 0 && img.width >= img.height * 2
+    ? Math.max(1, Math.round(img.width / img.height))
+    : state.slices;
+  document.querySelectorAll("[data-preset]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+  await loadStripImages(img, guessed, loadedStripName);
+}
+
+document.getElementById("fileInput").addEventListener("change", (e) => {
+  if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+});
+window.addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("dragging"); });
+window.addEventListener("dragleave", (e) => { if (e.target === document.documentElement) document.body.classList.remove("dragging"); });
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  document.body.classList.remove("dragging");
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+// Export transparent 16-direction AA sprite sheet directly from GPU!
+els.exportBtn.addEventListener("click", () => {
+  if (!state.vol || !glCtx.ready) return;
+  const dirs = 16;
+  const expScale = Math.max(2, Math.min(4, Math.round(state.scale / 2)));
+  const frames = [];
+  for (let i = 0; i < dirs; i++) {
+    renderWebGLFrame({
+      angleDeg: (i * 360) / dirs,
+      scale: expScale,
+      splitX: -1.0,
+      modeB: state.modeB,
+      transparentBg: true,
+      dpr: 1,
+    });
+    const c = document.createElement("canvas");
+    c.width = canvas.width;
+    c.height = canvas.height;
+    c.getContext("2d").drawImage(canvas, 0, 0);
+    frames.push(c);
+  }
+  const fw = frames[0].width, fh = frames[0].height;
+  const out = document.createElement("canvas");
+  out.width = fw * dirs;
+  out.height = fh;
+  const octx = out.getContext("2d");
+  frames.forEach((f, i) => octx.drawImage(f, i * fw, 0));
+  const a = document.createElement("a");
+  a.download = `${titleText.textContent.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-16dir-aa.png`;
+  a.href = out.toDataURL("image/png");
+  a.click();
+  state.dirty = true;
+});
+
+async function init() {
+  initWebGL2();
+  updateStageTheme();
+  syncUI();
+  if (EMBEDDED) {
+    document.getElementById("presetGroup").style.display = "none";
+    const sheetImg = await loadImage(EMBEDDED.sheet);
+    const sdfImg = EMBEDDED.sdfSheet ? await loadImage(EMBEDDED.sdfSheet) : null;
+    loadedStripImg = sheetImg;
+    loadedStripName = EMBEDDED.title || "Custom Stack";
+    await loadStripImages(sheetImg, EMBEDDED.slices, loadedStripName, sdfImg, EMBEDDED.sdfRange || 6.0);
+  } else {
+    loadPreset("cottage");
+  }
+  resumeLoop();
+}
+init();
+</script>
+</body>
+</html>
