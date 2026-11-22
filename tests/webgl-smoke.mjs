@@ -118,6 +118,10 @@ try {
 
   for (const c of checks) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    // Keep CI smoke test 100% hermetic (avoid unauthenticated GitHub API rate-limit 403 on shared CI runner IPs)
+    await page.route("https://api.github.com/**", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: '{"stargazers_count":0}' }),
+    );
     const errors = [];
     page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
     page.on("console", (msg) => {
