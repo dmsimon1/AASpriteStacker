@@ -266,3 +266,85 @@ export function createCottageBlueprint(id = "aa-cottage"): BlueprintSpec {
     },
   };
 }
+
+/**
+ * Sleek crimson retro sports coupe with chunky tires + silver rims, twin white racing stripes,
+ * wraparound tinted windshield, 1px-strut rear spoiler, and glowing headlights & taillights.
+ * Ground-anchored pivot [12, 22, 0] so tires sit flush on Y = 0 road tiles.
+ */
+export function createSportsCarBlueprint(id = "sports-car"): BlueprintSpec {
+  const TIRE: [number, number, number] = [30, 34, 42];
+  const RIM: [number, number, number] = [196, 206, 222];
+  const CHASSIS: [number, number, number] = [44, 50, 64];
+  const RED: [number, number, number] = [216, 44, 58];
+  const RED_HI: [number, number, number] = [232, 60, 74];
+  const RED_DARK: [number, number, number] = [174, 32, 46];
+  const STRIPE: [number, number, number] = [245, 244, 240];
+  const GLASS: [number, number, number] = [66, 122, 166];
+  const GLASS_HI: [number, number, number] = [118, 178, 218];
+  const HEADLIGHT: [number, number, number] = [255, 244, 172];
+  const TAILLIGHT: [number, number, number] = [255, 62, 76];
+  const STRUT: [number, number, number] = [40, 44, 56];
+
+  return {
+    id,
+    name: "Retro Sports Car",
+    size: [24, 44, 20],
+    voxelScale: 0.21,
+    pivot: [12, 22, 0],
+    smoothSdf: 0.14,
+    ops: [
+      // 4 chunky tires (front y=33, rear y=10) + metallic silver rims on outer face
+      { op: "ellipsoid", center: [2.5, 10, 2.8], radii: [2.0, 3.6, 3.0], color: TIRE, mirrorX: true },
+      { op: "ellipsoid", center: [2.5, 33, 2.8], radii: [2.0, 3.6, 3.0], color: TIRE, mirrorX: true },
+      { op: "ellipsoid", center: [1.3, 10, 2.8], radii: [0.8, 1.8, 1.6], color: RIM, mirrorX: true },
+      { op: "ellipsoid", center: [1.3, 33, 2.8], radii: [0.8, 1.8, 1.6], color: RIM, mirrorX: true },
+
+      // Dark charcoal underbody chassis + side skirts (connects all 4 wheels cleanly)
+      { op: "box", min: [3, 3, 2], max: [20, 40, 3], color: CHASSIS },
+
+      // Main crimson sculpted coupe body + tapered nose & tail bumpers
+      { op: "box", min: [2, 5, 4], max: [21, 38, 8], color: RED },
+      { op: "box", min: [3, 3, 4], max: [20, 40, 8], color: RED },
+      { op: "box", min: [4, 2, 4], max: [19, 41, 7], color: RED_DARK },
+      // Hood & upper deck (z=9..10) slightly inset for crisp beveled fenders
+      { op: "box", min: [3, 4, 9], max: [20, 39, 10], color: RED_HI },
+      { op: "box", min: [5, 39, 8], max: [18, 41, 9], color: RED },
+
+      // Twin white racing stripes down hood, deck & trunk
+      { op: "paint", min: [10, 3, 9], max: [10, 40, 10], color: STRIPE, mirrorX: true },
+
+      // Glowing front headlights (+Y nose) & rear taillights (-Y tail)
+      { op: "box", min: [5, 40, 6], max: [7, 41, 8], color: HEADLIGHT, emissive: true, mirrorX: true },
+      { op: "box", min: [4, 2, 6], max: [7, 3, 7], color: TAILLIGHT, emissive: true, mirrorX: true },
+
+      // Side mirrors (crisp silhouette detail)
+      { op: "box", min: [1, 25, 10], max: [3, 27, 11], color: RED_DARK, mirrorX: true },
+
+      // Sloped wraparound tinted cabin & windshield (z=10..16)
+      { op: "wedge", min: [4, 10, 10], max: [19, 31, 16], taperAxis: "+z", shrinkAxis: "y", minScale: 0.56, color: GLASS },
+      // Narrow cabin slightly in X toward roof
+      { op: "box", min: [4, 10, 14], max: [4, 31, 16], subtract: true, mirrorX: true },
+      // Specular glass highlight band on front windshield
+      { op: "paint", min: [7, 25, 12], max: [16, 30, 14], color: GLASS_HI },
+      // Solid crimson roof cap + twin white racing stripes on top
+      { op: "box", min: [5, 14, 15], max: [18, 25, 16], color: RED_HI },
+      { op: "paint", min: [10, 14, 15], max: [10, 25, 16], color: STRIPE, mirrorX: true },
+      // A-pillars & C-pillars framing the glass
+      { op: "box", min: [5, 12, 11], max: [5, 14, 15], color: RED_DARK, mirrorX: true },
+      { op: "box", min: [5, 25, 11], max: [5, 27, 15], color: RED_DARK, mirrorX: true },
+
+      // Raised rear wing spoiler on crisp 1px struts (ultimate 1px anti-aliasing test!)
+      { op: "box", min: [6, 5, 10], max: [6, 5, 13], color: STRUT, mirrorX: true },
+      { op: "box", min: [3, 3, 13], max: [20, 6, 13], color: RED },
+      { op: "box", min: [3, 3, 12], max: [3, 6, 14], color: RED_DARK, mirrorX: true },
+    ],
+    sockets: {
+      headlightL: { pos: [6, 42, 7], dir: [0, 1, 0] },
+      headlightR: { pos: [18, 42, 7], dir: [0, 1, 0] },
+      tailL: { pos: [6, 2, 6.5], dir: [0, -1, 0] },
+      tailR: { pos: [18, 2, 6.5], dir: [0, -1, 0] },
+      roof: { pos: [12, 19.5, 17], dir: [0, 0, 1] },
+    },
+  };
+}

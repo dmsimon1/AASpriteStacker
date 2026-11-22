@@ -143,6 +143,7 @@ interface BlueprintSpec {
 | `"paint"` | `min: Vec3, max: Vec3, color: RGB` | `emissive`, `mirrorX` |
 
 ### Built-In Presets (`presets.ts`)
+- `createSportsCarBlueprint(id = "sports-car")` — Sleek crimson retro sports coupe with chunky tires, silver rims, twin white racing stripes, 1px-strut rear spoiler, and glowing headlights/taillights (`headlightL`, `headlightR`, `tailL`, `tailR`, `roof` sockets).
 - `createCottageBlueprint(id = "aa-cottage")` — Classic 2.5D pixel-art cottage with pitched blue-shingled roof, glowing windows, brick chimney, and 1px rooftop weathervane (`chimney`, `vane` sockets).
 - `createFighterJetBlueprint(id = "fighter-jet")` — Swept-wing twin-engine interceptor with `thrusterL`, `thrusterR`, `wingtipL`, `wingtipR`, `cockpitCam` sockets.
 - `createCloudBlueprint(variant: 0 | 1 | 2 = 0, id?)` — 3-tone sunlit multi-lobed volumetric cumulus clouds.

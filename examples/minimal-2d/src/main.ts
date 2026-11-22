@@ -17,7 +17,7 @@ import {
   // loadSliceStripUrl,
   // loadVoxUrl,
 } from "@aastack/core";
-import { compileBlueprint, createCottageBlueprint } from "@aastack/blueprint";
+import { compileBlueprint, createSportsCarBlueprint } from "@aastack/blueprint";
 
 const stageEl = document.getElementById("stage") as HTMLElement;
 const tileCanvas = document.getElementById("tilemap2d") as HTMLCanvasElement;
@@ -28,34 +28,34 @@ const splitBtn = document.getElementById("splitBtn") as HTMLButtonElement;
 const ctx2d = tileCanvas.getContext("2d")!;
 
 const PRESET_META: Record<IsometricPreset, { label: string; orthoSize: number }> = {
-  "dimetric-2to1": { label: "dimetric-2to1 · 30° pitch · exact 2:1 diamond grid", orthoSize: 10.5 },
-  "isometric": { label: "isometric · 35.264° axonometric · equal X/Y/Z axes", orthoSize: 10.5 },
-  "oblique-stack": { label: "oblique-stack · un-foreshortened XZ · pure vertical slice skew", orthoSize: 11.5 },
-  "topdown-3quarter": { label: "topdown-3quarter · 55° ortho RPG tilt", orthoSize: 10.8 },
+  "dimetric-2to1": { label: "dimetric-2to1 · 30° pitch · exact 2:1 diamond grid", orthoSize: 10.2 },
+  "isometric": { label: "isometric · 35.264° axonometric · equal X/Y/Z axes", orthoSize: 10.2 },
+  "oblique-stack": { label: "oblique-stack · un-foreshortened XZ · pure vertical slice skew", orthoSize: 11.2 },
+  "topdown-3quarter": { label: "topdown-3quarter · 55° ortho RPG tilt", orthoSize: 10.5 },
 };
 
 // 1. Create renderer with background: "transparent" to overlay any existing 2D map / Canvas2D / PixiJS layer
 const renderer = new AASpriteRenderer(aaCanvas, { background: "transparent", quality: "ultra" });
 const world = new SceneWorld();
 
-// 2. Register a sprite stack (or replace with: await loadSliceStripUrl("/car.png", { id: "prop", slices: 24 }))
-//    or MagicaVoxel: await loadVoxUrl("/tank.vox", { id: "prop" })
-const cottage = compileBlueprint(createCottageBlueprint("prop"));
-world.registerAsset(cottage);
-// Place cottage base flush on the Y = 0 tile plane (pivot.z * voxelScale = 10 * 0.28 = 2.8)
-const baseY = cottage.pivot[2] * cottage.voxelScale;
+// 2. Register a sprite stack (or replace with: await loadSliceStripUrl("/car.png", { id: "car", slices: 24 }))
+//    or MagicaVoxel: await loadVoxUrl("/car.vox", { id: "car" })
+const car = compileBlueprint(createSportsCarBlueprint("car"));
+world.registerAsset(car);
+// Car pivot is ground-anchored at z = 0 so its 4 tires rest flush on the Y = 0 road plane
+const baseY = car.pivot[2] * car.voxelScale;
 
 let activePreset: IsometricPreset = "dimetric-2to1";
 let targetTileX = 0;
 let targetTileZ = 0;
-const TILE_SIZE = 6.0;
+const TILE_SIZE = 6.2;
 
 function applyProjection(preset: IsometricPreset): void {
   activePreset = preset;
   const meta = PRESET_META[preset];
   world.doc.camera = createIsometricCamera({
     preset,
-    target: [0, 2.4, 0],
+    target: [0, 1.4, 0],
     orthoSize: meta.orthoSize,
     obliqueSkew: 0.85,
   });
@@ -67,7 +67,7 @@ world.applyPatch([
   { op: "set", path: "aaMode", value: "voxel-dda" },
   { op: "set", path: "samples", value: 8 },
   { op: "set", path: "splitCompare", value: { enabled: false, splitX: 0.5, leftMode: "legacy", rightMode: "voxel-dda" } },
-  { op: "spawn", entity: { id: "hero", assetId: "prop", pos: [0, baseY, 0], rot: quatFromYawPitchRoll(0.55, 0, 0), scale: 1, outline: true, castShadow: false } },
+  { op: "spawn", entity: { id: "hero", assetId: "car", pos: [0, baseY, 0], rot: quatFromYawPitchRoll(0.55, 0, 0), scale: 1, outline: true, castShadow: false } },
 ]);
 
 // Draw a live 2D HTML5 Canvas tilemap strictly synchronized with the WebGL2 camera via projectWorldToScreen()
@@ -158,7 +158,7 @@ splitBtn.addEventListener("click", () => {
   splitBtn.setAttribute("aria-pressed", String(world.doc.splitCompare.enabled));
 });
 
-// 4. Cool 60 fps rotation + smooth tile-glide loop
+// 4. Cool 60 fps loop: smoothly steers nose-first toward clicked tiles, gently rotates when parked to showcase AA!
 let yaw = 0.55;
 let last = performance.now();
 let frame = 0;
@@ -171,14 +171,25 @@ function loop(now: number) {
   }
   const dt = Math.min(elapsed / 1000, 0.05);
   last = now;
-  yaw += 0.42 * dt;
   const ent = world.getEntity("hero");
   if (ent) {
-    ent.rot = quatFromYawPitchRoll(yaw, 0, 0);
     const goalX = targetTileX * TILE_SIZE;
     const goalZ = targetTileZ * TILE_SIZE;
-    ent.pos[0] += (goalX - ent.pos[0]) * Math.min(1, dt * 8);
-    ent.pos[2] += (goalZ - ent.pos[2]) * Math.min(1, dt * 8);
+    const dx = goalX - ent.pos[0];
+    const dz = goalZ - ent.pos[2];
+    const dist = Math.hypot(dx, dz);
+    if (dist > 0.12) {
+      // Steer car nose (-Z local forward) smoothly toward destination tile
+      const desiredYaw = Math.atan2(-dx, -dz);
+      let delta = ((desiredYaw - yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      yaw += delta * Math.min(1, dt * 9);
+      const step = Math.min(dist, dt * 13);
+      ent.pos[0] += (dx / dist) * step;
+      ent.pos[2] += (dz / dist) * step;
+    } else {
+      yaw += 0.42 * dt;
+    }
+    ent.rot = quatFromYawPitchRoll(yaw, 0, 0);
   }
   renderer.render(world);
   if (++frame % 20 === 0) {

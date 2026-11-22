@@ -121,13 +121,13 @@ function initHeroStage() {
   world.registerAsset(compileBlueprint(createFighterJetBlueprint("fighter-jet")));
   world.registerAsset(compileBlueprint(createSkyGateBlueprint("sky-gate")));
 
-  let currentSubject: SubjectKey = "cottage";
+  let currentSubject: SubjectKey = "jet";
   let loupeEnabled = true;
   let userPaused = false;
 
   // Start at a flattering diagonal rotation (~36 deg) so aliasing vs AA is instant on frame 1!
   let spinYaw = (36 * Math.PI) / 180;
-  let orbitPitchDeg = SUBJECTS.cottage.elevDeg;
+  let orbitPitchDeg = SUBJECTS.jet.elevDeg;
 
   const applySubject = (key: SubjectKey) => {
     currentSubject = key;
@@ -195,7 +195,7 @@ function initHeroStage() {
     if (loupeCap) loupeCap.textContent = `4× · No AA | AA ${spp}×`;
   };
 
-  applySubject("cottage");
+  applySubject("jet");
 
   for (const btn of subjectBtns) {
     btn.addEventListener("click", () => {

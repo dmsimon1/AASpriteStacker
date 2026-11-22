@@ -25,6 +25,7 @@ import {
   createCottageBlueprint,
   createFighterJetBlueprint,
   createSkyGateBlueprint,
+  createSportsCarBlueprint,
 } from "../packages/blueprint/dist/index.js";
 
 test("6-DOF quaternion & asset-to-world right-handed mapping", () => {
@@ -162,10 +163,14 @@ test("SceneWorld patchable IR, Undo/Redo, Snapshot/Restore, Sockets, and 3D Voxe
 });
 
 test("Drop-in loaders, Cottage preset, and genre-agnostic SceneWorld partial options", () => {
-  // Cottage preset compiles cleanly with sockets & expected dimensions
+  // Cottage & Sports Car presets compile cleanly with sockets & expected dimensions
   const cottage = compileBlueprint(createCottageBlueprint());
   assert.deepEqual([cottage.w, cottage.l, cottage.h], [24, 24, 28]);
   assert.ok(cottage.sockets.chimney && cottage.sockets.vane);
+
+  const car = compileBlueprint(createSportsCarBlueprint());
+  assert.deepEqual([car.w, car.l, car.h], [24, 44, 20]);
+  assert.ok(car.sockets.headlightL && car.sockets.tailR && car.sockets.roof);
 
   // Horizontal slice-strip loader decodes W*slices x L pixel buffer accurately
   const w = 2, l = 2, slices = 3;
