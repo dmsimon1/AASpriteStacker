@@ -6,11 +6,12 @@ Shader "AASpriteStacker/URP/SpriteStackAA"
     Properties
     {
         _MainTex ("Slice Strip (Horizontal PNG)", 2D) = "white" {}
-        _Slices ("Slice Count", Int) = 36
+        _Slices ("Slice Count", Int) = 20
         _AngleRad ("Rotation Angle (Radians)", Float) = 0.6
         _Squash ("Vertical Squash (0.4..1.0)", Range(0.4, 1.0)) = 0.75
         _Spacing ("Layer Spacing", Range(0.5, 2.5)) = 1.0
         _DisplayScale ("Display Pixel Scale", Float) = 6.0
+        _Samples ("RGSS Samples (1, 2, 4, or 8)", Range(1, 8)) = 4
         _SunDir ("Sun Direction", Vector) = (0.45, 0.40, 0.80, 0)
     }
 
@@ -38,6 +39,7 @@ Shader "AASpriteStacker/URP/SpriteStackAA"
                 float _Squash;
                 float _Spacing;
                 float _DisplayScale;
+                int _Samples;
                 float4 _SunDir;
             CBUFFER_END
 
@@ -53,12 +55,24 @@ Shader "AASpriteStacker/URP/SpriteStackAA"
                 float2 uv : TEXCOORD0;
             };
 
-            static const float2 RGSS4[4] = {
-                float2(-0.375, -0.125),
-                float2( 0.125, -0.375),
-                float2( 0.375,  0.125),
-                float2(-0.125,  0.375)
-            };
+            float2 GetRgssOffset(int idx, int count)
+            {
+                if (count <= 1) return float2(0.0, 0.0);
+                if (count == 2) return idx == 0 ? float2(-0.25, -0.25) : float2(0.25, 0.25);
+                if (count <= 4)
+                {
+                    static const float2 r4[4] = {
+                        float2(-0.375, -0.125), float2( 0.125, -0.375),
+                        float2( 0.375,  0.125), float2(-0.125,  0.375)
+                    };
+                    return r4[idx];
+                }
+                static const float2 r8[8] = {
+                    float2( 1.0, -3.0), float2(-1.0,  3.0), float2( 5.0,  1.0), float2(-3.0, -5.0),
+                    float2(-5.0,  5.0), float2(-7.0, -1.0), float2( 3.0,  7.0), float2( 7.0, -7.0)
+                };
+                return r8[idx] / 16.0;
+            }
 
             Varyings vert(Attributes IN)
             {
@@ -164,15 +178,17 @@ Shader "AASpriteStacker/URP/SpriteStackAA"
                 float3 wL = normalize(_SunDir.xyz);
                 float3 objL = normalize(float3(wL.x * ca + wL.y * sa, -wL.x * sa + wL.y * ca, wL.z));
 
+                int spp = _Samples <= 1 ? 1 : (_Samples <= 2 ? 2 : (_Samples <= 4 ? 4 : 8));
                 float2 uvTopDown = float2(IN.uv.x, 1.0 - IN.uv.y);
                 float4 acc = float4(0.0, 0.0, 0.0, 0.0);
-                [unroll]
-                for (int i = 0; i < 4; i++)
+                [loop]
+                for (int i = 0; i < 8; i++)
                 {
-                    float2 artCoord = (uvTopDown * boxArt) + (RGSS4[i] / max(_DisplayScale, 1.0)) - origin;
+                    if (i >= spp) break;
+                    float2 artCoord = (uvTopDown * boxArt) + (GetRgssOffset(i, spp) / max(_DisplayScale, 1.0)) - origin;
                     acc += TraceStackRay(artCoord, vol, ca, sa, objL);
                 }
-                acc *= 0.25;
+                acc /= float(spp);
                 float3 rgb = acc.a > 1e-4 ? (acc.rgb / acc.a) : float3(0.0, 0.0, 0.0);
                 return half4(rgb, acc.a);
             }

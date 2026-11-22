@@ -21,6 +21,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./terrain": {
+      "types": "./dist/terrain-shader.d.ts",
+      "import": "./dist/terrain-shader.js"
     }
   },
   "scripts": {

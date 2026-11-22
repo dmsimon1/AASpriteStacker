@@ -25,6 +25,7 @@ const aaCanvas = document.getElementById("aaCanvas") as HTMLCanvasElement;
 const statsEl = document.getElementById("stats")!;
 const projBadge = document.getElementById("projBadge")!;
 const splitBtn = document.getElementById("splitBtn") as HTMLButtonElement;
+const crowdBtn = document.getElementById("crowdBtn") as HTMLButtonElement;
 const ctx2d = tileCanvas.getContext("2d")!;
 
 const PRESET_META: Record<IsometricPreset, { label: string; orthoSize: number }> = {
@@ -46,6 +47,7 @@ world.registerAsset(car);
 const baseY = car.pivot[2] * car.voxelScale;
 
 let activePreset: IsometricPreset = "dimetric-2to1";
+let crowdMode = false;
 let targetTileX = 0;
 let targetTileZ = 0;
 const TILE_SIZE = 6.2;
@@ -56,12 +58,54 @@ function applyProjection(preset: IsometricPreset): void {
   world.doc.camera = createIsometricCamera({
     preset,
     target: [0, 1.4, 0],
-    orthoSize: meta.orthoSize,
+    orthoSize: crowdMode ? meta.orthoSize * 2.5 : meta.orthoSize,
     obliqueSkew: 0.85,
   });
-  projBadge.textContent = meta.label;
+  projBadge.textContent = crowdMode
+    ? `${preset} · 64× hardware-instanced cars (1 OBB draw call)`
+    : meta.label;
   drawTilemap2D();
 }
+
+function setCrowdMode(enabled: boolean): void {
+  crowdMode = enabled;
+  crowdBtn.setAttribute("aria-pressed", String(enabled));
+  world.doc.entities = [];
+  if (!enabled) {
+    world.doc.entities.push({
+      id: "hero",
+      assetId: "car",
+      pos: [targetTileX * TILE_SIZE, baseY, targetTileZ * TILE_SIZE],
+      rot: quatFromYawPitchRoll(yaw, 0, 0),
+      scale: 1,
+      outline: true,
+      castShadow: false,
+    });
+  } else {
+    const spacing = 5.4;
+    let idx = 0;
+    for (let gx = 0; gx < 8; gx++) {
+      for (let gz = 0; gz < 8; gz++) {
+        const x = (gx - 3.5) * spacing;
+        const z = (gz - 3.5) * spacing;
+        world.doc.entities.push({
+          id: idx === 0 ? "hero" : `crowd-${idx}`,
+          assetId: "car",
+          pos: [x, baseY * 0.72, z],
+          rot: quatFromYawPitchRoll(yaw + (gx * 0.25 + gz * 0.18), 0, 0),
+          scale: 0.72,
+          outline: true,
+          castShadow: false,
+        });
+        idx++;
+      }
+    }
+  }
+  applyProjection(activePreset);
+}
+
+// Expose live hooks for devtools inspection and headless CI shader verification
+(window as unknown as Record<string, unknown>).__AA_ISO__ = { world, renderer, setCrowdMode };
 
 world.applyPatch([
   { op: "set", path: "aaMode", value: "voxel-dda" },
@@ -85,7 +129,7 @@ function drawTilemap2D(): void {
   ctx2d.fillRect(0, 0, w, h);
 
   const cam = world.doc.camera;
-  const range = 5;
+  const range = crowdMode ? 7 : 5;
   for (let gx = -range; gx <= range; gx++) {
     for (let gz = -range; gz <= range; gz++) {
       const x0 = (gx - 0.5) * TILE_SIZE;
@@ -157,6 +201,9 @@ splitBtn.addEventListener("click", () => {
   world.doc.splitCompare.enabled = !world.doc.splitCompare.enabled;
   splitBtn.setAttribute("aria-pressed", String(world.doc.splitCompare.enabled));
 });
+crowdBtn.addEventListener("click", () => {
+  setCrowdMode(!crowdMode);
+});
 
 // 4. Cool 60 fps loop: smoothly steers nose-first toward clicked tiles, gently rotates when parked to showcase AA!
 let yaw = 0.55;
@@ -171,30 +218,40 @@ function loop(now: number) {
   }
   const dt = Math.min(elapsed / 1000, 0.05);
   last = now;
-  const ent = world.getEntity("hero");
-  if (ent) {
-    const goalX = targetTileX * TILE_SIZE;
-    const goalZ = targetTileZ * TILE_SIZE;
-    const dx = goalX - ent.pos[0];
-    const dz = goalZ - ent.pos[2];
-    const dist = Math.hypot(dx, dz);
-    if (dist > 0.12) {
-      // Steer car nose (-Z local forward) smoothly toward destination tile
-      const desiredYaw = Math.atan2(-dx, -dz);
-      let delta = ((desiredYaw - yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      yaw += delta * Math.min(1, dt * 9);
-      const step = Math.min(dist, dt * 13);
-      ent.pos[0] += (dx / dist) * step;
-      ent.pos[2] += (dz / dist) * step;
-    } else {
-      yaw += 0.42 * dt;
+  if (crowdMode) {
+    yaw += 0.48 * dt;
+    const ents = world.doc.entities;
+    for (let i = 0; i < ents.length; i++) {
+      const gx = (i >> 3) & 7;
+      const gz = i & 7;
+      ents[i].rot = quatFromYawPitchRoll(yaw + gx * 0.25 + gz * 0.18, 0, 0);
     }
-    ent.rot = quatFromYawPitchRoll(yaw, 0, 0);
+  } else {
+    const ent = world.getEntity("hero");
+    if (ent) {
+      const goalX = targetTileX * TILE_SIZE;
+      const goalZ = targetTileZ * TILE_SIZE;
+      const dx = goalX - ent.pos[0];
+      const dz = goalZ - ent.pos[2];
+      const dist = Math.hypot(dx, dz);
+      if (dist > 0.12) {
+        // Steer car nose (-Z local forward) smoothly toward destination tile
+        const desiredYaw = Math.atan2(-dx, -dz);
+        let delta = ((desiredYaw - yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        yaw += delta * Math.min(1, dt * 9);
+        const step = Math.min(dist, dt * 13);
+        ent.pos[0] += (dx / dist) * step;
+        ent.pos[2] += (dz / dist) * step;
+      } else {
+        yaw += 0.42 * dt;
+      }
+      ent.rot = quatFromYawPitchRoll(yaw, 0, 0);
+    }
   }
   renderer.render(world);
-  if (++frame % 20 === 0) {
+  if (++frame % 20 === 0 || frame === 2) {
     const s = renderer.getStats();
-    statsEl.textContent = `${s.fps} fps · ${s.gpuMs !== undefined ? `${s.gpuMs.toFixed(1)} ms gpu` : `${s.frameMs.toFixed(1)} ms`} · ${s.drawCalls} dc`;
+    statsEl.textContent = `${s.fps} fps · ${s.visibleEntities}× · ${s.drawCalls} dc${s.gpuMs !== undefined ? ` · ${s.gpuMs.toFixed(1)} ms gpu` : ""}`;
   }
   requestAnimationFrame(loop);
 }

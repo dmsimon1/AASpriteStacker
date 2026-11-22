@@ -106,6 +106,7 @@ function initHeroStage() {
     // Showcase defaults to full Ultra AA (8x RGSS + 2.0x Retina DPR + full-res JFA),
     // with a live runtime softswitch (Eco 2x / Bal 4x / Ultra 8x) right in the dock!
     renderer = new AASpriteRenderer(canvas, {
+      background: "studio",
       quality: "ultra",
       powerPreference: "low-power",
       adaptiveDpr: false,

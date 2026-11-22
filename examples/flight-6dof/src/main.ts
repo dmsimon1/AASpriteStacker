@@ -23,6 +23,7 @@ import {
   vec3Scale,
 } from "@aastack/core";
 import type { AAMode, AAQuality, CameraMode, RenderStyle, RibbonPoint, Vec3 } from "@aastack/core";
+import { TERRAIN_FS } from "@aastack/core/terrain";
 import {
   compileBlueprint,
   createCloudBlueprint,
@@ -61,9 +62,9 @@ const mobileRollBtn = document.getElementById("mobileRollBtn") as HTMLButtonElem
 const stickBase = document.getElementById("stickBase") as HTMLElement;
 const stickKnob = document.getElementById("stickKnob") as HTMLElement;
 
-// 1. Initialize @aastack/core World & WebGL2 Mobile-Adaptive Renderer
+// 1. Initialize @aastack/core World & WebGL2 Mobile-Adaptive Renderer (opt-in terrain shader)
 const world = new SceneWorld({ seed: 11 });
-const renderer = new AASpriteRenderer(glCanvas, { quality: "auto", adaptiveDpr: true });
+const renderer = new AASpriteRenderer(glCanvas, { quality: "auto", adaptiveDpr: true, terrainShader: TERRAIN_FS });
 
 // 2. Compile Declarative Blueprints into GPU-ready VolumeAssets (with 3D SDF, normals, sockets!)
 const jetAsset = compileBlueprint(createFighterJetBlueprint("fighter-jet"));

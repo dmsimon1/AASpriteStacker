@@ -1,0 +1,24 @@
+{
+  "name": "com.aastack.spritestack",
+  "version": "0.1.0",
+  "displayName": "AASpriteStacker URP",
+  "description": "Single-quad 1x/2x/4x/8x RGSS 3D Voxel DDA anti-aliased sprite stacking shader and C# controller for Unity URP.",
+  "unity": "2022.3",
+  "keywords": ["sprite-stacking", "voxel", "pixel-art", "anti-aliasing", "urp", "2.5d"],
+  "license": "MIT",
+  "homepage": "https://aasprite.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dmsimon1/AASpriteStacker.git"
+  },
+  "dependencies": {
+    "com.unity.render-pipelines.universal": "14.0.0"
+  },
+  "samples": [
+    {
+      "displayName": "Retro Car & Cottage Demo",
+      "description": "Sample horizontal slice-strip textures (car_slices.png, cottage_slices.png) and zero-setup interactive demo script.",
+      "path": "Samples~/Demo"
+    }
+  ]
+}

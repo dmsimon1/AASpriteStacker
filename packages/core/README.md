@@ -3,12 +3,13 @@
 Zero-dependency, mobile-first, fully anti-aliased 2.5D & 6-DOF sprite-stacking engine for WebGL2 ES 3.00.
 
 ## Features
-- **3D Voxel DDA & Continuous 3D SDF Sphere Tracing** inside tight 12-triangle back-face OBB proxies (`1×/2×/4×/8×` RGSS, linear-light compositing, exact `gl_FragDepth`).
+- **WebGL2 Hardware-Instanced 3D Voxel DDA & 3D SDF Sphere Tracing:** Renders hundreds of same-asset sprite stacks in **1 single `drawElementsInstanced` call** inside tight 12-triangle back-face OBB proxies (`1×/2×/4×/8×` RGSS, linear-light compositing, exact `gl_FragDepth`, `instanceBatching: "auto" | "aggressive" | "off"`).
+- **Tree-Shakeable Terrain Subpath (`@aastack/core/terrain`):** 2D/isometric/studio apps pay zero bytes for the ocean & island raymarcher (`23.9 KB` gz core); opt into procedural terrain via `import { TERRAIN_FS } from "@aastack/core/terrain"`.
 - **First-Class 2.5D Isometric & Oblique Cameras:** `createIsometricCamera({ preset: "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter" })`, exact `pixelsPerUnit` tile-grid locking, `projectWorldToScreen()`, and `unprojectScreenToGround()` ground picking.
 - **Premultiplied Transparent Overlay Mode:** Set `background: "transparent"` (`"transparent" | "studio" | "solid" | "terrain"`) to layer anti-aliased sprite stacks cleanly over any existing 2D canvas, tilemap, PixiJS, or Phaser game with zero dark halos.
-- **One-Line Drop-In Loaders:** `loadSliceStripUrl()` / `loadSliceStripFromImage()` / `loadSliceStripPixels()` for standard horizontal `slices.png` strips and `loadVoxUrl()` / `parseVox()` for MagicaVoxel `.vox` binaries (`computeSdf: false` option for 5× faster large-model loads).
+- **Multi-Model `.vox`, Strip Loaders & Multi-Frame Animation:** `loadVoxUrl()` / `parseVox()` (full MagicaVoxel `nTRN`/`nGRP`/`nSHP` scene graph support), `loadSliceStripUrl()` / `loadSliceStripPixels()`, plus zero-GC `SpriteStackAnimator` & `loadAnimatedStripGridUrl()` for animated sprite-stack sheets.
 - **Live Quality & Style Softswitches:** `renderer.setQuality("eco" | "balanced" | "ultra", world)` dials between battery-cool `2×`/`4×` half-res JFA and full Retina `8×` full-res JFA on the fly; `SceneDocument.style` switches `"arcade-8bit"`, `"hd-2d"`, `"smooth-toy"`, and `"retro-raw"`.
-- **Zero-GC Fast Path & GPU Hygiene:** Homogeneous column-step RGSS ray setup, same-voxel sample shading cache, 6-plane Gribb-Hartmann frustum culling, lazy terrain compile & SDF upload, `renderer.evictAsset(id)`, `renderer.dispose()`, `webglcontextlost` recovery, and `EXT_disjoint_timer_query_webgl2` (`gpuMs`).
+- **Zero-GC Fast Path & GPU Hygiene:** Homogeneous column-step RGSS ray setup, same-voxel sample shading cache, 6-plane Gribb-Hartmann frustum culling, lazy backdrop compile & SDF upload, `renderer.evictAsset(id)`, `renderer.dispose()`, `webglcontextlost` recovery, and `EXT_disjoint_timer_query_webgl2` (`gpuMs`).
 - **Engine-First & AI-Ready Hooks:** Patchable `SceneIR` (`SceneWorld.applyPatch`), undo/redo, deterministic `stepClock`/`snapshot`/`restore`, semantic sockets, `getStats()`, `captureDataUrl()`, and 1:1 CPU/GPU `raycastEntities()`.
 
 ## Drop-In 2.5D Isometric Overlay Example

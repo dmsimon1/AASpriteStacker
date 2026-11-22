@@ -22,6 +22,7 @@ await build({
   minify: true,
   sourcemap: true,
   alias: {
+    "@aastack/core/terrain": resolve(ROOT, "packages/core/dist/terrain-shader.js"),
     "@aastack/core": resolve(ROOT, "packages/core/dist/index.js"),
     "@aastack/blueprint": resolve(ROOT, "packages/blueprint/dist/index.js"),
     "@aastack/bridge/client": resolve(ROOT, "packages/bridge/dist/client.js"),

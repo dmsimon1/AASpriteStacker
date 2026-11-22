@@ -4,19 +4,30 @@
 shader_type canvas_item;
 
 uniform sampler2D sheet : filter_nearest, repeat_disable;
-uniform int slices = 36;
+uniform int slices = 20;
 uniform float angle_rad = 0.6;
 uniform float squash = 0.75;
 uniform float spacing = 1.0;
 uniform float display_scale = 6.0;
+uniform int samples : hint_range(1, 8) = 4;
 uniform vec3 sun_dir = vec3(0.45, 0.40, 0.80);
 
-const vec2 RGSS4[4] = vec2[4](
-    vec2(-0.375, -0.125),
-    vec2( 0.125, -0.375),
-    vec2( 0.375,  0.125),
-    vec2(-0.125,  0.375)
-);
+vec2 get_rgss_offset(int idx, int count) {
+    if (count <= 1) return vec2(0.0);
+    if (count == 2) return idx == 0 ? vec2(-0.25, -0.25) : vec2(0.25, 0.25);
+    if (count <= 4) {
+        const vec2 r4[4] = vec2[4](
+            vec2(-0.375, -0.125), vec2( 0.125, -0.375),
+            vec2( 0.375,  0.125), vec2(-0.125,  0.375)
+        );
+        return r4[idx];
+    }
+    const vec2 r8[8] = vec2[8](
+        vec2( 1.0, -3.0), vec2(-1.0,  3.0), vec2( 5.0,  1.0), vec2(-3.0, -5.0),
+        vec2(-5.0,  5.0), vec2(-7.0, -1.0), vec2( 3.0,  7.0), vec2( 7.0, -7.0)
+    );
+    return r8[idx] / 16.0;
+}
 
 vec3 srgb_to_lin(vec3 c) {
     return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, lessThanEqual(c, vec3(0.04045)));
@@ -111,12 +122,14 @@ void fragment() {
     vec3 w_l = normalize(sun_dir);
     vec3 obj_l = normalize(vec3(w_l.x * ca + w_l.y * sa, -w_l.x * sa + w_l.y * ca, w_l.z));
 
+    int spp = samples <= 1 ? 1 : (samples <= 2 ? 2 : (samples <= 4 ? 4 : 8));
     vec4 acc = vec4(0.0);
-    for (int i = 0; i < 4; i++) {
-        vec2 art_coord = (UV * box_art) + (RGSS4[i] / display_scale) - origin;
+    for (int i = 0; i < 8; i++) {
+        if (i >= spp) break;
+        vec2 art_coord = (UV * box_art) + (get_rgss_offset(i, spp) / max(display_scale, 1.0)) - origin;
         acc += trace_stack_ray(art_coord, vol, ca, sa, obj_l);
     }
-    acc *= 0.25;
+    acc /= float(spp);
     vec3 rgb = acc.a > 1e-4 ? lin_to_srgb(acc.rgb / acc.a) : vec3(0.0);
     COLOR = vec4(rgb, acc.a);
 }

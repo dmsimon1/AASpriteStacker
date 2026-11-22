@@ -26,6 +26,7 @@ mkdirSync(resolve(DIST, "studio"), { recursive: true });
 mkdirSync(resolve(DIST, "docs"), { recursive: true });
 
 const ALIASES = {
+  "@aastack/core/terrain": resolve(ROOT, "packages/core/dist/terrain-shader.js"),
   "@aastack/core": resolve(ROOT, "packages/core/dist/index.js"),
   "@aastack/blueprint": resolve(ROOT, "packages/blueprint/dist/index.js"),
   "@aastack/bridge/client": resolve(ROOT, "packages/bridge/dist/client.js"),

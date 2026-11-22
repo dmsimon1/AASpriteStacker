@@ -3,10 +3,13 @@ import test from "node:test";
 
 import {
   SceneWorld,
+  SpriteStackAnimator,
   computeCameraViewProj,
   createIsometricCamera,
+  createSpriteStackClip,
   createVolumeAsset,
   extractFrustumPlanes,
+  loadAnimatedStripGridPixels,
   loadSliceStripPixels,
   mat4AssetToLocal,
   mat4Invert,
@@ -19,6 +22,7 @@ import {
   sphereInFrustum,
   unprojectScreenToGround,
 } from "../packages/core/dist/index.js";
+import { TERRAIN_FS } from "../packages/core/dist/terrain-shader.js";
 import {
   compileBlueprint,
   createCloudBlueprint,
@@ -269,4 +273,177 @@ test("6-plane Gribb-Hartmann frustum sphere culling & zero-GC scratch matrix / f
   const scratch = new Float32Array(16);
   const m = world.getVoxelToWorldMatrix(world.getEntity("c1"), scratch);
   assert.equal(m, scratch);
+});
+
+function buildVoxChunk(id, contentBytes, childBytes = new Uint8Array(0)) {
+  const buf = new Uint8Array(12 + contentBytes.length + childBytes.length);
+  for (let i = 0; i < 4; i++) buf[i] = id.charCodeAt(i);
+  const dv = new DataView(buf.buffer);
+  dv.setInt32(4, contentBytes.length, true);
+  dv.setInt32(8, childBytes.length, true);
+  buf.set(contentBytes, 12);
+  buf.set(childBytes, 12 + contentBytes.length);
+  return buf;
+}
+
+function encodeVoxDict(entries) {
+  const parts = [];
+  const hdr = new Uint8Array(4);
+  new DataView(hdr.buffer).setInt32(0, entries.length, true);
+  parts.push(hdr);
+  for (const [k, v] of entries) {
+    const kb = Buffer.from(k, "ascii");
+    const vb = Buffer.from(v, "ascii");
+    const kl = new Uint8Array(4);
+    const vl = new Uint8Array(4);
+    new DataView(kl.buffer).setInt32(0, kb.length, true);
+    new DataView(vl.buffer).setInt32(0, vb.length, true);
+    parts.push(kl, kb, vl, vb);
+  }
+  return Buffer.concat(parts);
+}
+
+test("Multi-model MagicaVoxel .vox scene graph (nTRN, nGRP, nSHP, _t, _r, _hidden)", () => {
+  const makeSize = (x, y, z) => {
+    const b = new Uint8Array(12);
+    const dv = new DataView(b.buffer);
+    dv.setInt32(0, x, true); dv.setInt32(4, y, true); dv.setInt32(8, z, true);
+    return buildVoxChunk("SIZE", b);
+  };
+  const makeXyzi = (vox) => {
+    const b = new Uint8Array(4 + vox.length * 4);
+    new DataView(b.buffer).setInt32(0, vox.length, true);
+    vox.forEach(([x, y, z, ci], i) => {
+      b[4 + i * 4 + 0] = x; b[4 + i * 4 + 1] = y; b[4 + i * 4 + 2] = z; b[4 + i * 4 + 3] = ci;
+    });
+    return buildVoxChunk("XYZI", b);
+  };
+  const makeTrn = (nodeId, childId, attrs, frameDict) => {
+    const b0 = new Uint8Array(4); new DataView(b0.buffer).setInt32(0, nodeId, true);
+    const d0 = encodeVoxDict(attrs);
+    const mid = new Uint8Array(16);
+    const dv = new DataView(mid.buffer);
+    dv.setInt32(0, childId, true);
+    dv.setInt32(4, -1, true); // reserved
+    dv.setInt32(8, 0, true);  // layerId
+    dv.setInt32(12, 1, true); // numFrames
+    const fd = encodeVoxDict(frameDict);
+    return buildVoxChunk("nTRN", Buffer.concat([b0, d0, mid, fd]));
+  };
+  const makeGrp = (nodeId, childIds) => {
+    const b0 = new Uint8Array(4); new DataView(b0.buffer).setInt32(0, nodeId, true);
+    const d0 = encodeVoxDict([]);
+    const c = new Uint8Array(4 + childIds.length * 4);
+    const dv = new DataView(c.buffer);
+    dv.setInt32(0, childIds.length, true);
+    childIds.forEach((cid, i) => dv.setInt32(4 + i * 4, cid, true));
+    return buildVoxChunk("nGRP", Buffer.concat([b0, d0, c]));
+  };
+  const makeShp = (nodeId, modelId) => {
+    const b0 = new Uint8Array(4); new DataView(b0.buffer).setInt32(0, nodeId, true);
+    const d0 = encodeVoxDict([]);
+    const m = new Uint8Array(8);
+    const dv = new DataView(m.buffer);
+    dv.setInt32(0, 1, true); dv.setInt32(4, modelId, true);
+    return buildVoxChunk("nSHP", Buffer.concat([b0, d0, m, encodeVoxDict([])]));
+  };
+
+  // Model 0: 3x1x1 bar along X; Model 1: 1x1x1 turret; Model 2: hidden cube that MUST be skipped
+  const children = Buffer.concat([
+    makeSize(3, 1, 1), makeXyzi([[0, 0, 0, 1], [1, 0, 0, 1], [2, 0, 0, 1]]),
+    makeSize(1, 1, 1), makeXyzi([[0, 0, 0, 2]]),
+    makeSize(1, 1, 1), makeXyzi([[0, 0, 0, 3]]),
+    makeTrn(0, 1, [], []),
+    makeGrp(1, [2, 4, 6]),
+    // Child 2 -> model 0 rotated 90 deg around Z (row0=+Y [c0=1], row1=-X [c1=0, s1=neg(32)] => rotByte = 1 | (0<<2) | 32 = 33)
+    makeTrn(2, 3, [], [["_t", "0 0 0"], ["_r", String(1 | (0 << 2) | 32)]]),
+    makeShp(3, 0),
+    // Child 4 -> model 1 translated +3 in Z
+    makeTrn(4, 5, [], [["_t", "0 0 3"]]),
+    makeShp(5, 1),
+    // Child 6 -> hidden node far away (+50 in X) — must NOT inflate bounding box!
+    makeTrn(6, 7, [["_hidden", "1"]], [["_t", "50 0 0"]]),
+    makeShp(7, 2),
+  ]);
+  const header = Buffer.from([86, 79, 88, 32, 150, 0, 0, 0]); // "VOX " + version 150
+  const main = buildVoxChunk("MAIN", new Uint8Array(0), children);
+  const full = Buffer.concat([header, main]);
+  const ab = full.buffer.slice(full.byteOffset, full.byteOffset + full.byteLength);
+
+  const stitched = parseVox(ab, { id: "scene-test", computeSdf: false });
+  // Model 0 rotated 90 deg in XY becomes 1 wide (X) x 3 long (Y), and Model 1 at Z=+3 makes height = 4!
+  assert.equal(stitched.w, 1, `expected rotated width 1, got ${stitched.w}`);
+  assert.equal(stitched.l, 3, `expected rotated length 3, got ${stitched.l}`);
+  assert.equal(stitched.h, 4, `expected stitched height 4, got ${stitched.h}`);
+  let solid = 0;
+  for (let i = 3; i < stitched.rgba.length; i += 4) if (stitched.rgba[i] >= 128) solid++;
+  assert.equal(solid, 4, "expected 3 voxels from model 0 + 1 voxel from model 1 (hidden model 2 skipped)");
+
+  // Explicit modelIndex selects raw model without scene-graph stitching
+  const single = parseVox(ab, { id: "m0-only", modelIndex: 0, computeSdf: false });
+  assert.equal(single.w, 3);
+  assert.equal(single.l, 1);
+  assert.equal(single.h, 1);
+});
+
+test("SpriteStackAnimator + loadAnimatedStripGridPixels + tree-shakeable @aastack/core/terrain", () => {
+  // Build a 3-frame animated strip grid: 3 rows x (2 slices * 2px wide) = 4px wide x 6px tall
+  const sheetW = 4;
+  const sheetH = 6;
+  const rgba = new Uint8Array(sheetW * sheetH * 4);
+  for (let f = 0; f < 3; f++) {
+    // Mark a unique pixel per frame at slice 0, x=0, y=f*2
+    const p = (f * 2 * sheetW + 0) * 4;
+    rgba[p + 0] = 60 + f * 70;
+    rgba[p + 1] = 200;
+    rgba[p + 2] = 90;
+    rgba[p + 3] = 255;
+  }
+
+  const clip = loadAnimatedStripGridPixels(rgba, sheetW, sheetH, {
+    id: "walk",
+    slices: 2,
+    frames: 3,
+    fps: 10,
+    pingPong: true,
+    computeSdf: false,
+  });
+  assert.equal(clip.frames.length, 3);
+  assert.equal(clip.frames[0].w, 2);
+  assert.equal(clip.frames[0].l, 2);
+  assert.equal(clip.frames[0].h, 2);
+
+  const world = new SceneWorld();
+  const anim = new SpriteStackAnimator();
+  anim.registerClip(world, clip);
+  world.applyPatch([
+    { op: "spawn", entity: { id: "runner", assetId: clip.frames[0].id, pos: [0, 0, 0], rot: [0, 0, 0, 1], scale: 1 } },
+  ]);
+  anim.bindEntity("runner", "walk");
+
+  // Ping-pong at 10 fps (0.1s/frame): 0 -> 1 -> 2 -> 1 -> 0
+  anim.update(world, 0.11);
+  assert.equal(anim.getFrameIndex("runner"), 1);
+  assert.equal(world.getEntity("runner").assetId, "walk#f1");
+
+  anim.update(world, 0.1);
+  assert.equal(anim.getFrameIndex("runner"), 2);
+  assert.equal(world.getEntity("runner").assetId, "walk#f2");
+
+  anim.update(world, 0.1);
+  assert.equal(anim.getFrameIndex("runner"), 1);
+  assert.equal(world.getEntity("runner").assetId, "walk#f1");
+
+  // Pause & manual setFrame
+  anim.pause("runner");
+  anim.update(world, 0.5);
+  assert.equal(anim.getFrameIndex("runner"), 1);
+  anim.setFrame(world, "runner", 0);
+  assert.equal(world.getEntity("runner").assetId, "walk#f0");
+
+  // Custom createSpriteStackClip wrapper + tree-shakeable TERRAIN_FS export
+  const manualClip = createSpriteStackClip({ id: "idle", frames: [clip.frames[0], clip.frames[1]], fps: 4 });
+  assert.equal(manualClip.frames.length, 2);
+  assert.equal(typeof TERRAIN_FS, "string");
+  assert.ok(TERRAIN_FS.includes("terrainHeight") && TERRAIN_FS.includes("uWaveTime"));
 });

@@ -29,9 +29,11 @@ import {
   JFA_STEP_FS,
   RIBBON_FS,
   RIBBON_VS,
-  TERRAIN_FS,
+  STUDIO_BG_FS,
 } from "./shaders.js";
 import type { AAMode, AAQuality, BackgroundMode, EngineTelemetry, QualityTier, RGB, RenderStyle, VolumeAsset } from "./types.js";
+
+export type InstanceBatchingMode = "auto" | "aggressive" | "off";
 
 export interface RendererOptions {
   quality?: QualityTier;
@@ -39,6 +41,18 @@ export interface RendererOptions {
   background?: BackgroundMode;
   /** Solid background RGB [0..255] used when background === "solid". */
   backgroundColor?: RGB;
+  /**
+   * Optional procedural terrain fragment shader (import `{ TERRAIN_FS } from "@aastack/core/terrain"`).
+   * Keeping terrain opt-in lets 2D/isometric/studio apps tree-shake the ocean & island raymarcher out of their bundle.
+   */
+  terrainShader?: string;
+  /**
+   * WebGL2 hardware instancing strategy for entities sharing the same VolumeAsset:
+   *  - `"auto"` (default): batches contiguous same-asset runs while preserving strict back-to-front painter's order.
+   *  - `"aggressive"`: groups all visible instances by asset ID (1 draw call per unique asset), sorted back-to-front per asset.
+   *  - `"off"`: 1 entity per draw call (useful for A/B profiling).
+   */
+  instanceBatching?: InstanceBatchingMode;
   adaptiveDpr?: boolean;
   maxDpr?: number;
   preserveDrawingBuffer?: boolean;
@@ -113,6 +127,11 @@ const UNIT_CUBE_INDICES = new Uint16Array([
   3, 7, 6, 3, 6, 2, // +Y
 ]);
 
+// 53 float32 values = 212 bytes per instanced entity OBB:
+// 16 voxToClip + 16 clipToVox + 9 normMat + 4 sunAndScale + 4 meta + 4 flags
+const INSTANCE_FLOATS = 53;
+const INSTANCE_STRIDE = INSTANCE_FLOATS * 4;
+
 export class AASpriteRenderer {
   public readonly canvas: HTMLCanvasElement;
   public readonly isMobile: boolean;
@@ -122,12 +141,15 @@ export class AASpriteRenderer {
   private aaQuality: AAQuality;
   private background: BackgroundMode;
   private backgroundColor: RGB;
+  private terrainShaderSrc: string | null;
+  private instanceBatching: InstanceBatchingMode;
   private jfaScale = 0.5;
   private adaptiveDpr: boolean;
   private maxDpr: number;
   private drsScale = 1.0;
 
   private progs!: {
+    studioBg: CompiledProg | null;
     terrain: CompiledProg | null;
     entity: CompiledProg;
     ribbon: CompiledProg;
@@ -141,6 +163,9 @@ export class AASpriteRenderer {
   private cubeVao: WebGLVertexArrayObject | null = null;
   private cubeVbo: WebGLBuffer | null = null;
   private cubeEbo: WebGLBuffer | null = null;
+  private instanceVbo: WebGLBuffer | null = null;
+  private instanceCapacity = 256;
+  private instanceBuf = new Float32Array(256 * INSTANCE_FLOATS);
   private ribbonVao: WebGLVertexArrayObject | null = null;
   private ribbonVbo: WebGLBuffer | null = null;
   private ribbonBuf = new Float32Array(2048 * 5);
@@ -154,10 +179,8 @@ export class AASpriteRenderer {
   private w2vMat = new Float32Array(16);
   private voxToClipMat = new Float32Array(16);
   private clipToVoxMat = new Float32Array(16);
-  private normMat = new Float32Array(9);
   private frustumPlanes = new Float32Array(24);
   private sunDirBuf = new Float32Array(3);
-  private sunLocalBuf = new Float32Array(3);
   private visiblePool: VisibleSlot[] = [];
   private visibleActive: VisibleSlot[] = [];
 
@@ -200,6 +223,8 @@ export class AASpriteRenderer {
     this.quality = opts.quality ?? "auto";
     this.background = opts.background ?? "terrain";
     this.backgroundColor = opts.backgroundColor ?? [12, 18, 32];
+    this.terrainShaderSrc = opts.terrainShader ?? null;
+    this.instanceBatching = opts.instanceBatching ?? "auto";
     this.adaptiveDpr = opts.adaptiveDpr ?? true;
     const coarse = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
     const narrow = typeof window !== "undefined" && Math.min(window.innerWidth, window.innerHeight) < 760;
@@ -272,9 +297,9 @@ export class AASpriteRenderer {
         this.dummySdfTex = null;
       }
       for (const vao of [this.emptyVao, this.cubeVao, this.ribbonVao]) if (vao) gl.deleteVertexArray(vao);
-      for (const buf of [this.cubeVbo, this.cubeEbo, this.ribbonVbo]) if (buf) gl.deleteBuffer(buf);
+      for (const buf of [this.cubeVbo, this.cubeEbo, this.instanceVbo, this.ribbonVbo]) if (buf) gl.deleteBuffer(buf);
       this.emptyVao = this.cubeVao = this.ribbonVao = null;
-      this.cubeVbo = this.cubeEbo = this.ribbonVbo = null;
+      this.cubeVbo = this.cubeEbo = this.instanceVbo = this.ribbonVbo = null;
       if (this.progs) {
         for (const p of Object.values(this.progs)) if (p) gl.deleteProgram(p.program);
       }
@@ -329,6 +354,24 @@ export class AASpriteRenderer {
 
   getBackground(): BackgroundMode {
     return this.background;
+  }
+
+  /** Register or replace the optional procedural terrain fragment shader (`@aastack/core/terrain`). */
+  setTerrainShader(glsl: string | null): void {
+    this.terrainShaderSrc = glsl;
+    if (this.gl && this.progs?.terrain) {
+      this.gl.deleteProgram(this.progs.terrain.program);
+      this.progs.terrain = null;
+    }
+  }
+
+  /** Switch hardware instancing strategy at runtime ("auto" | "aggressive" | "off"). */
+  setInstanceBatching(mode: InstanceBatchingMode): void {
+    this.instanceBatching = mode;
+  }
+
+  getInstanceBatching(): InstanceBatchingMode {
+    return this.instanceBatching;
   }
 
   get isReady(): boolean {
@@ -390,7 +433,8 @@ export class AASpriteRenderer {
       | null;
 
     this.progs = {
-      terrain: null, // Lazily compiled only when background === "terrain" | "studio"
+      studioBg: null, // Lazily compiled only when background === "studio" (or terrain fallback)
+      terrain: null,  // Lazily compiled only when background === "terrain" && terrainShader provided
       entity: this.link(gl, ENTITY_OBB_VS, ENTITY_OBB_FS),
       ribbon: this.link(gl, RIBBON_VS, RIBBON_FS),
       jfaInit: this.link(gl, FULLSCREEN_VS, JFA_INIT_FS),
@@ -425,7 +469,7 @@ export class AASpriteRenderer {
 
     this.emptyVao = gl.createVertexArray();
 
-    // Unit OBB cube VAO
+    // Unit OBB cube VAO + hardware-instanced per-entity attribute stream (locations 1..14)
     this.cubeVao = gl.createVertexArray();
     gl.bindVertexArray(this.cubeVao);
     this.cubeVbo = gl.createBuffer();
@@ -436,6 +480,40 @@ export class AASpriteRenderer {
     this.cubeEbo = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.cubeEbo);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, UNIT_CUBE_INDICES, gl.STATIC_DRAW);
+
+    this.instanceVbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, this.instanceBuf.byteLength, gl.DYNAMIC_DRAW);
+    // loc 1..4: aVoxToClip0..3 (mat4, 16 floats @ byte offsets 0, 16, 32, 48)
+    for (let c = 0; c < 4; c++) {
+      gl.enableVertexAttribArray(1 + c);
+      gl.vertexAttribPointer(1 + c, 4, gl.FLOAT, false, INSTANCE_STRIDE, c * 16);
+      gl.vertexAttribDivisor(1 + c, 1);
+    }
+    // loc 5..8: aClipToVox0..3 (mat4, 16 floats @ byte offsets 64, 80, 96, 112)
+    for (let c = 0; c < 4; c++) {
+      gl.enableVertexAttribArray(5 + c);
+      gl.vertexAttribPointer(5 + c, 4, gl.FLOAT, false, INSTANCE_STRIDE, 64 + c * 16);
+      gl.vertexAttribDivisor(5 + c, 1);
+    }
+    // loc 9..11: aNorm0..2 (mat3, 9 floats @ byte offsets 128, 140, 152)
+    for (let c = 0; c < 3; c++) {
+      gl.enableVertexAttribArray(9 + c);
+      gl.vertexAttribPointer(9 + c, 3, gl.FLOAT, false, INSTANCE_STRIDE, 128 + c * 12);
+      gl.vertexAttribDivisor(9 + c, 1);
+    }
+    // loc 12: aSunAndScale (vec4 @ byte offset 164)
+    gl.enableVertexAttribArray(12);
+    gl.vertexAttribPointer(12, 4, gl.FLOAT, false, INSTANCE_STRIDE, 164);
+    gl.vertexAttribDivisor(12, 1);
+    // loc 13: aMeta (vec4 @ byte offset 180)
+    gl.enableVertexAttribArray(13);
+    gl.vertexAttribPointer(13, 4, gl.FLOAT, false, INSTANCE_STRIDE, 180);
+    gl.vertexAttribDivisor(13, 1);
+    // loc 14: aFlags (vec4 @ byte offset 196)
+    gl.enableVertexAttribArray(14);
+    gl.vertexAttribPointer(14, 4, gl.FLOAT, false, INSTANCE_STRIDE, 196);
+    gl.vertexAttribDivisor(14, 1);
 
     // Dynamic 3D ribbon VAO
     this.ribbonVao = gl.createVertexArray();
@@ -553,6 +631,19 @@ export class AASpriteRenderer {
     };
     this.assetCache.set(asset.id, entry);
     return entry;
+  }
+
+  private ensureInstanceCapacity(count: number): void {
+    if (count <= this.instanceCapacity) return;
+    let cap = this.instanceCapacity;
+    while (cap < count) cap *= 2;
+    this.instanceCapacity = cap;
+    this.instanceBuf = new Float32Array(cap * INSTANCE_FLOATS);
+    const gl = this.gl;
+    if (gl && this.instanceVbo) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, this.instanceBuf.byteLength, gl.DYNAMIC_DRAW);
+    }
   }
 
   /** Resize canvas cleanly respecting container CSS size, DPR cap, and adaptive mobile DRS. */
@@ -681,48 +772,67 @@ export class AASpriteRenderer {
       gl.clear(gl.DEPTH_BUFFER_BIT);
 
       // ------------------------------------------------------------
-      // PASS 0: Perspective/Overhead/Iso Terrain, Ocean & Sky (lazily compiled)
+      // PASS 0: Tree-shakeable Terrain/Ocean OR compact Studio Backdrop (lazily compiled)
       // ------------------------------------------------------------
-      if (!this.progs.terrain) {
-        this.progs.terrain = this.link(gl, FULLSCREEN_VS, TERRAIN_FS);
-      }
+      const useTerrain = this.background === "terrain" && doc.terrain.enabled && this.terrainShaderSrc !== null;
       gl.enable(gl.DEPTH_TEST);
       gl.depthFunc(gl.ALWAYS);
       gl.depthMask(true);
       gl.disable(gl.BLEND);
       gl.disable(gl.CULL_FACE);
 
-      const tp = this.progs.terrain;
-      gl.useProgram(tp.program);
-      gl.bindVertexArray(this.emptyVao);
-      gl.uniform2f(tp.u.uResolution, cw, ch);
-      gl.uniformMatrix4fv(tp.u.uViewProj, false, viewProj);
-      gl.uniformMatrix4fv(tp.u.uInvViewProj, false, invViewProj);
-      gl.uniform3fv(tp.u.uCamPos, cam.pos);
-      gl.uniform3fv(tp.u.uSunDir, sunDir);
-      gl.uniform1f(tp.u.uTimeOfDay, doc.lighting.timeOfDay);
-      gl.uniform1f(tp.u.uFogDensity, doc.lighting.fogDensity);
-      gl.uniform1i(tp.u.uStyle, styleInt);
-      gl.uniform1i(tp.u.uTerrainEnabled, this.background === "studio" ? 0 : doc.terrain.enabled ? 1 : 0);
-      gl.uniform1f(tp.u.uSeed, doc.terrain.seed);
-      gl.uniform1f(tp.u.uMaxHeight, doc.terrain.maxHeight);
-      gl.uniform1f(tp.u.uTerrainScale, doc.terrain.scale);
-      gl.uniform1f(tp.u.uWaveTime, doc.terrain.waveTime);
-      gl.uniform1f(tp.u.uTerraceSteps, doc.terrain.terraceSteps);
-      gl.uniform1f(tp.u.uStepFactor, this.isMobile ? 1.35 : 1.0);
-      gl.uniform1f(tp.u.uSplitX, splitX);
-      gl.uniform1i(tp.u.uLeftLegacy, leftMode === "legacy" ? 1 : 0);
-      gl.uniform1i(tp.u.uRightLegacy, rightMode === "legacy" ? 1 : 0);
-      gl.uniform1i(tp.u.uShadowCount, shCount);
-      if (shCount > 0) gl.uniform4fv(tp.u.uShadowCasters, this.shadowBuf);
+      if (useTerrain) {
+        if (!this.progs.terrain) {
+          this.progs.terrain = this.link(gl, FULLSCREEN_VS, this.terrainShaderSrc!);
+        }
+        const tp = this.progs.terrain;
+        gl.useProgram(tp.program);
+        gl.bindVertexArray(this.emptyVao);
+        gl.uniform2f(tp.u.uResolution, cw, ch);
+        gl.uniformMatrix4fv(tp.u.uViewProj, false, viewProj);
+        gl.uniformMatrix4fv(tp.u.uInvViewProj, false, invViewProj);
+        gl.uniform3fv(tp.u.uCamPos, cam.pos);
+        gl.uniform3fv(tp.u.uSunDir, sunDir);
+        gl.uniform1f(tp.u.uTimeOfDay, doc.lighting.timeOfDay);
+        gl.uniform1f(tp.u.uFogDensity, doc.lighting.fogDensity);
+        gl.uniform1i(tp.u.uStyle, styleInt);
+        gl.uniform1i(tp.u.uTerrainEnabled, 1);
+        gl.uniform1f(tp.u.uSeed, doc.terrain.seed);
+        gl.uniform1f(tp.u.uMaxHeight, doc.terrain.maxHeight);
+        gl.uniform1f(tp.u.uTerrainScale, doc.terrain.scale);
+        gl.uniform1f(tp.u.uWaveTime, doc.terrain.waveTime);
+        gl.uniform1f(tp.u.uTerraceSteps, doc.terrain.terraceSteps);
+        gl.uniform1f(tp.u.uStepFactor, this.isMobile ? 1.35 : 1.0);
+        gl.uniform1f(tp.u.uSplitX, splitX);
+        gl.uniform1i(tp.u.uLeftLegacy, leftMode === "legacy" ? 1 : 0);
+        gl.uniform1i(tp.u.uRightLegacy, rightMode === "legacy" ? 1 : 0);
+        gl.uniform1i(tp.u.uShadowCount, shCount);
+        if (shCount > 0) gl.uniform4fv(tp.u.uShadowCasters, this.shadowBuf);
+      } else {
+        if (!this.progs.studioBg) {
+          this.progs.studioBg = this.link(gl, FULLSCREEN_VS, STUDIO_BG_FS);
+        }
+        const sp = this.progs.studioBg;
+        gl.useProgram(sp.program);
+        gl.bindVertexArray(this.emptyVao);
+        gl.uniform2f(sp.u.uResolution, cw, ch);
+        gl.uniformMatrix4fv(sp.u.uInvViewProj, false, invViewProj);
+        gl.uniform3fv(sp.u.uSunDir, sunDir);
+        gl.uniform1f(sp.u.uTimeOfDay, doc.lighting.timeOfDay);
+        gl.uniform1f(sp.u.uSplitX, splitX);
+        gl.uniform1i(sp.u.uLeftLegacy, leftMode === "legacy" ? 1 : 0);
+        gl.uniform1i(sp.u.uRightLegacy, rightMode === "legacy" ? 1 : 0);
+        gl.uniform1i(sp.u.uShadowCount, shCount);
+        if (shCount > 0) gl.uniform4fv(sp.u.uShadowCasters, this.shadowBuf);
+      }
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       drawCalls++;
     }
 
     // ------------------------------------------------------------
-    // PASS 1: 6-DOF & 2.5D Anti-Aliased Sprite-Stacked Entities (OBB Proxies)
-    // 6-plane Gribb-Hartmann frustum culled + back-to-front sorted for silky
-    // premultiplied silhouette edges, with exact gl_FragDepth!
+    // PASS 1: Hardware-Instanced 6-DOF & 2.5D Anti-Aliased Entities (OBB Proxies)
+    // 6-plane Gribb-Hartmann frustum culled + back-to-front sorted + contiguous
+    // same-asset batching via WebGL2 drawElementsInstanced, with exact gl_FragDepth!
     // ------------------------------------------------------------
     const visibleList = this.visibleActive;
     visibleList.length = 0;
@@ -763,7 +873,14 @@ export class AASpriteRenderer {
       visibleList.push(slot);
       slotIdx++;
     }
-    visibleList.sort((a, b) => b.sortKey - a.sortKey); // back-to-front
+    if (this.instanceBatching === "aggressive") {
+      visibleList.sort((a, b) => {
+        if (a.asset.id !== b.asset.id) return a.asset.id < b.asset.id ? -1 : 1;
+        return b.sortKey - a.sortKey;
+      });
+    } else {
+      visibleList.sort((a, b) => b.sortKey - a.sortKey); // back-to-front
+    }
 
     gl.depthFunc(gl.LEQUAL);
     gl.depthMask(true);
@@ -790,69 +907,97 @@ export class AASpriteRenderer {
     let lastBoundAssetKey = "";
     let lastBoundNeedSdf = false;
 
-    for (let vi = 0; vi < visibleList.length; vi++) {
-      const { ent, asset, dist, idx } = visibleList[vi];
-      const v2w = world.getVoxelToWorldMatrix(ent, this.v2wMat);
-      if (!v2w) continue;
-      if (ent.outline !== false) hasOutlinedEntity = true;
-      const w2v = mat4Invert(v2w, this.w2vMat);
-      const voxToClip = mat4Mul(viewProj, v2w, this.voxToClipMat);
-      const clipToVox = mat4Mul(w2v, invViewProj, this.clipToVoxMat);
+    for (let vi = 0; vi < visibleList.length; ) {
+      const leadAsset = visibleList[vi].asset;
+      let runEnd = vi + 1;
+      if (this.instanceBatching !== "off") {
+        while (
+          runEnd < visibleList.length &&
+          visibleList[runEnd].asset.id === leadAsset.id &&
+          visibleList[runEnd].asset.hash === leadAsset.hash
+        ) {
+          runEnd++;
+        }
+      }
 
-      const mA = aaModeToInt(doc.splitCompare.enabled ? leftMode : ent.aaMode ?? effectiveMode);
-      const mB = aaModeToInt(doc.splitCompare.enabled ? rightMode : ent.aaMode ?? effectiveMode);
-      const needSdf = mA === 2 || mB === 2;
-      const gpuTex = this.ensureAssetGPU(asset, needSdf);
+      const runMax = runEnd - vi;
+      this.ensureInstanceCapacity(runMax);
+      const ib = this.instanceBuf;
+      let instCount = 0;
+      let runNeedSdf = false;
 
-      // Extract orthonormal 3x3 normal matrix from VoxelToWorld into reusable scratch buffer
-      const sx = Math.hypot(v2w[0], v2w[1], v2w[2]) || 1;
-      const sy = Math.hypot(v2w[4], v2w[5], v2w[6]) || 1;
-      const sz = Math.hypot(v2w[8], v2w[9], v2w[10]) || 1;
-      const nm = this.normMat;
-      nm[0] = v2w[0] / sx; nm[1] = v2w[1] / sx; nm[2] = v2w[2] / sx;
-      nm[3] = v2w[4] / sy; nm[4] = v2w[5] / sy; nm[5] = v2w[6] / sy;
-      nm[6] = v2w[8] / sz; nm[7] = v2w[9] / sz; nm[8] = v2w[10] / sz;
+      for (let k = vi; k < runEnd; k++) {
+        const { ent, asset, dist, idx } = visibleList[k];
+        const v2w = world.getVoxelToWorldMatrix(ent, this.v2wMat);
+        if (!v2w) continue;
+        if (ent.outline !== false) hasOutlinedEntity = true;
+        const w2v = mat4Invert(v2w, this.w2vMat);
+        const voxToClip = mat4Mul(viewProj, v2w, this.voxToClipMat);
+        const clipToVox = mat4Mul(w2v, invViewProj, this.clipToVoxMat);
 
-      // Transform sun direction into entity's local voxel coordinates (zero heap allocations)
-      const slx = w2v[0] * sunDir[0] + w2v[4] * sunDir[1] + w2v[8] * sunDir[2];
-      const sly = w2v[1] * sunDir[0] + w2v[5] * sunDir[1] + w2v[9] * sunDir[2];
-      const slz = w2v[2] * sunDir[0] + w2v[6] * sunDir[1] + w2v[10] * sunDir[2];
-      const slInv = 1 / (Math.hypot(slx, sly, slz) || 1);
-      this.sunLocalBuf[0] = slx * slInv;
-      this.sunLocalBuf[1] = sly * slInv;
-      this.sunLocalBuf[2] = slz * slInv;
+        const mA = aaModeToInt(doc.splitCompare.enabled ? leftMode : ent.aaMode ?? effectiveMode);
+        const mB = aaModeToInt(doc.splitCompare.enabled ? rightMode : ent.aaMode ?? effectiveMode);
+        if (mA === 2 || mB === 2) runNeedSdf = true;
 
-      // Distance-adaptive RGSS LOD (parallel ortho/isometric/oblique projections keep full samples across depth!)
-      const isHero = isParallel || ent.aaPriority === "hero" || ent.tag === "player" || dist < 44;
-      const entSamples = isHero ? maxSamples : dist < 96 ? Math.min(maxSamples, 2) : 1;
+        const sx = Math.hypot(v2w[0], v2w[1], v2w[2]) || 1;
+        const sy = Math.hypot(v2w[4], v2w[5], v2w[6]) || 1;
+        const sz = Math.hypot(v2w[8], v2w[9], v2w[10]) || 1;
 
-      const assetKey = `${asset.id}:${asset.hash}`;
-      if (assetKey !== lastBoundAssetKey || (needSdf && !lastBoundNeedSdf)) {
+        const slx = w2v[0] * sunDir[0] + w2v[4] * sunDir[1] + w2v[8] * sunDir[2];
+        const sly = w2v[1] * sunDir[0] + w2v[5] * sunDir[1] + w2v[9] * sunDir[2];
+        const slz = w2v[2] * sunDir[0] + w2v[6] * sunDir[1] + w2v[10] * sunDir[2];
+        const slInv = 1 / (Math.hypot(slx, sly, slz) || 1);
+
+        // Distance-adaptive RGSS LOD (parallel ortho/isometric/oblique projections keep full samples across depth!)
+        const isHero = isParallel || ent.aaPriority === "hero" || ent.tag === "player" || dist < 44;
+        const entSamples = isHero ? maxSamples : dist < 96 ? Math.min(maxSamples, 2) : 1;
+
+        const base = instCount * INSTANCE_FLOATS;
+        // 0..15: aVoxToClip0..3
+        ib.set(voxToClip, base);
+        // 16..31: aClipToVox0..3
+        ib.set(clipToVox, base + 16);
+        // 32..40: aNorm0..2
+        ib[base + 32] = v2w[0] / sx; ib[base + 33] = v2w[1] / sx; ib[base + 34] = v2w[2] / sx;
+        ib[base + 35] = v2w[4] / sy; ib[base + 36] = v2w[5] / sy; ib[base + 37] = v2w[6] / sy;
+        ib[base + 38] = v2w[8] / sz; ib[base + 39] = v2w[9] / sz; ib[base + 40] = v2w[10] / sz;
+        // 41..44: aSunAndScale
+        ib[base + 41] = slx * slInv;
+        ib[base + 42] = sly * slInv;
+        ib[base + 43] = slz * slInv;
+        ib[base + 44] = asset.voxelScale * ent.scale;
+        // 45..48: aMeta
+        ib[base + 45] = ((idx % 250) + 1) / 255.0;
+        ib[base + 46] = ent.emissiveBoost ?? 1.0;
+        ib[base + 47] = ent.normalSmoothness ?? -1.0;
+        ib[base + 48] = entSamples;
+        // 49..52: aFlags
+        ib[base + 49] = doc.lighting.selfShadow && isHero ? 1.0 : 0.0;
+        ib[base + 50] = ent.outline === false ? 0.0 : 1.0;
+        ib[base + 51] = mA;
+        ib[base + 52] = mB;
+        instCount++;
+      }
+
+      vi = runEnd;
+      if (instCount === 0) continue;
+
+      const gpuTex = this.ensureAssetGPU(leadAsset, runNeedSdf);
+      const assetKey = `${leadAsset.id}:${leadAsset.hash}`;
+      if (assetKey !== lastBoundAssetKey || (runNeedSdf && !lastBoundNeedSdf)) {
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_3D, gpuTex.albedo);
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D, gpuTex.sdf ?? this.dummySdfTex);
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_3D, gpuTex.norm);
         gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_3D, gpuTex.emis);
         lastBoundAssetKey = assetKey;
-        lastBoundNeedSdf = needSdf;
+        lastBoundNeedSdf = runNeedSdf;
       }
 
-      gl.uniformMatrix4fv(ep.u.uVoxelToClip, false, voxToClip);
-      gl.uniformMatrix4fv(ep.u.uClipToVoxel, false, clipToVox);
-      gl.uniformMatrix3fv(ep.u.uNormalMat, false, nm);
-      gl.uniform3f(ep.u.uVolSize, asset.w, asset.l, asset.h);
-      gl.uniform1f(ep.u.uVoxelWorldScale, asset.voxelScale * ent.scale);
-      gl.uniform1f(ep.u.uSdfRange, asset.sdfRange);
-      gl.uniform1i(ep.u.uModeA, mA);
-      gl.uniform1i(ep.u.uModeB, mB);
-      gl.uniform1i(ep.u.uSamples, entSamples);
-      gl.uniform1i(ep.u.uSelfShadow, doc.lighting.selfShadow && isHero ? 1 : 0);
-      gl.uniform1i(ep.u.uOutlineEnabled, ent.outline === false ? 0 : 1);
-      gl.uniform1f(ep.u.uNormalSmoothness, ent.normalSmoothness ?? -1.0);
-      gl.uniform1f(ep.u.uObjectIdNorm, ((idx % 250) + 1) / 255.0);
-      gl.uniform1f(ep.u.uEmissiveBoost, ent.emissiveBoost ?? 1.0);
-      gl.uniform3fv(ep.u.uSunLocal, this.sunLocalBuf);
-
-      gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
+      gl.uniform3f(ep.u.uVolSize, leadAsset.w, leadAsset.l, leadAsset.h);
+      gl.uniform1f(ep.u.uSdfRange, leadAsset.sdfRange);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceVbo);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, ib.subarray(0, instCount * INSTANCE_FLOATS));
+      gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, instCount);
       drawCalls++;
     }
 

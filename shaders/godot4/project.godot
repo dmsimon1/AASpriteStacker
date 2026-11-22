@@ -1,0 +1,22 @@
+; Engine configuration file.
+; Open this folder directly in Godot 4.2 / 4.3 / 4.4 and press F5 to run the AA Sprite Stack demo.
+
+config_version=5
+
+[application]
+
+config/name="AASpriteStacker Godot 4 Sample"
+config/description="Single-quad 1x/2x/4x/8x RGSS 3D Voxel DDA anti-aliased sprite stacking over horizontal slices.png strips."
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0

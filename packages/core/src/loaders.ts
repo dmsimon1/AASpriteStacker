@@ -40,10 +40,78 @@ export interface VoxParseOptions {
   voxelScale?: number;
   pivot?: Vec3;
   computeSdf?: boolean;
+  /** Optional explicit sub-model index to extract instead of stitching the full nTRN/nSHP scene graph. */
+  modelIndex?: number;
   sockets?: Record<string, SocketDef>;
 }
 
-/** Parse a MagicaVoxel `.vox` binary buffer into an AA-ready VolumeAsset with 3D SDF & normals. */
+interface RawVoxModel {
+  sx: number;
+  sy: number;
+  sz: number;
+  voxels: Array<[number, number, number, number]>;
+}
+
+interface VoxTransformNode {
+  kind: "trn";
+  childId: number;
+  tx: number;
+  ty: number;
+  tz: number;
+  rotByte: number;
+  hidden: boolean;
+}
+
+interface VoxGroupNode {
+  kind: "grp";
+  children: number[];
+}
+
+interface VoxShapeNode {
+  kind: "shp";
+  modelIds: number[];
+}
+
+type VoxSceneNode = VoxTransformNode | VoxGroupNode | VoxShapeNode;
+
+function decodeVoxRotMatrix(rotByte: number): [number, number, number, number, number, number, number, number, number] {
+  const c0 = rotByte & 3;
+  const c1 = (rotByte >> 2) & 3;
+  if (c0 > 2 || c1 > 2 || c0 === c1) {
+    return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  }
+  const c2 = 3 - c0 - c1;
+  const s0 = (rotByte & 16) ? -1 : 1;
+  const s1 = (rotByte & 32) ? -1 : 1;
+  const s2 = (rotByte & 64) ? -1 : 1;
+  const m: [number, number, number, number, number, number, number, number, number] = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  m[0 * 3 + c0] = s0;
+  m[1 * 3 + c1] = s1;
+  m[2 * 3 + c2] = s2;
+  return m;
+}
+
+function mulMat3(
+  a: [number, number, number, number, number, number, number, number, number],
+  b: [number, number, number, number, number, number, number, number, number],
+): [number, number, number, number, number, number, number, number, number] {
+  return [
+    a[0] * b[0] + a[1] * b[3] + a[2] * b[6],
+    a[0] * b[1] + a[1] * b[4] + a[2] * b[7],
+    a[0] * b[2] + a[1] * b[5] + a[2] * b[8],
+    a[3] * b[0] + a[4] * b[3] + a[5] * b[6],
+    a[3] * b[1] + a[4] * b[4] + a[5] * b[7],
+    a[3] * b[2] + a[4] * b[5] + a[5] * b[8],
+    a[6] * b[0] + a[7] * b[3] + a[8] * b[6],
+    a[6] * b[1] + a[7] * b[4] + a[8] * b[7],
+    a[6] * b[2] + a[7] * b[5] + a[8] * b[8],
+  ];
+}
+
+/**
+ * Parse a MagicaVoxel `.vox` binary buffer into an AA-ready VolumeAsset.
+ * Supports single-model files AND multi-object MagicaVoxel scene graphs (SIZE, XYZI, RGBA, nTRN, nGRP, nSHP).
+ */
 export function parseVox(buffer: ArrayBuffer, opts: VoxParseOptions): VolumeAsset {
   const view = new DataView(buffer);
   const u8 = new Uint8Array(buffer);
@@ -56,8 +124,33 @@ export function parseVox(buffer: ArrayBuffer, opts: VoxParseOptions): VolumeAsse
     throw new Error(`Invalid .vox magic: "${readStr(0)}"`);
   }
 
-  let sizeX = 0, sizeY = 0, sizeZ = 0;
-  let voxels: Array<[number, number, number, number]> = [];
+  const readDict = (pos: number, limit: number): { dict: Record<string, string>; next: number } => {
+    const dict: Record<string, string> = {};
+    if (pos + 4 > limit) return { dict, next: limit };
+    const n = view.getInt32(pos, true);
+    let cur = pos + 4;
+    for (let i = 0; i < n && cur + 4 <= limit; i++) {
+      const kLen = view.getInt32(cur, true);
+      cur += 4;
+      if (kLen < 0 || cur + kLen > limit) return { dict, next: limit };
+      let k = "";
+      for (let j = 0; j < kLen; j++) k += String.fromCharCode(u8[cur + j]);
+      cur += kLen;
+      if (cur + 4 > limit) return { dict, next: limit };
+      const vLen = view.getInt32(cur, true);
+      cur += 4;
+      if (vLen < 0 || cur + vLen > limit) return { dict, next: limit };
+      let v = "";
+      for (let j = 0; j < vLen; j++) v += String.fromCharCode(u8[cur + j]);
+      cur += vLen;
+      dict[k] = v;
+    }
+    return { dict, next: cur };
+  };
+
+  const models: RawVoxModel[] = [];
+  const nodes = new Map<number, VoxSceneNode>();
+  const referencedChildren = new Set<number>();
   let palette = defaultVoxPalette();
 
   let offset = 8;
@@ -69,19 +162,23 @@ export function parseVox(buffer: ArrayBuffer, opts: VoxParseOptions): VolumeAsse
     const contentBytes = view.getInt32(pos + 4, true);
     const childBytes = view.getInt32(pos + 8, true);
     const contentStart = pos + 12;
-    const childStart = contentStart + contentBytes;
-    const chunkEnd = Math.min(limit, childStart + childBytes);
+    const childStart = Math.min(limit, contentStart + Math.max(0, contentBytes));
+    const chunkEnd = Math.min(limit, childStart + Math.max(0, childBytes));
 
-    if (id === "SIZE" && contentBytes >= 12 && sizeX === 0) {
-      sizeX = view.getInt32(contentStart, true);
-      sizeY = view.getInt32(contentStart + 4, true);
-      sizeZ = view.getInt32(contentStart + 8, true);
-    } else if (id === "XYZI" && contentBytes >= 4 && voxels.length === 0) {
+    if (id === "SIZE" && contentBytes >= 12) {
+      models.push({
+        sx: view.getInt32(contentStart, true),
+        sy: view.getInt32(contentStart + 4, true),
+        sz: view.getInt32(contentStart + 8, true),
+        voxels: [],
+      });
+    } else if (id === "XYZI" && contentBytes >= 4 && models.length > 0) {
+      const target = models[models.length - 1];
       const count = view.getInt32(contentStart, true);
       for (let i = 0; i < count; i++) {
         const p = contentStart + 4 + i * 4;
         if (p + 4 > childStart) break;
-        voxels.push([u8[p], u8[p + 1], u8[p + 2], u8[p + 3]]);
+        target.voxels.push([u8[p], u8[p + 1], u8[p + 2], u8[p + 3]]);
       }
     } else if (id === "RGBA" && contentBytes >= 1024) {
       // Palette index 1..255 maps to entries 0..254 in the RGBA chunk
@@ -95,6 +192,59 @@ export function parseVox(buffer: ArrayBuffer, opts: VoxParseOptions): VolumeAsse
         pal[dst + 3] = u8[src + 3];
       }
       palette = pal;
+    } else if (id === "nTRN" && contentBytes >= 24) {
+      const nodeId = view.getInt32(contentStart, true);
+      const { dict: attrs, next: p1 } = readDict(contentStart + 4, childStart);
+      if (p1 + 16 <= childStart) {
+        const childId = view.getInt32(p1, true);
+        const numFrames = view.getInt32(p1 + 12, true);
+        let tx = 0, ty = 0, tz = 0;
+        let rotByte = 0x04; // identity
+        if (numFrames > 0) {
+          const { dict: f0 } = readDict(p1 + 16, childStart);
+          if (f0._t) {
+            const parts = f0._t.trim().split(/\s+/).map(Number);
+            if (parts.length >= 3 && parts.every(Number.isFinite)) {
+              tx = parts[0]; ty = parts[1]; tz = parts[2];
+            }
+          }
+          if (f0._r !== undefined) {
+            const parsed = Number(f0._r);
+            if (Number.isFinite(parsed)) rotByte = parsed & 0xff;
+          }
+        }
+        nodes.set(nodeId, { kind: "trn", childId, tx, ty, tz, rotByte, hidden: attrs._hidden === "1" });
+        referencedChildren.add(childId);
+      }
+    } else if (id === "nGRP" && contentBytes >= 8) {
+      const nodeId = view.getInt32(contentStart, true);
+      const { next: p1 } = readDict(contentStart + 4, childStart);
+      if (p1 + 4 <= childStart) {
+        const numChildren = view.getInt32(p1, true);
+        const children: number[] = [];
+        for (let i = 0; i < numChildren; i++) {
+          const cp = p1 + 4 + i * 4;
+          if (cp + 4 > childStart) break;
+          const cid = view.getInt32(cp, true);
+          children.push(cid);
+          referencedChildren.add(cid);
+        }
+        nodes.set(nodeId, { kind: "grp", children });
+      }
+    } else if (id === "nSHP" && contentBytes >= 8) {
+      const nodeId = view.getInt32(contentStart, true);
+      const { next: p1 } = readDict(contentStart + 4, childStart);
+      if (p1 + 4 <= childStart) {
+        const numModels = view.getInt32(p1, true);
+        const modelIds: number[] = [];
+        let cur = p1 + 4;
+        for (let i = 0; i < numModels && cur + 4 <= childStart; i++) {
+          modelIds.push(view.getInt32(cur, true));
+          const { next: afterAttr } = readDict(cur + 4, childStart);
+          cur = afterAttr;
+        }
+        nodes.set(nodeId, { kind: "shp", modelIds });
+      }
     }
 
     let cPos = childStart;
@@ -112,14 +262,94 @@ export function parseVox(buffer: ArrayBuffer, opts: VoxParseOptions): VolumeAsse
     offset = next;
   }
 
-  if (sizeX <= 0 || sizeY <= 0 || sizeZ <= 0) {
+  if (models.length === 0 || models[0].sx <= 0 || models[0].sy <= 0 || models[0].sz <= 0) {
     throw new Error("Invalid .vox file: missing SIZE chunk");
+  }
+
+  let sizeX = 0, sizeY = 0, sizeZ = 0;
+  let finalVoxels: Array<[number, number, number, number]>;
+
+  const useSceneGraph = opts.modelIndex === undefined && nodes.size > 0;
+  if (!useSceneGraph) {
+    const mIdx = Math.max(0, Math.min(models.length - 1, opts.modelIndex ?? 0));
+    const m = models[mIdx];
+    sizeX = m.sx; sizeY = m.sy; sizeZ = m.sz;
+    finalVoxels = m.voxels;
+  } else {
+    // Traverse MagicaVoxel scene graph (nTRN -> nGRP -> nSHP) and stitch all visible models/instances into one volume
+    const placed: Array<[number, number, number, number]> = [];
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let shapeCount = 0;
+    let hasRotation = false;
+    let lastModelIdx = 0;
+
+    const visit = (
+      nodeId: number,
+      rot: [number, number, number, number, number, number, number, number, number],
+      tx: number,
+      ty: number,
+      tz: number,
+      depth: number,
+    ) => {
+      if (depth > 32) return;
+      const node = nodes.get(nodeId);
+      if (!node) return;
+      if (node.kind === "trn") {
+        if (node.hidden) return;
+        const ntx = tx + rot[0] * node.tx + rot[1] * node.ty + rot[2] * node.tz;
+        const nty = ty + rot[3] * node.tx + rot[4] * node.ty + rot[5] * node.tz;
+        const ntz = tz + rot[6] * node.tx + rot[7] * node.ty + rot[8] * node.tz;
+        const nrot = mulMat3(rot, decodeVoxRotMatrix(node.rotByte));
+        if (node.rotByte !== 0x04) hasRotation = true;
+        visit(node.childId, nrot, ntx, nty, ntz, depth + 1);
+      } else if (node.kind === "grp") {
+        for (const cid of node.children) visit(cid, rot, tx, ty, tz, depth + 1);
+      } else if (node.kind === "shp") {
+        const mid = node.modelIds[0];
+        const m = mid !== undefined ? models[mid] : undefined;
+        if (!m) return;
+        shapeCount++;
+        lastModelIdx = mid;
+        const cx = Math.floor(m.sx / 2);
+        const cy = Math.floor(m.sy / 2);
+        const cz = Math.floor(m.sz / 2);
+        for (const [vx, vy, vz, ci] of m.voxels) {
+          if (ci === 0) continue;
+          const lx = vx - cx, ly = vy - cy, lz = vz - cz;
+          const wx = Math.round(tx + rot[0] * lx + rot[1] * ly + rot[2] * lz);
+          const wy = Math.round(ty + rot[3] * lx + rot[4] * ly + rot[5] * lz);
+          const wz = Math.round(tz + rot[6] * lx + rot[7] * ly + rot[8] * lz);
+          if (wx < minX) minX = wx; if (wx > maxX) maxX = wx;
+          if (wy < minY) minY = wy; if (wy > maxY) maxY = wy;
+          if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz;
+          placed.push([wx, wy, wz, ci]);
+        }
+      }
+    };
+
+    const ident: [number, number, number, number, number, number, number, number, number] = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const roots = Array.from(nodes.keys()).filter((id) => !referencedChildren.has(id));
+    for (const rootId of roots.length > 0 ? roots : [0]) {
+      visit(rootId, ident, 0, 0, 0, 0);
+    }
+
+    if (placed.length === 0 || (shapeCount === 1 && !hasRotation)) {
+      const m = models[shapeCount === 1 ? lastModelIdx : 0];
+      sizeX = m.sx; sizeY = m.sy; sizeZ = m.sz;
+      finalVoxels = m.voxels;
+    } else {
+      sizeX = Math.min(256, maxX - minX + 1);
+      sizeY = Math.min(256, maxY - minY + 1);
+      sizeZ = Math.min(128, maxZ - minZ + 1);
+      finalVoxels = placed.map(([wx, wy, wz, ci]) => [wx - minX, wy - minY, wz - minZ, ci]);
+    }
   }
 
   const area = sizeX * sizeY;
   const rgba = new Uint8Array(sizeZ * area * 4);
-  for (const [vx, vy, vz, ci] of voxels) {
-    if (vx >= sizeX || vy >= sizeY || vz >= sizeZ || ci === 0) continue;
+  for (const [vx, vy, vz, ci] of finalVoxels) {
+    if (vx < 0 || vy < 0 || vz < 0 || vx >= sizeX || vy >= sizeY || vz >= sizeZ || ci === 0) continue;
     // MagicaVoxel is Z-up; flip Y so nose (+Y) matches sprite-stacking convention
     const idx = vz * area + (sizeY - 1 - vy) * sizeX + vx;
     const p = idx * 4;

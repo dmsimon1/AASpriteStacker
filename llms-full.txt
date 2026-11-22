@@ -18,8 +18,10 @@ const world = new SceneWorld({
 // background: "transparent" | "studio" | "solid" | "terrain" (use "transparent" to overlay existing 2D games!)
 const renderer = new AASpriteRenderer(canvas, { background: "transparent", quality: "ultra" });
 
-// Drop-in loaders: loadSliceStripUrl(url, { id, slices }), loadVoxUrl(url, { id }), or compileBlueprint(...)
-world.registerAsset(await loadSliceStripUrl("/car_slices.png", { id: "car", slices: 24 }));
+// Drop-in loaders: loadSliceStripUrl(url, { id, slices }), loadVoxUrl(url, { id }) (full multi-model nTRN/nGRP/nSHP scene graph),
+// loadAnimatedStripGridUrl(url, { id, slices, frames, fps }), or compileBlueprint(...)
+// Optional terrain backdrop: import { TERRAIN_FS } from "@aastack/core/terrain" -> new AASpriteRenderer(canvas, { terrainShader: TERRAIN_FS })
+world.registerAsset(await loadSliceStripUrl("/car_slices.png", { id: "car", slices: 20 }));
 world.applyPatch([
   { op: "set", path: "style", value: "arcade-8bit" }, // "arcade-8bit" | "hd-2d" | "smooth-toy" | "retro-raw"
   { op: "set", path: "aaMode", value: "voxel-dda" },  // "voxel-dda" | "smooth-sdf" | "legacy"
@@ -39,8 +41,8 @@ function loop(dt: number) {
 4. **Semantic Sockets:** `world.getSocketWorldPos("jet", "wingtipL")` & `world.getSocketWorldDir("jet", "thrusterL")`.
 5. **Spatial & 2.5D Picking Queries (1:1 with Rendered Pixels):** `world.sampleTerrainHeight(x, z)`, `world.raycastEntities(ro, rd, maxDist)`, `projectWorldToScreen(pos, cam, w, h)`, and `unprojectScreenToGround(sx, sy, cam, w, h, groundY)`.
 6. **Introspection & QA:** `renderer.getStats()` (FPS, frameMs, gpuMs, quality, DRS, DPR, drawCalls, isMobile) and `renderer.captureDataUrl(world)`.
-7. **Live AA Quality & Background Softswitches:** `renderer.setQuality("eco" | "balanced" | "ultra", world)` toggles `2×` / `4×` / `8×` RGSS, DPR (`1.25×` / `1.5×` / `2.0×`), and half-res vs. full-res JFA outlines at runtime; `renderer.setBackground("transparent" | "studio" | "solid" | "terrain", rgb?)` switches backdrop mode with zero context rebuild.
-8. **First-Class 2.5D Isometric / Oblique Cameras & Genre-Agnostic Shading:** `createIsometricCamera({ preset: "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter", pixelsPerUnit?, viewportHeightCss? })`, explicit `entity.normalSmoothness` (`0..1`), and `entity.aaPriority` (`"hero" | "auto"`).
+7. **Live AA Quality, Instancing & Background Softswitches:** `renderer.setQuality("eco" | "balanced" | "ultra", world)` toggles `2×` / `4×` / `8×` RGSS, DPR (`1.25×` / `1.5×` / `2.0×`), and half-res vs. full-res JFA outlines at runtime; `renderer.setInstanceBatching("auto" | "aggressive" | "off")` batches same-asset entities via WebGL2 `drawElementsInstanced` (64+ stacks in 1 draw call); `renderer.setBackground("transparent" | "studio" | "solid" | "terrain", rgb?)` switches backdrop mode with zero context rebuild.
+8. **First-Class 2.5D Isometric / Oblique Cameras & Multi-Frame Animation:** `createIsometricCamera({ preset: "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter", pixelsPerUnit?, viewportHeightCss? })`, explicit `entity.normalSmoothness` (`0..1`), `entity.aaPriority` (`"hero" | "auto"`), and zero-GC `SpriteStackAnimator` (`registerClip`, `bindEntity`, `update`).
 
 ## Live Agent Dev Bridge (`@aastack/bridge` + `@aastack/mcp`)
 - Opt-in browser client (`@aastack/bridge/client`): lazy-load `connectDevBridge({ world, renderer }, { title })` when `?bridge=1` is set (`ws://127.0.0.1:8787`, zero production bloat).

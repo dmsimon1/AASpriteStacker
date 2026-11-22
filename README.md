@@ -1,7 +1,7 @@
 # AASpriteStacker (`@aastack/*`)
 
 > **The first fully anti-aliased sprite-stacking engine SDK for WebGL2 — 2.5D isometric & oblique to full 6-DOF.**  
-> Zero polygons. Zero runtime dependencies. First-class 2:1 isometric / true isometric / classic oblique sprite-stack cameras, premultiplied transparent overlay support for dropping straight into existing 2D games, ~34.6 KB gzipped full 6-DOF flight demo (`0` dev-bridge bytes when off), live AA quality softswitch (`Eco 2× / Bal 4× / Ultra 8×`), and optional MCP co-editing for coding agents.
+> Zero polygons. Zero runtime dependencies. Hardware-instanced OBB batching (`64×` cars in `1` draw call), first-class 2:1 isometric / true isometric / classic oblique cameras, premultiplied transparent overlay support, multi-model MagicaVoxel `.vox` scene graphs, multi-frame sprite-stack animation, tree-shakeable `@aastack/core/terrain` (`23.9 KB` gz core / `29.8 KB` gz full 6-DOF flight demo), ready-to-open Godot 4 project & Unity URP UPM package, and optional MCP co-editing.
 
 [![Website: aasprite.com](https://img.shields.io/badge/Website-aasprite.com-38bdf8.svg)](https://aasprite.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -54,16 +54,16 @@ world.applyPatch([{ op: "set", path: "style", value: "arcade-8bit" }]);
 
 ```text
 packages/
-  core/        # @aastack/core      — Zero-dep WebGL2 6-DOF & 2.5D AA engine, transparent overlay, .vox/strip URL loaders, SceneIR
-  blueprint/   # @aastack/blueprint — Declarative JSON/TS Voxel+3D SDF CSG compiler & presets (Cottage, FighterJet, Clouds, SkyGate)
+  core/        # @aastack/core      — Zero-dep WebGL2 instanced AA engine, transparent overlay, multi-model .vox, animation, @aastack/core/terrain
+  blueprint/   # @aastack/blueprint — Declarative JSON/TS Voxel+3D SDF CSG compiler & presets (Car, Cottage, FighterJet, Clouds, SkyGate)
   bridge/      # @aastack/bridge    — Isomorphic JSON Schemas, 3D geometric linter, vendor-neutral tool dispatcher & browser dev bridge
   mcp/         # @aastack/mcp       — Stdio MCP server + zero-dep localhost RFC 6455 WS relay for frontier coding agents
 examples/
-  minimal-2d/  # Interactive 2.5D Isometric / Oblique transparent-overlay starter over a live Canvas2D tilemap (/iso/)
-  flight-6dof/ # Flagship "SkyStack" 6-DOF Overhead/Chase/Cockpit flight sandbox (desktop + mobile, ~34.6 KB gz initial load)
+  minimal-2d/  # Interactive 2.5D Isometric / Oblique transparent-overlay starter + 64× Instanced crowd toggle (/iso/)
+  flight-6dof/ # Flagship "SkyStack" 6-DOF Overhead/Chase/Cockpit flight sandbox (desktop + mobile, 29.8 KB gz initial load)
 shaders/
-  godot4/      # Standalone Godot 4 CanvasItem reference shader (aa_sprite_stack.gdshader)
-  unity-urp/   # Standalone Unity URP 2D HLSL reference shader (AASpriteStack.shader)
+  godot4/      # Ready-to-open Godot 4.3 project (project.godot, main.tscn, aa_sprite_stack.gdshader + sample strips)
+  unity-urp/   # Unity UPM Git package (?path=/shaders/unity-urp — AASpriteStack.shader, MaterialPropertyBlock controller & samples)
 site/          # Zero-framework static site for aasprite.com (live A/B loupe hero, /primer/, /iso/, /play/, /studio/, /docs/)
 skills/
   aa-sprite-stacking/
@@ -223,8 +223,10 @@ A subtle **"Agent Live"** pill appears with a live status dot, edit toast, and *
 
 | Metric | Measured Result |
 | --- | --- |
-| **Desktop 6-DOF Demo (`2560×1600`, `8×` RGSS)** | `120 fps` (`0.1 ms` CPU frame time, `30–40` draw calls, `0` WebGL errors) |
-| **Full Demo Initial Load (`examples/flight-6dof`)** | `30.7 KB` gzipped (`0` bytes of dev-bridge/linter loaded unless `?bridge=1` is active; lazy bridge chunk `8.5 KB` gz) |
+| **2.5D Core SDK (`@aastack/core`, tree-shaken)** | `23.9 KB` gzipped (terrain raymarcher tree-shaken via `@aastack/core/terrain`) |
+| **Hardware-Instanced 64× Crowd (`/iso/`)** | **64 animated cars in 1 instanced OBB draw call** (`<= 7` total draw calls including JFA outlines) |
+| **Desktop 6-DOF Demo (`2560×1600`, `8×` RGSS)** | `120 fps` (`0.1 ms` CPU frame time, `~21` frustum-culled + instanced draw calls, `0` WebGL errors) |
+| **Full Demo Initial Load (`examples/flight-6dof`)** | `29.8 KB` gzipped (`0` bytes of dev-bridge/linter loaded unless `?bridge=1` is active; lazy bridge chunk `8.7 KB` gz) |
 | **Temporal Rotation Shimmer (1° delta RMS)** | **−50.3%** in AA Voxel DDA (`4.83 → 2.40`), **−58.0%** in AA Smooth SDF (`4.83 → 2.03`) |
 | **Cardinal Rotation Drift (`0°/90°/180°/270°`)** | `0.00 px` on even-sized voxel sprites |
 | **1px Thin Post Persistence (360° sweep)** | `0` blink/dropout frames in AA modes |

@@ -4,9 +4,21 @@ All notable changes to **AASpriteStacker** (`@aastack/*`) are documented in this
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) starting at `0.1.0`.
 
-## [Unreleased] — Road to `0.1.0`
+## [0.1.0] — 2026-11-21
 
 ### Added
+- **WebGL2 Hardware-Instanced OBB Batching & Tree-Shakeable Terrain (`@aastack/core`):**
+  - Upgraded `ENTITY_OBB_VS` / `ENTITY_OBB_FS` and `AASpriteRenderer` to WebGL2 `drawElementsInstanced` (15 vertex attributes, 12 `flat` varyings, 212-byte dynamic instance buffer) with configurable `instanceBatching: "auto" | "aggressive" | "off"` — rendering 64+ animated same-asset sprite stacks in **1 single OBB draw call**.
+  - Added live **`64× Instanced`** toggle to `/iso/` (`examples/minimal-2d/`).
+  - Extracted the procedural ocean & island raymarcher into a tree-shakeable subpath export (`@aastack/core/terrain` → `TERRAIN_FS`), keeping the 2D/isometric/studio core at `23.9 KB` gzipped (`STUDIO_BG_FS` handles studio backdrops cleanly).
+- **Multi-Model MagicaVoxel `.vox` Scene Graphs & Multi-Frame Sprite-Stack Animation (`@aastack/core` & Browser Studio):**
+  - Upgraded `parseVox()` (and Studio `viewer.html`) to traverse full MagicaVoxel `nTRN` / `nGRP` / `nSHP` scene graphs (`_t` translation, `_r` bit-packed orthogonal rotation matrix, `_hidden` skipping, plus optional `modelIndex`).
+  - Added `SpriteStackAnimator`, `createSpriteStackClip()`, `loadAnimatedStripGridPixels()`, and `loadAnimatedStripGridUrl()` for zero-GC frame-by-frame animated sprite stacks (`loop` & `pingPong`).
+- **Ready-to-Open Godot 4 Sample Project & Unity URP UPM Git Package (`shaders/`):**
+  - Upgraded `shaders/godot4/` into an open-and-press-F5 Godot 4.3 project (`project.godot`, `main.tscn`, `aa_sprite_stack.gd`, `car_slices.png`, `cottage_slices.png`, live `1×/2×/4×/8×` RGSS toggle).
+  - Upgraded `shaders/unity-urp/` into a 1-click Unity Package Manager Git package (`com.aastack.spritestack`, `?path=/shaders/unity-urp`, `MaterialPropertyBlock` controller `AASpriteStackController.cs`, and importable Car/Cottage demo samples).
+- **Headless WebGL2 Shader Smoke Test in CI (`tests/webgl-smoke.mjs`):**
+  - Automated Playwright + Chromium SwiftShader CI job compiling and rendering `/`, `/iso/` (including verifying `64` visible cars in `<= 8` draw calls), `/play/`, and `/studio/` with zero WebGL/console errors.
 - **First-Class 2.5D Isometric & Oblique Projection System (`@aastack/core`):**
   - Added `createIsometricCamera({ preset: "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter", pixelsPerUnit?, viewportHeightCss?, obliqueSkew? })`, `mat4ObliqueOrtho()`, `CameraMode: "oblique"`, `projectWorldToScreen()`, and `unprojectScreenToGround()` ground picking.
   - Upgraded `examples/minimal-2d/` (and published live at `/iso/`) into an interactive 2.5D Isometric & Oblique Transparent Overlay sandbox synchronized with a real Canvas2D tilemap and click-to-tile picking.

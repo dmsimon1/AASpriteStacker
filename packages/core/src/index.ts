@@ -8,6 +8,7 @@ export * from "./math.js";
 export * from "./camera.js";
 export * from "./volume.js";
 export * from "./loaders.js";
+export * from "./animation.js";
 export * from "./scene.js";
 export * from "./renderer.js";
 export * from "./mobile.js";

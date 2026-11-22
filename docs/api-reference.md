@@ -58,24 +58,28 @@ Standalone helper: `sampleTerrainHeight(x, z, terrain)` and `createDefaultScene(
 
 ```ts
 const renderer = new AASpriteRenderer(canvas: HTMLCanvasElement, opts?: {
-  quality?: QualityTier;          // default "auto" ("eco" | "balanced" | "ultra" | "mobile" | "desktop")
-  background?: BackgroundMode;    // default "terrain" ("transparent" | "studio" | "solid" | "terrain")
-  backgroundColor?: RGB;          // RGB [0..255] used when background === "solid"
-  adaptiveDpr?: boolean;          // default true (GPU/thermal DRS governor)
-  maxDpr?: number;                // default 1.25 eco, 1.5 balanced (1.35 mobile), 2.0 ultra
+  quality?: QualityTier;              // default "auto" ("eco" | "balanced" | "ultra" | "mobile" | "desktop")
+  background?: BackgroundMode;        // default "terrain" ("transparent" | "studio" | "solid" | "terrain")
+  backgroundColor?: RGB;              // RGB [0..255] used when background === "solid"
+  terrainShader?: string;             // optional GLSL from `import { TERRAIN_FS } from "@aastack/core/terrain"`
+  instanceBatching?: "auto" | "aggressive" | "off"; // default "auto" (WebGL2 drawElementsInstanced batching)
+  adaptiveDpr?: boolean;              // default true (GPU/thermal DRS governor)
+  maxDpr?: number;                    // default 1.25 eco, 1.5 balanced (1.35 mobile), 2.0 ultra
   powerPreference?: "default" | "low-power" | "high-performance"; // default "default"
-  preserveDrawingBuffer?: boolean; // default true (enables captureDataUrl)
+  preserveDrawingBuffer?: boolean;    // default true (enables captureDataUrl)
 });
 ```
 
 | Method / Property | Description |
 | --- | --- |
-| `renderer.isReady` | `true` if WebGL2 context and all 6 shader programs linked cleanly |
+| `renderer.isReady` | `true` if WebGL2 context and core shader programs linked cleanly |
 | `renderer.isMobile` | Resolved mobile profile flag |
 | `renderer.setQuality(preset: AAQuality, world?)` | Live runtime AA quality softswitch (`"eco"` 2× / `"balanced"` 4× / `"ultra"` 8× Retina + full-res JFA) |
 | `renderer.getQuality(): AAQuality` | Returns active runtime AA quality preset |
 | `renderer.setBackground(mode: BackgroundMode, color?: RGB)` | Switches backdrop mode at runtime (`"transparent"`, `"studio"`, `"solid"`, `"terrain"`) without recreating WebGL2 |
 | `renderer.getBackground(): BackgroundMode` | Returns active background mode |
+| `renderer.setTerrainShader(glsl: string \| null)` | Registers or swaps the optional procedural terrain shader (`@aastack/core/terrain`) |
+| `renderer.setInstanceBatching(mode)` / `getInstanceBatching()` | Switches WebGL2 hardware instancing strategy (`"auto"`, `"aggressive"`, `"off"`) at runtime |
 | `renderer.resizeToDisplay(cssW?, cssH?)` | Resizes backing buffer respecting DPR cap & adaptive DRS |
 | `renderer.render(world: SceneWorld)` | Renders all active passes (optional backdrop, OBB entities, 3D ribbons, JFA outlines + bloom + premultiplied transparent or opaque composite) |
 | `renderer.getStats(): EngineTelemetry` | Returns `{ fps, frameMs, gpuMs?, quality, canvasWidth, canvasHeight, dpr, drsScale, drawCalls, visibleEntities, totalEntities, isMobile, backend, activeSamples, tick, time }` |
@@ -92,17 +96,20 @@ const renderer = new AASpriteRenderer(canvas: HTMLCanvasElement, opts?: {
 | `projectWorldToScreen(worldPos, cam, w, h)` | Projects a 3D world point `[X, Y, Z]` to DOM/Canvas2D `{ x, y, depth, visible }` coordinates |
 | `unprojectScreenToGround(sx, sy, cam, w, h, groundY = 0)` | Exact screen-to-ground-plane ray intersection across perspective, orthographic, dimetric, isometric, and oblique projections |
 
-### Volume & Asset Loaders (`volume.ts`, `loaders.ts`)
+### Volume, Asset Loaders & Animation (`volume.ts`, `loaders.ts`, `animation.ts`)
 
 | Function | Description |
 | --- | --- |
 | `createVolumeAsset(input)` | Builds a complete `VolumeAsset` (optional 3D EDT SDF via `computeSdf?: boolean`, smooth normals + AO, 3D RGB edge dilation, emissive mask, content hash) from raw `rgba` voxels |
 | `compute3DSdf(rgba, w, l, h, smoothStrength?)` | Exact `O(N)` 3-pass Felzenszwalb–Huttenlocher 3D Euclidean SDF with boundary air clamping |
-| `parseVox(buffer: ArrayBuffer, opts: VoxParseOptions)` | Zero-dependency MagicaVoxel `.vox` binary parser (`SIZE`, `XYZI`, `RGBA`, default palette, optional `computeSdf`) |
+| `parseVox(buffer: ArrayBuffer, opts: VoxParseOptions)` | Zero-dependency MagicaVoxel `.vox` binary parser supporting both single-model files and full multi-model scene graphs (`SIZE`, `XYZI`, `RGBA`, `nTRN`, `nGRP`, `nSHP`, `_t`, `_r`, `_hidden`, optional `modelIndex`) |
 | `loadVoxUrl(url: string, opts: VoxParseOptions)` | Async one-line drop-in loader fetching and compiling any MagicaVoxel `.vox` URL |
 | `loadSliceStripPixels(pixels, stripW, stripH, opts)` | Loads horizontal `slices.png` RGBA pixel buffers into a `VolumeAsset` |
 | `loadSliceStripFromImage(img, opts)` | Compiles an already-loaded `HTMLImageElement` or `ImageBitmap` horizontal slice strip into a `VolumeAsset` |
 | `loadSliceStripUrl(url: string, opts: SliceStripOptions)` | Async one-line browser drop-in loader fetching and compiling any horizontal `slices.png` strip URL |
+| `createSpriteStackClip(opts)` / `loadAnimatedStripGridPixels(...)` / `loadAnimatedStripGridUrl(url, opts)` | Compiles multi-frame animated sprite-stack sheets (rows = frames, columns = slices) into a reusable `SpriteStackClip` |
+| `new SpriteStackAnimator()` | Zero-GC frame animation controller (`registerClip`, `bindEntity`, `setClip`, `play`, `pause`, `setFrame`, `getFrameIndex`, `update`) driving `entity.assetId` at `fps` with `loop` & `pingPong` support |
+| `TERRAIN_FS` (`@aastack/core/terrain`) | Tree-shakeable procedural ocean, archipelago & cloud-shadow fragment shader passed to `new AASpriteRenderer(canvas, { terrainShader: TERRAIN_FS })` |
 
 ### 6-DOF Math, Frustum Culling & Mobile Touch (`math.ts`, `mobile.ts`)
 
