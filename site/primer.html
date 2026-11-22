@@ -24,11 +24,11 @@
     <div class="container primer-wrap">
       <!-- HEADER -->
       <header class="primer-header">
-        <div class="section-kicker">Visual Primer · 2-Minute Read</div>
+        <div class="section-kicker">Visual Primer · 3-Minute Read</div>
         <h1>What is sprite stacking?</h1>
         <p class="primer-lead">
           How game artists turn flat 2D pixel-art layers into rotating 3D objects without a single polygon—where
-          classic sprite stacking breaks down, and how full anti-aliasing changes what you can build with it.
+          the technique came from, which games popularized it, why classic stackers alias, and how full anti-aliasing solves it.
         </p>
       </header>
 
@@ -77,53 +77,155 @@ for (let z = 0; z &lt; slices.length; z++) {
 
       <!-- 2. EXPLODED VS ASSEMBLED -->
       <section class="primer-section" id="stacking">
-        <h2>2. From Flat Cards to Solid 3D Form</h2>
+        <h2>2. Exploded View: Seeing How Flat Layers Build 3D Form</h2>
         <p>
-          Pull the layers slightly apart vertically (an <em>exploded stack</em>) and you can literally count the
-          individual 2D slices floating like a deck of cards. Compress the spacing back down to <code>1.0</code> and
-          the slices fuse into a tactile, solid 3D model that rotates smoothly 360°.
+          The easiest way to understand sprite stacking is an <strong>exploded view</strong>—pulling the vertical
+          spacing apart (<code>step &gt; 1.0</code>) so the solid model separates back into its individual 2D cards.
+          Compress the spacing back down to <code>1.0</code>, and those exact same slices fuse into a tactile 3D object.
         </p>
 
-        <div class="primer-2up">
-          <figure class="primer-figure">
-            <div class="primer-img-pad">
-              <picture>
-                <source srcset="/assets/primer-exploded.webp" type="image/webp" />
-                <img src="/assets/primer-exploded.png" alt="Exploded view of the cottage showing individual 2D horizontal pixel slices stacked vertically" loading="lazy" />
-              </picture>
+        <!-- Dedicated Exploded-Stack Explainer Card -->
+        <article class="primer-exploded-card" id="exploded-view">
+          <div class="primer-exploded-media">
+            <picture>
+              <source srcset="/assets/primer-exploded.webp" type="image/webp" />
+              <img src="/assets/primer-exploded.png" alt="Exploded view of the 28-layer cottage sprite stack with vertical gaps exposing each flat 2D slice" loading="lazy" />
+            </picture>
+          </div>
+          <div class="primer-exploded-body">
+            <span class="compare-badge cyan">Exploded Stack · spacing = 2.0</span>
+            <h3>Anatomy of an Exploded Sprite Stack</h3>
+            <p>
+              Increasing the vertical offset between slices (<code>y − z × 2.0</code>) lifts every layer apart like an
+              architectural cutaway so you can literally read the 3D volume slice by slice:
+            </p>
+            <ul class="exploded-layers">
+              <li><code>z = 0–3</code> — Earth base &amp; rounded grass lawn plinth</li>
+              <li><code>z = 4–12</code> — Cream walls, teal doorway, glowing windows &amp; 1px brass doorknob</li>
+              <li><code>z = 13–21</code> — Stepped blue roof gable &amp; brick-red chimney</li>
+              <li><code>z = 22–27</code> — Floating 1px iron mast &amp; golden rooftop weathervane</li>
+            </ul>
+            <p class="exploded-why">
+              <strong>Why artists rely on exploded views:</strong> Pulling layers apart immediately reveals overhangs,
+              hollow interiors, floating disconnected voxels, and thin 1px details before collapsing <code>step</code>
+              back to <code>1.0</code> for runtime rendering.
+            </p>
+            <div class="exploded-actions">
+              <a class="btn btn-sm btn-primary" href="/studio/">Inspect Live Exploded View in Studio →</a>
             </div>
-            <figcaption class="primer-cap">
-              <strong>Exploded stack (spacing = 2.0):</strong> Every horizontal slice is clearly visible—even the
-              teal doorway and thin 1px rooftop weathervane mast separate into stacked flat layers.
-            </figcaption>
-          </figure>
+          </div>
+        </article>
 
-          <figure class="primer-figure">
-            <div class="primer-img-pad">
-              <img src="/assets/compare-crisp-aa.png" alt="Assembled cottage sprite stack forming a solid anti-aliased 3D object" loading="lazy" />
+        <!-- Paired Assembled-Stack Card (no duplicated exploded image!) -->
+        <article class="primer-exploded-card primer-assembled-card" id="assembled-view">
+          <div class="primer-exploded-media">
+            <img src="/assets/compare-crisp-aa.png" alt="Assembled 28-layer cottage sprite stack at spacing 1.0 forming a solid anti-aliased 3D object" loading="lazy" />
+          </div>
+          <div class="primer-exploded-body">
+            <span class="compare-badge cyan">Assembled Stack · spacing = 1.0</span>
+            <h3>Collapsed Back Into Solid 3D Form</h3>
+            <p>
+              Compress the vertical offset from <code>2.0</code> back down to <code>1.0</code> and those exact same 28
+              flat pixel layers lock tightly together into a solid, tactile 3D building that rotates smoothly 360°—with
+              self-shadows, crisp roof edges, and an intact 1px rooftop weathervane.
+            </p>
+            <div class="exploded-actions">
+              <a class="btn btn-sm" href="/iso/">Try Live 2.5D Iso &amp; Oblique Stacking →</a>
             </div>
-            <figcaption class="primer-cap">
-              <strong>Assembled stack (spacing = 1.0):</strong> Drawn tightly together with anti-aliased volume
-              raycasting, the exact same 28 slices fuse into a solid, freely rotating 3D building.
-            </figcaption>
-          </figure>
+          </div>
+        </article>
+      </section>
+
+      <!-- 3. ORIGINS & GAMES THAT USED IT -->
+      <section class="primer-section" id="history">
+        <h2>3. Where Sprite Stacking Came From &amp; Games That Use It</h2>
+        <p>
+          Sprite stacking grew out of a decades-long tradition of faking 3D depth with 2D hardware—before finding a
+          modern identity in indie pixel art as a fast, charming alternative to full 3D polygon pipelines.
+        </p>
+
+        <div class="grid-3 history-timeline">
+          <article class="card">
+            <span class="history-era">1980s–1990s · Roots</span>
+            <h3>Arcade &amp; Console Pseudo-3D</h3>
+            <p>
+              Before affordable 3D GPUs, engineers created volume out of 2D planes: Sega's <em>Super Scaler</em> arcade
+              boards (<em>OutRun</em>, <em>Power Drift</em>), SNES <em>Mode 7</em> plane-warping, NovaLogic's non-polygon
+              <em>Voxel Space</em> terrain (<em>Comanche</em>, 1992), Zyrinx's layered top-down hardware tricks in
+              <em>Red Zone</em> (Sega Genesis, 1994), and DMA Design's original <em>Grand Theft Auto</em> (1997) proving
+              top-down 2D worlds could convey multi-story height.
+            </p>
+          </article>
+
+          <article class="card">
+            <span class="history-era">2016 · Indie Watershed</span>
+            <h3><em>NIUM</em> &amp; the GameMaker Wave</h3>
+            <p>
+              Modern sprite stacking exploded into indie gamedev in 2016 when <strong>Ojiro "Moppin" Fumoto</strong>
+              (creator of <em>Downwell</em>) and artist <strong>Nemk</strong> debuted <strong><em>NIUM</em></strong> in
+              GameMaker at <em>Fantastic Arcade</em>. Rotating a top-down camera smoothly over stacked pixel-art slices
+              sparked community frameworks like <em>Fauxton3D</em> and <em>Like 100 Bears</em>' scripts across GameMaker,
+              Godot, and PICO-8.
+            </p>
+          </article>
+
+          <article class="card">
+            <span class="history-era">2018–Present · Tooling Boom</span>
+            <h3>Voxel &amp; Slice-Sheet Editors</h3>
+            <p>
+              Dedicated creation tools—<strong>MagicaVoxel</strong> (<code>.vox</code> slice export),
+              <strong>SpriteStack</strong> (by Rezoner), and <strong>SpritePile</strong> (by Fern Nigro)—turned sprite
+              stacking into an everyday pipeline. Artists paint layer-by-layer in 2D pixel tools and export straight to
+              2D engines—skipping polygon modeling, UV unwrapping, and rigging.
+            </p>
+          </article>
         </div>
 
-        <div class="primer-callout">
-          <h3>Why artists and game developers love it</h3>
-          <p>
-            Sprite stacking sits in a beloved sweet spot between 2D pixel art and 3D engines. Inspired by 1990s
-            arcade pseudo-3D scaling and popularized in modern indie games like <em>Nium</em> and
-            <em>Super Space Galaxy</em> (plus PICO-8 and GameMaker communities), it lets artists draw directly in
-            2D pixel tools (Aseprite, 4-view sheets, or MagicaVoxel)—skipping polygonal modeling, UV unwrapping, and
-            weight painting while gaining real 360° rotation and crisp miniature charm.
-          </p>
+        <h3 class="primer-subhead">Notable Games &amp; Communities Built With Sprite Stacking</h3>
+        <div class="grid-2 games-grid">
+          <article class="card">
+            <span class="game-tag">GameMaker · 2016 Showcase</span>
+            <h4><em>NIUM</em> — Ojiro "Moppin" Fumoto &amp; Nemk</h4>
+            <p>
+              The landmark Fantastic Arcade showcase that defined the modern sprite-stack look. Its rotatable pseudo-3D
+              pixel-art rooms and characters proved that pure 2D draw loops could feel tactile and volumetric, directly
+              inspiring most modern sprite-stacking tutorials.
+            </p>
+          </article>
+
+          <article class="card">
+            <span class="game-tag">Steam · Open-World Action RPG</span>
+            <h4><em>Legend of Radiance</em> (2023)</h4>
+            <p>
+              A top-down Zelda- and Souls-inspired open-world action RPG built with sprite stacking so players can rotate
+              the camera freely around miniature pixel-art towers, dungeons, and terrain without losing handcrafted 2D charm.
+            </p>
+          </article>
+
+          <article class="card">
+            <span class="game-tag">PICO-8 &amp; Picotron · Fantasy Consoles</span>
+            <h4><em>Death Dash Crash</em> &amp; <em>Chunky Rally / RallyTron</em></h4>
+            <p>
+              Fantasy-console developers love sprite stacking for squeezing drifting 3D cars, tanks, and arena props into
+              strict <code>128×128</code> 2D constraints—proving how lightweight and expressive stacked slices can be.
+            </p>
+          </article>
+
+          <article class="card">
+            <span class="game-tag">Godot · GameMaker · itch.io</span>
+            <h4>Top-Down Racers, Shooters &amp; Isometric Indies</h4>
+            <p>
+              Hundreds of indie top-down driving games, twin-stick shooters, and tactical isometric prototypes on itch.io
+              and Steam use MagicaVoxel, SpriteStack, or SpritePile slice strips—and until now, all of them had to live
+              with rotation aliasing.
+            </p>
+          </article>
         </div>
       </section>
 
-      <!-- 3. THE CATCH: WHY CLASSIC STACKING ALIASES -->
+      <!-- 4. THE CATCH: WHY CLASSIC STACKING ALIASES -->
       <section class="primer-section" id="the-catch">
-        <h2>3. The Catch: Why Classic Sprite Stackers Always Alias</h2>
+        <h2>4. The Catch: Why Classic Sprite Stackers Always Alias</h2>
         <p>
           Drawing stacked 2D quads works great at exact 0° / 90° angles—but the moment an object rotates smoothly in
           a real game, classic 2D slice stacking hits three brutal visual walls:
@@ -184,9 +286,9 @@ for (let z = 0; z &lt; slices.length; z++) {
         </div>
       </section>
 
-      <!-- 4. HOW AASPRITESTACKER SOLVES IT -->
+      <!-- 5. HOW AASPRITESTACKER SOLVES IT -->
       <section class="primer-section" id="how-aa-works">
-        <h2>4. How AASpriteStacker Solves It</h2>
+        <h2>5. How AASpriteStacker Solves It</h2>
         <p>
           Instead of drawing dozens of separate 2D sprites per object, <strong>AASpriteStacker</strong> uploads your
           slice stack into a compact GPU 3D volume texture and renders each object inside a single 12-triangle
@@ -240,6 +342,7 @@ for (let z = 0; z &lt; slices.length; z++) {
       <div class="footer-links">
         <a href="/">Home</a>
         <a href="/primer/">Primer</a>
+        <a href="/iso/">2.5D Iso</a>
         <a href="/play/">6-DOF Demo</a>
         <a href="/studio/">Studio</a>
         <a href="/docs/">Docs</a>
