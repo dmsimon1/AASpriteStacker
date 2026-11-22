@@ -16,7 +16,18 @@ export type ShadeStyle = "toon-aa" | "pbr-lite" | "unlit";
 export type CameraMode = "overhead" | "chase" | "cockpit" | "ortho" | "oblique" | "free";
 export type IsometricPreset = "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter";
 export type QualityTier = "auto" | "mobile" | "desktop" | "eco" | "balanced" | "ultra";
-export type DebugOverlay = "none" | "normals" | "depth" | "object-id";
+export type DebugOverlay = "none" | "normals" | "depth" | "object-id" | "overdraw";
+
+export interface OverdrawReport {
+  writtenAvg: number;
+  writtenMax: number;
+  coveredAvg: number;
+  coveredMax: number;
+  drawCalls: number;
+  visibleEntities: number;
+  pixels: number;
+  exact: boolean;
+}
 
 export interface SocketDef {
   /** Position in asset voxel coordinates [0..W, 0..L, 0..H]. */
@@ -83,6 +94,8 @@ export interface EntityState {
   castShadow?: boolean;
   /** Emissive intensity override (0..2). */
   emissiveBoost?: number;
+  /** Optional normalized Z-slice clip range [zMin, zMax] in [0..1] for slice-by-slice build, dismantle, or interior wall cutaways. */
+  sliceClip?: [number, number];
   /** Custom user metadata tag (e.g. "player", "npc", "prop"). */
   tag?: string;
   visible?: boolean;

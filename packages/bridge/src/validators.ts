@@ -10,7 +10,7 @@ export const VALID_RENDER_STYLES = ["arcade-8bit", "hd-2d", "smooth-toy", "retro
 export const VALID_AA_MODES = ["legacy", "voxel-dda", "smooth-sdf", "bandlimited"] as const;
 export const VALID_SHADE_STYLES = ["toon-aa", "pbr-lite", "unlit"] as const;
 export const VALID_CAMERA_MODES = ["overhead", "chase", "cockpit", "ortho", "free"] as const;
-export const VALID_DEBUG_OVERLAYS = ["none", "normals", "depth", "object-id"] as const;
+export const VALID_DEBUG_OVERLAYS = ["none", "normals", "depth", "object-id", "overdraw"] as const;
 export const VALID_BLUEPRINT_OPS = ["box", "sphere", "ellipsoid", "capsule", "wedge", "torus", "paint"] as const;
 
 function isFiniteNum(v: unknown): v is number {

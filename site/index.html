@@ -178,7 +178,7 @@
           <h2>Try it in a live scene, or drop in your own art.</h2>
         </div>
 
-        <div class="grid-2 demo-grid">
+        <div class="grid-3 demo-grid">
           <div class="demo-card">
             <a class="demo-thumb" href="/play/">
               <picture>
@@ -193,6 +193,23 @@
                 and live <code>Eco 2× / Bal 4× / Ultra 8×</code> quality controls.
               </p>
               <a class="btn btn-primary btn-sm" href="/play/">Play 6-DOF Demo →</a>
+            </div>
+          </div>
+
+          <div class="demo-card">
+            <a class="demo-thumb" href="/normandy/">
+              <picture>
+                <source srcset="/assets/normandy-aa-split.webp" type="image/webp" />
+                <img src="/assets/normandy-aa-split.png" alt="Normandy 1944 deferred sprite-stack village comparing original 1x nearest boxes against AASpriteStacker Single-OBB 3D volume DDA and 4x RGSS AA" loading="lazy" />
+              </picture>
+            </a>
+            <div class="demo-body">
+              <h3>Normandy 1944 Deferred AA</h3>
+              <p>
+                Built on <a href="https://github.com/loktar00/sprite-stack-engine" target="_blank" rel="noopener">@loktar00/sprite-stack-engine</a> (MIT).
+                Single-OBB 3D volume DDA cuts instances 4.4×, adds <code>4× RGSS AA</code>, A/B split compare, and a banking 6-DOF Spitfire (<a href="https://github.com/dmsimon1/sprite-stack-engine" target="_blank" rel="noopener">fork ↗</a>).
+              </p>
+              <a class="btn btn-primary btn-sm" href="/normandy/">Explore Normandy AA →</a>
             </div>
           </div>
 
@@ -301,6 +318,7 @@ npm install &amp;&amp; npm run build &amp;&amp; npm run dev:serve
       <div class="footer-links">
         <a href="/primer/">Primer</a>
         <a href="/play/">6-DOF Demo</a>
+        <a href="/normandy/">Normandy AA</a>
         <a href="/studio/">Studio</a>
         <a href="/docs/">Docs</a>
         <a href="/llms-full.txt">llms-full.txt</a>

@@ -447,3 +447,27 @@ test("SpriteStackAnimator + loadAnimatedStripGridPixels + tree-shakeable @aastac
   assert.equal(typeof TERRAIN_FS, "string");
   assert.ok(TERRAIN_FS.includes("terrainHeight") && TERRAIN_FS.includes("uWaveTime"));
 });
+
+test("EntityState.sliceClip and DebugOverlay 'overdraw' patch cleanly through SceneWorld", () => {
+  const world = new SceneWorld();
+  world.applyPatch([
+    { op: "set", path: "debugOverlay", value: "overdraw" },
+    {
+      op: "spawn",
+      entity: {
+        id: "house",
+        assetId: "cottage",
+        pos: [0, 0, 0],
+        rot: [0, 0, 0, 1],
+        scale: 1,
+        sliceClip: [0, 0.45],
+      },
+    },
+  ]);
+  assert.equal(world.doc.debugOverlay, "overdraw");
+  assert.deepEqual(world.getEntity("house").sliceClip, [0, 0.45]);
+  world.applyPatch([{ op: "updateEntity", entityId: "house", patch: { sliceClip: [0.1, 0.8] } }]);
+  assert.deepEqual(world.getEntity("house").sliceClip, [0.1, 0.8]);
+  world.undo();
+  assert.deepEqual(world.getEntity("house").sliceClip, [0, 0.45]);
+});

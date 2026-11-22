@@ -27,11 +27,22 @@ import {
   FULLSCREEN_VS,
   JFA_INIT_FS,
   JFA_STEP_FS,
+  OVERDRAW_HEAT_FS,
   RIBBON_FS,
   RIBBON_VS,
   STUDIO_BG_FS,
 } from "./shaders.js";
-import type { AAMode, AAQuality, BackgroundMode, EngineTelemetry, QualityTier, RGB, RenderStyle, VolumeAsset } from "./types.js";
+import type {
+  AAMode,
+  AAQuality,
+  BackgroundMode,
+  EngineTelemetry,
+  OverdrawReport,
+  QualityTier,
+  RGB,
+  RenderStyle,
+  VolumeAsset,
+} from "./types.js";
 
 export type InstanceBatchingMode = "auto" | "aggressive" | "off";
 
@@ -127,9 +138,9 @@ const UNIT_CUBE_INDICES = new Uint16Array([
   3, 7, 6, 3, 6, 2, // +Y
 ]);
 
-// 53 float32 values = 212 bytes per instanced entity OBB:
-// 16 voxToClip + 16 clipToVox + 9 normMat + 4 sunAndScale + 4 meta + 4 flags
-const INSTANCE_FLOATS = 53;
+// 55 float32 values = 220 bytes per instanced entity OBB:
+// 16 voxToClip + 16 clipToVox + 9 normMat + 4 sunAndScale + 4 meta + 4 flags + 2 sliceClip
+const INSTANCE_FLOATS = 55;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4;
 
 export class AASpriteRenderer {
@@ -151,12 +162,14 @@ export class AASpriteRenderer {
   private progs!: {
     studioBg: CompiledProg | null;
     terrain: CompiledProg | null;
+    overdrawHeat: CompiledProg | null;
     entity: CompiledProg;
     ribbon: CompiledProg;
     jfaInit: CompiledProg;
     jfaStep: CompiledProg;
     comp: CompiledProg;
   };
+  private floatColorExt = false;
   private dummySdfTex: WebGLTexture | null = null;
 
   private emptyVao: WebGLVertexArrayObject | null = null;
@@ -201,6 +214,8 @@ export class AASpriteRenderer {
     jfaB: null as WebGLFramebuffer | null,
     seedA: null as WebGLTexture | null,
     seedB: null as WebGLTexture | null,
+    overdrawFbo: null as WebGLFramebuffer | null,
+    overdrawTex: null as WebGLTexture | null,
   };
 
   private timerExt: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number } | null = null;
@@ -256,6 +271,8 @@ export class AASpriteRenderer {
       this.fbo.w = 0;
       this.fbo.h = 0;
       this.fbo.scene = null;
+      this.fbo.overdrawFbo = null;
+      this.fbo.overdrawTex = null;
       this.initGL(this.preserveDrawingBufferOpt, this.powerPreferenceOpt);
     };
     this.canvas.addEventListener("webglcontextlost", this.onContextLostBound);
@@ -278,13 +295,13 @@ export class AASpriteRenderer {
       for (const q of this.activeTimerQueries) gl.deleteQuery(q);
       this.activeTimerQueries.length = 0;
       const f = this.fbo;
-      for (const tex of [f.color, f.aux, f.seedA, f.seedB]) if (tex) gl.deleteTexture(tex);
+      for (const tex of [f.color, f.aux, f.seedA, f.seedB, f.overdrawTex]) if (tex) gl.deleteTexture(tex);
       if (f.depth) gl.deleteRenderbuffer(f.depth);
-      for (const fb of [f.scene, f.jfaA, f.jfaB]) if (fb) gl.deleteFramebuffer(fb);
+      for (const fb of [f.scene, f.jfaA, f.jfaB, f.overdrawFbo]) if (fb) gl.deleteFramebuffer(fb);
       f.w = f.h = f.jfaW = f.jfaH = 0;
-      f.color = f.aux = f.seedA = f.seedB = null;
+      f.color = f.aux = f.seedA = f.seedB = f.overdrawTex = null;
       f.depth = null;
-      f.scene = f.jfaA = f.jfaB = null;
+      f.scene = f.jfaA = f.jfaB = f.overdrawFbo = null;
       for (const entry of this.assetCache.values()) {
         gl.deleteTexture(entry.albedo);
         if (entry.sdf) gl.deleteTexture(entry.sdf);
@@ -431,10 +448,12 @@ export class AASpriteRenderer {
     this.timerExt = gl.getExtension("EXT_disjoint_timer_query_webgl2") as
       | { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number }
       | null;
+    this.floatColorExt = Boolean(gl.getExtension("EXT_color_buffer_float"));
 
     this.progs = {
-      studioBg: null, // Lazily compiled only when background === "studio" (or terrain fallback)
-      terrain: null,  // Lazily compiled only when background === "terrain" && terrainShader provided
+      studioBg: null,     // Lazily compiled only when background === "studio" (or terrain fallback)
+      terrain: null,      // Lazily compiled only when background === "terrain" && terrainShader provided
+      overdrawHeat: null, // Lazily compiled only when debugOverlay === "overdraw"
       entity: this.link(gl, ENTITY_OBB_VS, ENTITY_OBB_FS),
       ribbon: this.link(gl, RIBBON_VS, RIBBON_FS),
       jfaInit: this.link(gl, FULLSCREEN_VS, JFA_INIT_FS),
@@ -514,6 +533,10 @@ export class AASpriteRenderer {
     gl.enableVertexAttribArray(14);
     gl.vertexAttribPointer(14, 4, gl.FLOAT, false, INSTANCE_STRIDE, 196);
     gl.vertexAttribDivisor(14, 1);
+    // loc 15: aSliceClip (vec2 @ byte offset 212)
+    gl.enableVertexAttribArray(15);
+    gl.vertexAttribPointer(15, 2, gl.FLOAT, false, INSTANCE_STRIDE, 212);
+    gl.vertexAttribDivisor(15, 1);
 
     // Dynamic 3D ribbon VAO
     this.ribbonVao = gl.createVertexArray();
@@ -548,9 +571,11 @@ export class AASpriteRenderer {
     const targetJfaH = this.jfaScale >= 0.75 ? h : Math.max(32, Math.ceil(h * 0.5));
     if (f.w === w && f.h === h && f.jfaW === targetJfaW && f.jfaH === targetJfaH && f.scene) return;
 
-    for (const tex of [f.color, f.aux, f.seedA, f.seedB]) if (tex) gl.deleteTexture(tex);
+    for (const tex of [f.color, f.aux, f.seedA, f.seedB, f.overdrawTex]) if (tex) gl.deleteTexture(tex);
     if (f.depth) gl.deleteRenderbuffer(f.depth);
-    for (const fb of [f.scene, f.jfaA, f.jfaB]) if (fb) gl.deleteFramebuffer(fb);
+    for (const fb of [f.scene, f.jfaA, f.jfaB, f.overdrawFbo]) if (fb) gl.deleteFramebuffer(fb);
+    f.overdrawTex = null;
+    f.overdrawFbo = null;
 
     f.w = w; f.h = h;
     f.jfaW = targetJfaW;
@@ -581,6 +606,305 @@ export class AASpriteRenderer {
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, f.seedB, 0);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  private ensureOverdrawFbo(w: number, h: number): {
+    fbo: WebGLFramebuffer;
+    tex: WebGLTexture;
+    unit: number;
+    exact: boolean;
+  } {
+    const gl = this.gl!;
+    const f = this.fbo;
+    const exact = this.floatColorExt;
+    const unit = exact ? 1.0 : 1.0 / 255.0;
+    if (f.overdrawFbo && f.overdrawTex && f.w === w && f.h === h) {
+      return { fbo: f.overdrawFbo, tex: f.overdrawTex, unit, exact };
+    }
+    if (f.overdrawTex) gl.deleteTexture(f.overdrawTex);
+    if (f.overdrawFbo) gl.deleteFramebuffer(f.overdrawFbo);
+    const tex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      exact ? gl.RGBA16F : gl.RGBA8,
+      w,
+      h,
+      0,
+      gl.RGBA,
+      exact ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE,
+      null,
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fbo = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, f.depth);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    f.overdrawTex = tex;
+    f.overdrawFbo = fbo;
+    return { fbo, tex, unit, exact };
+  }
+
+  private collectVisibleEntities(
+    world: SceneWorld,
+    frustum: Float32Array,
+    isParallel: boolean,
+    fwdX: number,
+    fwdY: number,
+    fwdZ: number,
+  ): VisibleSlot[] {
+    const doc = world.doc;
+    const cam = doc.camera;
+    const visibleList = this.visibleActive;
+    visibleList.length = 0;
+    let slotIdx = 0;
+    for (let i = 0; i < doc.entities.length; i++) {
+      const ent = doc.entities[i];
+      if (ent.visible === false) continue;
+      const asset = world.getAsset(ent.assetId);
+      if (!asset) continue;
+
+      const ex = ent.pos[0], ey = ent.pos[1], ez = ent.pos[2];
+      // Exact rotation-invariant bounding sphere around ent.pos (skips unparented off-screen entities before matrix/GL work)
+      if (!ent.parentId) {
+        const rx = Math.max(asset.pivot[0], asset.w - asset.pivot[0]);
+        const ry = Math.max(asset.pivot[1], asset.l - asset.pivot[1]);
+        const rz = Math.max(asset.pivot[2], asset.h - asset.pivot[2]);
+        const boundR = Math.hypot(rx, ry, rz) * asset.voxelScale * ent.scale * 1.12;
+        if (!sphereInFrustum(frustum, ex, ey, ez, boundR)) continue;
+      }
+
+      const dx = ex - cam.pos[0];
+      const dy = ey - cam.pos[1];
+      const dz = ez - cam.pos[2];
+      const dist = Math.hypot(dx, dy, dz);
+      const sortKey = isParallel ? (dx * fwdX + dy * fwdY + dz * fwdZ) : dist;
+
+      let slot = this.visiblePool[slotIdx];
+      if (!slot) {
+        slot = { ent, asset, dist, sortKey, idx: i + 1 };
+        this.visiblePool[slotIdx] = slot;
+      } else {
+        slot.ent = ent;
+        slot.asset = asset;
+        slot.dist = dist;
+        slot.sortKey = sortKey;
+        slot.idx = i + 1;
+      }
+      visibleList.push(slot);
+      slotIdx++;
+    }
+    if (this.instanceBatching === "aggressive") {
+      visibleList.sort((a, b) => {
+        if (a.asset.id !== b.asset.id) return a.asset.id < b.asset.id ? -1 : 1;
+        return b.sortKey - a.sortKey;
+      });
+    } else {
+      visibleList.sort((a, b) => b.sortKey - a.sortKey); // back-to-front
+    }
+    return visibleList;
+  }
+
+  private drawEntityBatches(
+    world: SceneWorld,
+    cw: number,
+    ch: number,
+    viewProj: Float32Array,
+    invViewProj: Float32Array,
+    sunDir: Float32Array,
+    isParallel: boolean,
+    isTransparent: boolean,
+    isSolid: boolean,
+    styleInt: number,
+    effectiveMode: AAMode,
+    splitX: number,
+    leftMode: AAMode,
+    rightMode: AAMode,
+    debugModeInt: number,
+    overdrawUnit: number,
+  ): { drawCalls: number; hasOutlinedEntity: boolean } {
+    const gl = this.gl!;
+    const doc = world.doc;
+    const visibleList = this.visibleActive;
+    const ep = this.progs.entity;
+    gl.useProgram(ep.program);
+    gl.bindVertexArray(this.cubeVao);
+    gl.uniform2f(ep.u.uResolution, cw, ch);
+    gl.uniform1f(ep.u.uSplitX, splitX);
+    gl.uniform1i(ep.u.uStyle, styleInt);
+    gl.uniform1i(ep.u.uShadeStyle, shadeStyleToInt(doc.lighting.shadeStyle));
+    gl.uniform3fv(ep.u.uSunDir, sunDir);
+    gl.uniform1f(ep.u.uTimeOfDay, doc.lighting.timeOfDay);
+    gl.uniform1f(ep.u.uFogDensity, isTransparent || isSolid ? 0.0 : doc.lighting.fogDensity);
+    gl.uniform1i(ep.u.uDebugOverlay, debugModeInt);
+    gl.uniform1f(ep.u.uOverdrawUnit, overdrawUnit);
+
+    const maxSamples = debugModeInt >= 4
+      ? 1
+      : this.isMobile && this.aaQuality !== "ultra"
+        ? Math.min(doc.samples, 4)
+        : doc.samples;
+    if (debugModeInt < 4) this.lastSamples = maxSamples;
+
+    let drawCalls = 0;
+    let hasOutlinedEntity = false;
+    let lastBoundAssetKey = "";
+    let lastBoundNeedSdf = false;
+
+    for (let vi = 0; vi < visibleList.length; ) {
+      const leadAsset = visibleList[vi].asset;
+      let runEnd = vi + 1;
+      if (this.instanceBatching !== "off") {
+        while (
+          runEnd < visibleList.length &&
+          visibleList[runEnd].asset.id === leadAsset.id &&
+          visibleList[runEnd].asset.hash === leadAsset.hash
+        ) {
+          runEnd++;
+        }
+      }
+
+      const runMax = runEnd - vi;
+      this.ensureInstanceCapacity(runMax);
+      const ib = this.instanceBuf;
+      let instCount = 0;
+      let runNeedSdf = false;
+
+      for (let k = vi; k < runEnd; k++) {
+        const { ent, asset, dist, idx } = visibleList[k];
+        const v2w = world.getVoxelToWorldMatrix(ent, this.v2wMat);
+        if (!v2w) continue;
+        if (ent.outline !== false) hasOutlinedEntity = true;
+        const w2v = mat4Invert(v2w, this.w2vMat);
+        const voxToClip = mat4Mul(viewProj, v2w, this.voxToClipMat);
+        const clipToVox = mat4Mul(w2v, invViewProj, this.clipToVoxMat);
+
+        const mA = aaModeToInt(doc.splitCompare.enabled ? leftMode : ent.aaMode ?? effectiveMode);
+        const mB = aaModeToInt(doc.splitCompare.enabled ? rightMode : ent.aaMode ?? effectiveMode);
+        if (mA === 2 || mB === 2) runNeedSdf = true;
+
+        const sx = Math.hypot(v2w[0], v2w[1], v2w[2]) || 1;
+        const sy = Math.hypot(v2w[4], v2w[5], v2w[6]) || 1;
+        const sz = Math.hypot(v2w[8], v2w[9], v2w[10]) || 1;
+
+        const slx = w2v[0] * sunDir[0] + w2v[4] * sunDir[1] + w2v[8] * sunDir[2];
+        const sly = w2v[1] * sunDir[0] + w2v[5] * sunDir[1] + w2v[9] * sunDir[2];
+        const slz = w2v[2] * sunDir[0] + w2v[6] * sunDir[1] + w2v[10] * sunDir[2];
+        const slInv = 1 / (Math.hypot(slx, sly, slz) || 1);
+
+        // Distance-adaptive RGSS LOD (parallel ortho/isometric/oblique projections keep full samples across depth!)
+        const isHero = isParallel || ent.aaPriority === "hero" || ent.tag === "player" || dist < 44;
+        const entSamples = debugModeInt >= 4 ? 1 : isHero ? maxSamples : dist < 96 ? Math.min(maxSamples, 2) : 1;
+        const sc = ent.sliceClip;
+
+        const base = instCount * INSTANCE_FLOATS;
+        // 0..15: aVoxToClip0..3
+        ib.set(voxToClip, base);
+        // 16..31: aClipToVox0..3
+        ib.set(clipToVox, base + 16);
+        // 32..40: aNorm0..2
+        ib[base + 32] = v2w[0] / sx; ib[base + 33] = v2w[1] / sx; ib[base + 34] = v2w[2] / sx;
+        ib[base + 35] = v2w[4] / sy; ib[base + 36] = v2w[5] / sy; ib[base + 37] = v2w[6] / sy;
+        ib[base + 38] = v2w[8] / sz; ib[base + 39] = v2w[9] / sz; ib[base + 40] = v2w[10] / sz;
+        // 41..44: aSunAndScale
+        ib[base + 41] = slx * slInv;
+        ib[base + 42] = sly * slInv;
+        ib[base + 43] = slz * slInv;
+        ib[base + 44] = asset.voxelScale * ent.scale;
+        // 45..48: aMeta
+        ib[base + 45] = ((idx % 250) + 1) / 255.0;
+        ib[base + 46] = ent.emissiveBoost ?? 1.0;
+        ib[base + 47] = ent.normalSmoothness ?? -1.0;
+        ib[base + 48] = entSamples;
+        // 49..52: aFlags
+        ib[base + 49] = doc.lighting.selfShadow && isHero ? 1.0 : 0.0;
+        ib[base + 50] = ent.outline === false ? 0.0 : 1.0;
+        ib[base + 51] = mA;
+        ib[base + 52] = mB;
+        // 53..54: aSliceClip
+        ib[base + 53] = sc ? sc[0] : 0.0;
+        ib[base + 54] = sc ? sc[1] : 1.0;
+        instCount++;
+      }
+
+      vi = runEnd;
+      if (instCount === 0) continue;
+
+      const gpuTex = this.ensureAssetGPU(leadAsset, runNeedSdf);
+      const assetKey = `${leadAsset.id}:${leadAsset.hash}`;
+      if (assetKey !== lastBoundAssetKey || (runNeedSdf && !lastBoundNeedSdf)) {
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_3D, gpuTex.albedo);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D, gpuTex.sdf ?? this.dummySdfTex);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_3D, gpuTex.norm);
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_3D, gpuTex.emis);
+        lastBoundAssetKey = assetKey;
+        lastBoundNeedSdf = runNeedSdf;
+      }
+
+      gl.uniform3f(ep.u.uVolSize, leadAsset.w, leadAsset.l, leadAsset.h);
+      gl.uniform1f(ep.u.uSdfRange, leadAsset.sdfRange);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceVbo);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, ib.subarray(0, instCount * INSTANCE_FLOATS));
+      gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, instCount);
+      drawCalls++;
+    }
+
+    return { drawCalls, hasOutlinedEntity };
+  }
+
+  private runOverdrawPass(
+    world: SceneWorld,
+    cw: number,
+    ch: number,
+    viewProj: Float32Array,
+    invViewProj: Float32Array,
+    sunDir: Float32Array,
+    isParallel: boolean,
+    isTransparent: boolean,
+    isSolid: boolean,
+    styleInt: number,
+    effectiveMode: AAMode,
+    splitX: number,
+    leftMode: AAMode,
+    rightMode: AAMode,
+  ): { tex: WebGLTexture; fbo: WebGLFramebuffer; unit: number; exact: boolean; drawCalls: number } {
+    const gl = this.gl!;
+    const od = this.ensureOverdrawFbo(cw, ch);
+    gl.viewport(0, 0, cw, ch);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, od.fbo);
+    gl.clearDepth(1.0);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.FRONT);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+
+    // Channel R: fragments written (passes voxel DDA hit + depth test)
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.depthMask(true);
+    const writtenRes = this.drawEntityBatches(
+      world, cw, ch, viewProj, invViewProj, sunDir, isParallel, isTransparent, isSolid,
+      styleInt, effectiveMode, splitX, leftMode, rightMode, 4, od.unit,
+    );
+
+    // Channel G: fragments covered (all rasterized OBB proxy fragments, depth test disabled)
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    this.drawEntityBatches(
+      world, cw, ch, viewProj, invViewProj, sunDir, isParallel, isTransparent, isSolid,
+      styleInt, effectiveMode, splitX, leftMode, rightMode, 5, od.unit,
+    );
+    gl.depthMask(true);
+
+    return { ...od, drawCalls: writtenRes.drawCalls };
   }
 
   private make3DTex(
@@ -749,6 +1073,47 @@ export class AASpriteRenderer {
     const isTransparent = this.background === "transparent";
     const isSolid = this.background === "solid";
     let drawCalls = 0;
+
+    if (doc.debugOverlay === "overdraw") {
+      const visibleList = this.collectVisibleEntities(world, frustum, isParallel, fwdX, fwdY, fwdZ);
+      const od = this.runOverdrawPass(
+        world, cw, ch, viewProj, invViewProj, sunDir, isParallel, isTransparent, isSolid,
+        styleInt, effectiveMode, splitX, leftMode, rightMode,
+      );
+      if (!this.progs.overdrawHeat) {
+        this.progs.overdrawHeat = this.link(gl, FULLSCREEN_VS, OVERDRAW_HEAT_FS);
+        gl.useProgram(this.progs.overdrawHeat.program);
+        gl.uniform1i(this.progs.overdrawHeat.u.uCountTex, 0);
+      }
+      const hp = this.progs.overdrawHeat;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, cw, ch);
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+      gl.disable(gl.CULL_FACE);
+      gl.useProgram(hp.program);
+      gl.bindVertexArray(this.emptyVao);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, od.tex);
+      gl.uniform1i(hp.u.uChannel, 1);
+      gl.uniform1f(hp.u.uUnit, od.unit);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      drawCalls = od.drawCalls * 2 + 1;
+
+      if (curGpuQuery && this.timerExt) {
+        gl.endQuery(this.timerExt.TIME_ELAPSED_EXT);
+        this.activeTimerQueries.push(curGpuQuery);
+      }
+      const dtMs = performance.now() - t0;
+      this.rollingMs = this.rollingMs * 0.88 + dtMs * 0.12;
+      this.lastDrawCalls = drawCalls;
+      this.lastVisible = visibleList.length;
+      this.lastTotal = doc.entities.length;
+      this.lastTick = doc.tick;
+      this.lastTime = doc.time;
+      return;
+    }
+
     gl.viewport(0, 0, cw, ch);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo.scene);
     gl.clearDepth(1.0);
@@ -834,54 +1199,9 @@ export class AASpriteRenderer {
     // 6-plane Gribb-Hartmann frustum culled + back-to-front sorted + contiguous
     // same-asset batching via WebGL2 drawElementsInstanced, with exact gl_FragDepth!
     // ------------------------------------------------------------
-    const visibleList = this.visibleActive;
-    visibleList.length = 0;
-    let slotIdx = 0;
-    for (let i = 0; i < doc.entities.length; i++) {
-      const ent = doc.entities[i];
-      if (ent.visible === false) continue;
-      const asset = world.getAsset(ent.assetId);
-      if (!asset) continue;
+    const visibleList = this.collectVisibleEntities(world, frustum, isParallel, fwdX, fwdY, fwdZ);
 
-      const ex = ent.pos[0], ey = ent.pos[1], ez = ent.pos[2];
-      // Exact rotation-invariant bounding sphere around ent.pos (skips unparented off-screen entities before matrix/GL work)
-      if (!ent.parentId) {
-        const rx = Math.max(asset.pivot[0], asset.w - asset.pivot[0]);
-        const ry = Math.max(asset.pivot[1], asset.l - asset.pivot[1]);
-        const rz = Math.max(asset.pivot[2], asset.h - asset.pivot[2]);
-        const boundR = Math.hypot(rx, ry, rz) * asset.voxelScale * ent.scale * 1.12;
-        if (!sphereInFrustum(frustum, ex, ey, ez, boundR)) continue;
-      }
-
-      const dx = ex - cam.pos[0];
-      const dy = ey - cam.pos[1];
-      const dz = ez - cam.pos[2];
-      const dist = Math.hypot(dx, dy, dz);
-      const sortKey = isParallel ? (dx * fwdX + dy * fwdY + dz * fwdZ) : dist;
-
-      let slot = this.visiblePool[slotIdx];
-      if (!slot) {
-        slot = { ent, asset, dist, sortKey, idx: i + 1 };
-        this.visiblePool[slotIdx] = slot;
-      } else {
-        slot.ent = ent;
-        slot.asset = asset;
-        slot.dist = dist;
-        slot.sortKey = sortKey;
-        slot.idx = i + 1;
-      }
-      visibleList.push(slot);
-      slotIdx++;
-    }
-    if (this.instanceBatching === "aggressive") {
-      visibleList.sort((a, b) => {
-        if (a.asset.id !== b.asset.id) return a.asset.id < b.asset.id ? -1 : 1;
-        return b.sortKey - a.sortKey;
-      });
-    } else {
-      visibleList.sort((a, b) => b.sortKey - a.sortKey); // back-to-front
-    }
-
+    gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     gl.depthMask(true);
     gl.enable(gl.CULL_FACE);
@@ -889,117 +1209,12 @@ export class AASpriteRenderer {
     gl.enable(gl.BLEND);
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-    const ep = this.progs.entity;
-    gl.useProgram(ep.program);
-    gl.bindVertexArray(this.cubeVao);
-    gl.uniform2f(ep.u.uResolution, cw, ch);
-    gl.uniform1f(ep.u.uSplitX, splitX);
-    gl.uniform1i(ep.u.uStyle, styleInt);
-    gl.uniform1i(ep.u.uShadeStyle, shadeStyleToInt(doc.lighting.shadeStyle));
-    gl.uniform3fv(ep.u.uSunDir, sunDir);
-    gl.uniform1f(ep.u.uTimeOfDay, doc.lighting.timeOfDay);
-    gl.uniform1f(ep.u.uFogDensity, isTransparent || isSolid ? 0.0 : doc.lighting.fogDensity);
-    gl.uniform1i(ep.u.uDebugOverlay, debugOverlayToInt(doc.debugOverlay));
-
-    const maxSamples = this.isMobile && this.aaQuality !== "ultra" ? Math.min(doc.samples, 4) : doc.samples;
-    this.lastSamples = maxSamples;
-    let hasOutlinedEntity = false;
-    let lastBoundAssetKey = "";
-    let lastBoundNeedSdf = false;
-
-    for (let vi = 0; vi < visibleList.length; ) {
-      const leadAsset = visibleList[vi].asset;
-      let runEnd = vi + 1;
-      if (this.instanceBatching !== "off") {
-        while (
-          runEnd < visibleList.length &&
-          visibleList[runEnd].asset.id === leadAsset.id &&
-          visibleList[runEnd].asset.hash === leadAsset.hash
-        ) {
-          runEnd++;
-        }
-      }
-
-      const runMax = runEnd - vi;
-      this.ensureInstanceCapacity(runMax);
-      const ib = this.instanceBuf;
-      let instCount = 0;
-      let runNeedSdf = false;
-
-      for (let k = vi; k < runEnd; k++) {
-        const { ent, asset, dist, idx } = visibleList[k];
-        const v2w = world.getVoxelToWorldMatrix(ent, this.v2wMat);
-        if (!v2w) continue;
-        if (ent.outline !== false) hasOutlinedEntity = true;
-        const w2v = mat4Invert(v2w, this.w2vMat);
-        const voxToClip = mat4Mul(viewProj, v2w, this.voxToClipMat);
-        const clipToVox = mat4Mul(w2v, invViewProj, this.clipToVoxMat);
-
-        const mA = aaModeToInt(doc.splitCompare.enabled ? leftMode : ent.aaMode ?? effectiveMode);
-        const mB = aaModeToInt(doc.splitCompare.enabled ? rightMode : ent.aaMode ?? effectiveMode);
-        if (mA === 2 || mB === 2) runNeedSdf = true;
-
-        const sx = Math.hypot(v2w[0], v2w[1], v2w[2]) || 1;
-        const sy = Math.hypot(v2w[4], v2w[5], v2w[6]) || 1;
-        const sz = Math.hypot(v2w[8], v2w[9], v2w[10]) || 1;
-
-        const slx = w2v[0] * sunDir[0] + w2v[4] * sunDir[1] + w2v[8] * sunDir[2];
-        const sly = w2v[1] * sunDir[0] + w2v[5] * sunDir[1] + w2v[9] * sunDir[2];
-        const slz = w2v[2] * sunDir[0] + w2v[6] * sunDir[1] + w2v[10] * sunDir[2];
-        const slInv = 1 / (Math.hypot(slx, sly, slz) || 1);
-
-        // Distance-adaptive RGSS LOD (parallel ortho/isometric/oblique projections keep full samples across depth!)
-        const isHero = isParallel || ent.aaPriority === "hero" || ent.tag === "player" || dist < 44;
-        const entSamples = isHero ? maxSamples : dist < 96 ? Math.min(maxSamples, 2) : 1;
-
-        const base = instCount * INSTANCE_FLOATS;
-        // 0..15: aVoxToClip0..3
-        ib.set(voxToClip, base);
-        // 16..31: aClipToVox0..3
-        ib.set(clipToVox, base + 16);
-        // 32..40: aNorm0..2
-        ib[base + 32] = v2w[0] / sx; ib[base + 33] = v2w[1] / sx; ib[base + 34] = v2w[2] / sx;
-        ib[base + 35] = v2w[4] / sy; ib[base + 36] = v2w[5] / sy; ib[base + 37] = v2w[6] / sy;
-        ib[base + 38] = v2w[8] / sz; ib[base + 39] = v2w[9] / sz; ib[base + 40] = v2w[10] / sz;
-        // 41..44: aSunAndScale
-        ib[base + 41] = slx * slInv;
-        ib[base + 42] = sly * slInv;
-        ib[base + 43] = slz * slInv;
-        ib[base + 44] = asset.voxelScale * ent.scale;
-        // 45..48: aMeta
-        ib[base + 45] = ((idx % 250) + 1) / 255.0;
-        ib[base + 46] = ent.emissiveBoost ?? 1.0;
-        ib[base + 47] = ent.normalSmoothness ?? -1.0;
-        ib[base + 48] = entSamples;
-        // 49..52: aFlags
-        ib[base + 49] = doc.lighting.selfShadow && isHero ? 1.0 : 0.0;
-        ib[base + 50] = ent.outline === false ? 0.0 : 1.0;
-        ib[base + 51] = mA;
-        ib[base + 52] = mB;
-        instCount++;
-      }
-
-      vi = runEnd;
-      if (instCount === 0) continue;
-
-      const gpuTex = this.ensureAssetGPU(leadAsset, runNeedSdf);
-      const assetKey = `${leadAsset.id}:${leadAsset.hash}`;
-      if (assetKey !== lastBoundAssetKey || (runNeedSdf && !lastBoundNeedSdf)) {
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_3D, gpuTex.albedo);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D, gpuTex.sdf ?? this.dummySdfTex);
-        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_3D, gpuTex.norm);
-        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_3D, gpuTex.emis);
-        lastBoundAssetKey = assetKey;
-        lastBoundNeedSdf = runNeedSdf;
-      }
-
-      gl.uniform3f(ep.u.uVolSize, leadAsset.w, leadAsset.l, leadAsset.h);
-      gl.uniform1f(ep.u.uSdfRange, leadAsset.sdfRange);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceVbo);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, ib.subarray(0, instCount * INSTANCE_FLOATS));
-      gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, instCount);
-      drawCalls++;
-    }
+    const batchRes = this.drawEntityBatches(
+      world, cw, ch, viewProj, invViewProj, sunDir, isParallel, isTransparent, isSolid,
+      styleInt, effectiveMode, splitX, leftMode, rightMode, debugOverlayToInt(doc.debugOverlay), 1.0,
+    );
+    drawCalls += batchRes.drawCalls;
+    const hasOutlinedEntity = batchRes.hasOutlinedEntity;
 
     // ------------------------------------------------------------
     // PASS 2: Depth-Tested 3D Contrail Ribbons & Thruster Plumes
@@ -1165,6 +1380,99 @@ export class AASpriteRenderer {
       activeSamples: this.lastSamples,
       tick: this.lastTick,
       time: Number(this.lastTime.toFixed(3)),
+    };
+  }
+
+  /** Measure exact per-pixel written and covered overdraw via an additive GPU count pass. */
+  measureOverdraw(world: SceneWorld): OverdrawReport {
+    if (!this.ready || !this.gl) {
+      return {
+        writtenAvg: 0, writtenMax: 0, coveredAvg: 0, coveredMax: 0,
+        drawCalls: 0, visibleEntities: 0, pixels: 0, exact: false,
+      };
+    }
+    const gl = this.gl;
+    const doc = world.doc;
+    this.resizeToDisplay();
+    const cw = this.canvas.width;
+    const ch = this.canvas.height;
+    this.ensureFBOs(cw, ch);
+
+    const aspect = cw / Math.max(ch, 1);
+    const cam = doc.camera;
+    const isParallel = cam.mode === "ortho" || cam.mode === "oblique";
+    const viewProj = computeCameraViewProj(cam, aspect, this.viewMat, this.projMat, this.viewProjMat);
+    const invViewProj = mat4Invert(viewProj, this.invViewProjMat);
+    const frustum = extractFrustumPlanes(viewProj, this.frustumPlanes);
+
+    const fxRaw = cam.target[0] - cam.pos[0];
+    const fyRaw = cam.target[1] - cam.pos[1];
+    const fzRaw = cam.target[2] - cam.pos[2];
+    const fInv = 1 / (Math.hypot(fxRaw, fyRaw, fzRaw) || 1);
+    const fwdX = fxRaw * fInv;
+    const fwdY = fyRaw * fInv;
+    const fwdZ = fzRaw * fInv;
+
+    const az = (doc.lighting.sunAzimuthDeg * Math.PI) / 180;
+    const el = (doc.lighting.sunElevationDeg * Math.PI) / 180;
+    const sunDir = this.sunDirBuf;
+    sunDir[0] = Math.cos(az) * Math.cos(el);
+    sunDir[1] = Math.sin(el);
+    sunDir[2] = Math.sin(az) * Math.cos(el);
+
+    const styleInt = styleToInt(doc.style ?? "arcade-8bit");
+    const effectiveMode = defaultAAModeForStyle(doc.style ?? "arcade-8bit", doc.aaMode);
+    const splitX = doc.splitCompare.enabled ? doc.splitCompare.splitX : -1.0;
+    const leftMode = doc.splitCompare.enabled ? doc.splitCompare.leftMode : effectiveMode;
+    const rightMode = doc.splitCompare.enabled ? doc.splitCompare.rightMode : effectiveMode;
+
+    const visibleList = this.collectVisibleEntities(world, frustum, isParallel, fwdX, fwdY, fwdZ);
+    const od = this.runOverdrawPass(
+      world, cw, ch, viewProj, invViewProj, sunDir, isParallel,
+      this.background === "transparent", this.background === "solid",
+      styleInt, effectiveMode, splitX, leftMode, rightMode,
+    );
+
+    const pixels = cw * ch;
+    let wSum = 0;
+    let wMax = 0;
+    let cSum = 0;
+    let cMax = 0;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, od.fbo);
+    if (od.exact) {
+      const buf = new Float32Array(pixels * 4);
+      gl.readPixels(0, 0, cw, ch, gl.RGBA, gl.FLOAT, buf);
+      for (let i = 0; i < buf.length; i += 4) {
+        const wv = buf[i];
+        const cv = buf[i + 1];
+        wSum += wv;
+        if (wv > wMax) wMax = wv;
+        cSum += cv;
+        if (cv > cMax) cMax = cv;
+      }
+    } else {
+      const buf = new Uint8Array(pixels * 4);
+      gl.readPixels(0, 0, cw, ch, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      for (let i = 0; i < buf.length; i += 4) {
+        const wv = buf[i];
+        const cv = buf[i + 1];
+        wSum += wv;
+        if (wv > wMax) wMax = wv;
+        cSum += cv;
+        if (cv > cMax) cMax = cv;
+      }
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    return {
+      writtenAvg: Number((wSum / Math.max(pixels, 1)).toFixed(3)),
+      writtenMax: Math.round(wMax),
+      coveredAvg: Number((cSum / Math.max(pixels, 1)).toFixed(3)),
+      coveredMax: Math.round(cMax),
+      drawCalls: od.drawCalls,
+      visibleEntities: visibleList.length,
+      pixels,
+      exact: od.exact,
     };
   }
 

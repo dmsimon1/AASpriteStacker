@@ -1,7 +1,7 @@
 /**
  * Core WebGL2 ES 3.00 Shaders for @aastack/core:
  *  - Compact studio cyclorama backdrop (procedural island terrain lives in tree-shakeable `@aastack/core/terrain`)
- *  - WebGL2 Hardware-Instanced OBB Entity Raycaster (15 vertex attribs, 12 flat varyings, exact column-step RGSS + same-voxel cache)
+ *  - WebGL2 Hardware-Instanced OBB Entity Raycaster (16 vertex attribs, 13 flat varyings, sliceClip, exact column-step RGSS + overdraw pass)
  *  - Depth-tested 3D Ribbon shader
  *  - 16-bit RGBA8 Jump Flooding Algorithm (JFA) SDF outline + bloom + premultiplied transparent composite
  */
@@ -98,6 +98,7 @@ layout(location = 11) in vec3 aNorm2;
 layout(location = 12) in vec4 aSunAndScale;
 layout(location = 13) in vec4 aMeta;
 layout(location = 14) in vec4 aFlags;
+layout(location = 15) in vec2 aSliceClip;
 
 uniform vec3 uVolSize;
 
@@ -113,10 +114,15 @@ flat out vec3 vNorm2;
 flat out vec4 vSunAndScale;
 flat out vec4 vMeta;
 flat out vec4 vFlags;
+flat out vec2 vSliceClip;
 
 void main() {
   vec3 pad = vec3(0.45);
-  vec3 voxPos = mix(-pad, uVolSize + pad, aUnitPos);
+  float zMin = clamp(aSliceClip.x, 0.0, 1.0) * uVolSize.z;
+  float zMax = clamp(aSliceClip.y, 0.0, 1.0) * uVolSize.z;
+  vec3 bMin = vec3(-pad.x, -pad.y, zMin - pad.z);
+  vec3 bMax = vec3(uVolSize.x + pad.x, uVolSize.y + pad.y, zMax + pad.z);
+  vec3 voxPos = mix(bMin, bMax, aUnitPos);
   mat4 voxToClip = mat4(aVoxToClip0, aVoxToClip1, aVoxToClip2, aVoxToClip3);
   gl_Position = voxToClip * vec4(voxPos, 1.0);
 
@@ -132,6 +138,7 @@ void main() {
   vSunAndScale = aSunAndScale;
   vMeta = aMeta;
   vFlags = aFlags;
+  vSliceClip = vec2(zMin, zMax);
 }`;
 
 export const ENTITY_OBB_FS = `#version 300 es
@@ -154,6 +161,7 @@ uniform vec3 uSunDir;
 uniform float uTimeOfDay;
 uniform float uFogDensity;
 uniform int uDebugOverlay;
+uniform float uOverdrawUnit;
 
 flat in vec4 vVoxToClipZ;
 flat in vec4 vVoxToClipW;
@@ -167,6 +175,7 @@ flat in vec3 vNorm2;
 flat in vec4 vSunAndScale;
 flat in vec4 vMeta;
 flat in vec4 vFlags;
+flat in vec2 vSliceClip;
 
 layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec4 outAux;
@@ -234,6 +243,11 @@ vec3 shadeVoxel(vec3 baseLin, vec3 worldN, float ao, float emisFlag, float selfS
     float diff = smoothstep(-0.72, 0.95, litVal);
     tint = mix(shMul, litMul, diff);
   }
+  // Hemisphere sky/earth fill + warm sunlit ground bounce so shadow faces keep crisp form
+  float hemi = worldN.y * 0.5 + 0.5;
+  vec3 skyBounce = mix(vec3(1.03, 0.96, 0.88), vec3(0.96, 1.01, 1.06), hemi);
+  float bounceBack = max(0.0, -ndotl) * (1.0 - nightW * 0.7) * 0.10;
+  tint = tint * mix(vec3(1.0), skyBounce, 0.35) + vec3(0.14, 0.10, 0.06) * bounceBack;
   return baseLin * srgbToLin(clamp(tint, 0.0, 2.2)) * ao;
 }
 
@@ -296,8 +310,11 @@ bool traceVoxelDdaHit(
     abs(rdVox.y) > 1e-6 ? 1.0 / rdVox.y : 1e20,
     abs(rdVox.z) > 1e-6 ? 1.0 / rdVox.z : 1e20
   );
-  vec3 t0 = (vec3(0.0) - roVox) * invD;
-  vec3 t1 = (uVolSize - roVox) * invD;
+  vec3 bMin = vec3(0.0, 0.0, vSliceClip.x);
+  vec3 bMax = vec3(uVolSize.x, uVolSize.y, vSliceClip.y);
+  if (bMax.z <= bMin.z + 1e-4) return false;
+  vec3 t0 = (bMin - roVox) * invD;
+  vec3 t1 = (bMax - roVox) * invD;
   vec3 tmin = min(t0, t1);
   vec3 tmax = max(t0, t1);
   float tEnter = max(max(tmin.x, tmin.y), max(tmin.z, 0.0));
@@ -306,7 +323,9 @@ bool traceVoxelDdaHit(
 
   float te = tEnter + 1e-4;
   vec3 pos = roVox + rdVox * te;
-  ivec3 cell = clamp(ivec3(floor(pos)), ivec3(0), ivec3(uVolSize) - 1);
+  ivec3 cMin = ivec3(0, 0, clamp(int(floor(bMin.z + 1e-4)), 0, int(uVolSize.z) - 1));
+  ivec3 cMax = ivec3(int(uVolSize.x) - 1, int(uVolSize.y) - 1, clamp(int(ceil(bMax.z - 1e-4)) - 1, 0, int(uVolSize.z) - 1));
+  ivec3 cell = clamp(ivec3(floor(pos)), cMin, cMax);
   ivec3 stepDir = ivec3(
     abs(rdVox.x) > 1e-6 ? (rdVox.x > 0.0 ? 1 : -1) : 0,
     abs(rdVox.y) > 1e-6 ? (rdVox.y > 0.0 ? 1 : -1) : 0,
@@ -345,7 +364,7 @@ bool traceVoxelDdaHit(
       tCur = tMax.z; cell.z += stepDir.z; tMax.z += tDelta.z;
       faceN = vec3(0.0, 0.0, -float(stepDir.z));
     }
-    if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(uVolSize)))) break;
+    if (any(lessThan(cell, cMin)) || any(greaterThan(cell, cMax))) break;
   }
   return false;
 }
@@ -363,8 +382,8 @@ bool traceSmoothSdfRay(
   if (rdLen < 1e-6) return false;
   vec3 rdN = rdVox / rdLen;
   vec3 invD = 1.0 / mix(rdN, vec3(1e-6), lessThan(abs(rdN), vec3(1e-6)));
-  vec3 t0 = (vec3(-0.45) - roVox) * invD;
-  vec3 t1 = (uVolSize + vec3(0.45) - roVox) * invD;
+  vec3 t0 = (vec3(-0.45, -0.45, vSliceClip.x - 0.45) - roVox) * invD;
+  vec3 t1 = (vec3(uVolSize.x + 0.45, uVolSize.y + 0.45, vSliceClip.y + 0.45) - roVox) * invD;
   float tEnter = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), max(min(t0.z, t1.z), 0.0));
   float tExit = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
   if (tExit <= tEnter + 1e-4) return false;
@@ -410,6 +429,11 @@ bool traceSmoothSdfRay(
 }
 
 void main() {
+  if (uDebugOverlay == 5) {
+    outColor = vec4(0.0, uOverdrawUnit, 0.0, 1.0);
+    outAux = vec4(0.0);
+    return;
+  }
   int iModeA = int(vFlags.z + 0.5);
   int iModeB = int(vFlags.w + 0.5);
   int mode = (uSplitX >= 0.0 && (gl_FragCoord.x / uResolution.x) < uSplitX) ? iModeA : iModeB;
@@ -538,6 +562,12 @@ void main() {
 
   vec4 bvh = vec4(bestVoxHit, 1.0);
   gl_FragDepth = clamp((dot(vVoxToClipZ, bvh) / dot(vVoxToClipW, bvh)) * 0.5 + 0.5, 0.0, 0.99997);
+
+  if (uDebugOverlay == 4) {
+    outColor = vec4(uOverdrawUnit, 0.0, 0.0, 1.0);
+    outAux = vec4(0.0);
+    return;
+  }
 
   outColor = vec4(finalSrgb, cov);
   outAux = vec4(outlineOn ? objIdNorm : 0.0, avgEm, isLegacy ? 1.0 : 0.0, cov);
@@ -762,4 +792,24 @@ void main() {
     srgb = clamp((srgb - 0.5) * 1.06 + 0.5, 0.0, 1.0);
   }
   fragColor = vec4(srgb, 1.0);
+}`;
+
+/** Overdraw heat map shader (black 0, blue 1, green 4, yellow 16, red 64, white 256). */
+export const OVERDRAW_HEAT_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uCountTex;
+uniform int uChannel;
+uniform float uUnit;
+in vec2 vUv;
+out vec4 fragColor;
+void main() {
+  vec4 c = texture(uCountTex, vUv);
+  float v = (uChannel == 0 ? c.r : c.g) / max(uUnit, 1e-6);
+  if (v < 0.05) { fragColor = vec4(0.04, 0.05, 0.08, 1.0); return; }
+  float t = clamp(log2(v + 1.0) / 8.0, 0.0, 1.0);
+  vec3 col = t < 0.25 ? mix(vec3(0.05, 0.22, 0.72), vec3(0.06, 0.75, 0.38), t * 4.0)
+    : t < 0.50 ? mix(vec3(0.06, 0.75, 0.38), vec3(0.95, 0.88, 0.14), (t - 0.25) * 4.0)
+    : t < 0.75 ? mix(vec3(0.95, 0.88, 0.14), vec3(0.96, 0.18, 0.12), (t - 0.50) * 4.0)
+    : mix(vec3(0.96, 0.18, 0.12), vec3(1.0, 1.0, 1.0), (t - 0.75) * 4.0);
+  fragColor = vec4(col, 1.0);
 }`;

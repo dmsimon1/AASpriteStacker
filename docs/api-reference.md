@@ -21,8 +21,9 @@ Zero external runtime dependencies. All exports live in `packages/core/src/index
 | `CameraMode` | `"overhead" \| "chase" \| "cockpit" \| "ortho" \| "oblique" \| "free"` |
 | `IsometricPreset` | `"dimetric-2to1" \| "isometric" \| "oblique-stack" \| "topdown-3quarter"` |
 | `QualityTier` | `"auto" \| "mobile" \| "desktop" \| "eco" \| "balanced" \| "ultra"` |
-| `DebugOverlay` | `"none" \| "normals" \| "depth" \| "object-id"` |
-| `EntityState` | `{ id, assetId, pos, rot, scale, outline?, normalSmoothness?, aaPriority?, castShadow?, emissiveBoost?, tag?, visible?, parentId?, parentSocket? }` |
+| `DebugOverlay` | `"none" \| "normals" \| "depth" \| "object-id" \| "overdraw"` |
+| `OverdrawReport` | `{ writtenAvg, writtenMax, coveredAvg, coveredMax, drawCalls, visibleEntities, pixels, exact }` |
+| `EntityState` | `{ id, assetId, pos, rot, scale, outline?, normalSmoothness?, aaPriority?, castShadow?, emissiveBoost?, sliceClip?, tag?, visible?, parentId?, parentSocket? }` |
 | `SocketDef` | `{ pos: Vec3; dir?: Vec3 }` in voxel asset space `[0..W, 0..L, 0..H]` |
 | `ScenePatchOp` | `{ op: "set"; path: string; value: unknown }` \| `{ op: "spawn"; entity: EntityState }` \| `{ op: "remove"; entityId: string }` \| `{ op: "updateEntity"; entityId: string; patch: Partial<Omit<EntityState, "id">> }` |
 
@@ -83,6 +84,7 @@ const renderer = new AASpriteRenderer(canvas: HTMLCanvasElement, opts?: {
 | `renderer.resizeToDisplay(cssW?, cssH?)` | Resizes backing buffer respecting DPR cap & adaptive DRS |
 | `renderer.render(world: SceneWorld)` | Renders all active passes (optional backdrop, OBB entities, 3D ribbons, JFA outlines + bloom + premultiplied transparent or opaque composite) |
 | `renderer.getStats(): EngineTelemetry` | Returns `{ fps, frameMs, gpuMs?, quality, canvasWidth, canvasHeight, dpr, drsScale, drawCalls, visibleEntities, totalEntities, isMobile, backend, activeSamples, tick, time }` |
+| `renderer.measureOverdraw(world): OverdrawReport` | Runs an additive GPU count pass (RGBA16F exact when `EXT_color_buffer_float` is supported, RGBA8 fallback otherwise) returning `{ writtenAvg, writtenMax, coveredAvg, coveredMax, drawCalls, visibleEntities, pixels, exact }` |
 | `renderer.captureDataUrl(world, mimeType?)` | Renders one deterministic frame and returns a PNG/WebP data URL for visual QA & MCP screenshots |
 | `renderer.evictAsset(assetId: string): boolean` | Frees GPU 3D textures for a single asset without disposing the renderer |
 | `renderer.dispose()` | Releases all WebGL2 textures, FBOs, buffers, VAOs, shader programs, timer queries, and context listeners |

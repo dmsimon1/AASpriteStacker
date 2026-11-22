@@ -22,6 +22,7 @@ rmSync(DIST, { recursive: true, force: true });
 mkdirSync(resolve(DIST, "assets"), { recursive: true });
 mkdirSync(resolve(DIST, "iso"), { recursive: true });
 mkdirSync(resolve(DIST, "play"), { recursive: true });
+mkdirSync(resolve(DIST, "normandy"), { recursive: true });
 mkdirSync(resolve(DIST, "studio"), { recursive: true });
 mkdirSync(resolve(DIST, "docs"), { recursive: true });
 
@@ -127,6 +128,7 @@ function renderGlobalNav(active, fullbleed = false) {
       <a class="aa-glink" href="/primer/"${cur("primer")}>Primer</a>
       <a class="aa-glink" href="/iso/"${cur("iso")}>2.5D Iso</a>
       <a class="aa-glink" href="/play/"${cur("play")}>6-DOF Demo</a>
+      <a class="aa-glink aa-ghide-sm" href="/normandy/"${cur("normandy")}>Normandy</a>
       <a class="aa-glink" href="/studio/"${cur("studio")}>Studio</a>
       <a class="aa-glink" href="/docs/"${cur("docs")}>Docs</a>
       <a class="aa-ggh" href="https://github.com/dmsimon1/AASpriteStacker" target="_blank" rel="noopener" aria-label="AASpriteStacker open-source repository on GitHub">${GH_ICON_SVG}<span class="aa-ghide-sm">GitHub</span><span class="aa-gstars aa-ghide-sm" data-aa-stars></span></a>
@@ -210,6 +212,23 @@ await build({
   minify: true,
   alias: ALIASES,
 });
+
+// 3b. Copy Normandy 1944 Deferred AA + 6-DOF Showcase (MIT attribution to @loktar00) into /normandy/
+cpSync(resolve(ROOT, "examples/normandy-aa/js"), resolve(DIST, "normandy/js"), { recursive: true });
+cpSync(resolve(ROOT, "examples/normandy-aa/LICENSE-loktar00.txt"), resolve(DIST, "normandy/LICENSE-loktar00.txt"));
+let normandyHtml = readFileSync(resolve(ROOT, "examples/normandy-aa/index.html"), "utf-8");
+const normandyLayoutPatch = `${GLOBAL_NAV_CSS}
+<style>
+  body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+  canvas { flex: 1 1 auto; width: 100%; height: auto !important; min-height: 0; }
+  #panel, #controls { top: 68px; }
+  #badge { top: 72px; }
+  #splitBar { top: 56px; }
+</style>`;
+normandyHtml = normandyHtml
+  .replace("</head>", `${FAVICON_LINK}\n${normandyLayoutPatch}\n</head>`)
+  .replace("<body>", `<body>\n${renderGlobalNav("normandy", true)}`);
+writeFileSync(resolve(DIST, "normandy/index.html"), normandyHtml, "utf-8");
 
 // 4. Copy 4-View Look-Dev & A/B AA Studio into /studio/ with persistent global nav!
 let studioHtml = readFileSync(resolve(ROOT, "skills/aa-sprite-stacking/scripts/viewer.html"), "utf-8");
@@ -405,6 +424,7 @@ for (const page of DOC_PAGES) {
       <div><strong>AASpriteStacker</strong> · MIT License · <a href="/">aasprite.com</a></div>
       <div class="footer-links">
         <a href="/play/">Play Demo</a>
+        <a href="/normandy/">Normandy AA</a>
         <a href="/studio/">4-View Studio</a>
         <a href="/llms-full.txt">llms-full.txt</a>
       </div>
