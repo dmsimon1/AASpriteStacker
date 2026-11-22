@@ -4,7 +4,7 @@ This document explains the graphics algorithms, coordinate conventions, volumetr
 
 ---
 
-## 1. Why Classic Sprite Stacking Breaks — And Our Fix
+## 1. Why Classic Sprite Stacking Breaks (and How We Fix It)
 
 Classic sprite stacking renders $H$ horizontal slices of a voxel model as stacked 2D quads shifted by `(0, -z)` on screen. That approach fails in five well-known ways:
 
@@ -44,7 +44,7 @@ Regardless of how an asset enters the engine (declarative Blueprint CSG, MagicaV
 
 ```text
 Input Voxels (RGBA8)
-   ├──► 1. O(N) 3-Pass Felzenszwalb–Huttenlocher 3D EDT ──► 3D SDF (float32 + packed R8)
+   ├──► 1. O(N) 3-Pass Felzenszwalb-Huttenlocher 3D EDT ──► 3D SDF (float32 + packed R8)
    │        (clamped to exterior air boundary so roof/wall caps always carry outward normals)
    ├──► 2. Central-Difference SDF Gradient + Multi-Offset AO ──► Smooth Normals + AO (RGBA8)
    ├──► 3. 3D RGB Edge Dilation (6-neighbor flood into α=0) ──► Halo-Free Albedo (RGBA8)
@@ -54,13 +54,13 @@ Input Voxels (RGBA8)
 ### Key Details
 - **Boundary-Safe 3D SDF:** Solid voxels touching the bounding box edge clamp interior distance `dIn` to the exterior air wall distance (`min(x+1, W-x, y+1, L-y, z+1, H-z)`). Without this, roof caps and outer hull panels have flattened `Z` gradients and broken top lighting.
 - **3D RGB Edge Dilation:** Transparent voxels (`alpha == 0`) adjacent to solid voxels inherit the nearest solid voxel's RGB while keeping `alpha == 0`. Hardware `GL_LINEAR` trilinear lookups in `smooth-sdf` mode therefore never bleed black fringes.
-- **Content-Hashed Hot-Swap:** `VolumeAsset.hash` (FNV-1a over dimensions, voxel data, and sockets) lets `AASpriteRenderer.ensureAssetGPU()` automatically replace GPU 3D textures on the next frame whenever an asset is recompiled or edited — zero manual cache invalidation.
+- **Content-Hashed Hot-Swap:** `VolumeAsset.hash` (FNV-1a over dimensions, voxel data, and sockets) lets `AASpriteRenderer.ensureAssetGPU()` automatically replace GPU 3D textures on the next frame whenever an asset is recompiled or edited, with no manual cache invalidation.
 
 ---
 
 ## 4. The 4-Pass WebGL2 ES 3.00 Render Pipeline (`packages/core/src/renderer.ts` & `shaders.ts`)
 
-Every frame executes cleanly in 4 deterministic passes using only standard WebGL2 ES 3.00 formats (`RGBA8`, `R8`, `DEPTH_COMPONENT24`) — **zero float-FBO extensions required**, ensuring identical behavior on iOS Safari, Android Chrome, and desktop GPUs:
+Every frame runs in 4 deterministic passes using standard WebGL2 ES 3.00 formats (`RGBA8`, `R8`, `DEPTH_COMPONENT24`). No float-FBO extensions are required, so output matches across iOS Safari, Android Chrome, and desktop GPUs:
 
 ```mermaid
 flowchart LR
@@ -86,7 +86,7 @@ flowchart LR
 - **Back-Face Culling (`gl.cullFace(gl.FRONT)`):** Rendering only the OBB's back faces guarantees the fragment shader still executes when the camera moves **inside** a volumetric object or right up to an actor.
 - **Rotated Grid Supersampling (RGSS):** Traces `1×`, `2×`, `4×`, or `8×` sub-pixel rays per fragment (`getRgssOffset`), accumulating shaded color in **linear light** (`srgbToLin` → average → `linToSrgb`), outputting true fractional coverage `cov = hits / spp` and closest `gl_FragDepth`.
 - **Two Raycast Kernels:**
-  - **Amanatides–Woo 3D Voxel DDA (`voxel-dda`):** Exact voxel traversal with epsilon-gated `stepDir` (fixing `0°/90°/180°/270°` cardinal drift to `0.00 px`), optional local 3D self-shadow rays on hero entities, and explicit per-entity `normalSmoothness` (`0..1`, defaulting cleanly to `0.24` crisp hard-surface planes in `arcade-8bit` and `0.45` in `hd-2d`, completely decoupled from `outline`).
+  - **Amanatides-Woo 3D Voxel DDA (`voxel-dda`):** Exact voxel traversal with epsilon-gated `stepDir` (fixing `0°/90°/180°/270°` cardinal drift to `0.00 px`), optional local 3D self-shadow rays on hero entities, and explicit per-entity `normalSmoothness` (`0..1`, defaulting cleanly to `0.24` crisp hard-surface planes in `arcade-8bit` and `0.45` in `hd-2d`, completely decoupled from `outline`).
   - **Continuous 3D SDF Sphere Tracing (`smooth-sdf`):** Raymarches the trilinear-filtered 3D SDF texture with tetrahedral central-difference normals and trilinear halo-free albedo.
 - **Distance-Adaptive RGSS LOD:** Entities with `aaPriority: "hero"` (or `tag === "player"` or `dist < 44`) receive full active `samples`; mid-range entities drop to `≤ 2×`; far entities drop to `1×` automatically.
 - **MRT Aux Buffer (`outAux`):** Packs `(outlineObjectId, emissiveMask, legacyFlag, coverage)` alongside `outColor` in a single pass.
@@ -96,11 +96,11 @@ flowchart LR
 - Tested against the Pass 0 + Pass 1 hardware depth buffer (`depthMask(false)`), so trails and plumes pass cleanly behind geometry. Emissive ribbons write into `outAux.g` to feed Pass 3 bloom automatically.
 
 ### Pass 3: 16-Bit Packed `RGBA8` JFA Outlines, Bloom & Premultiplied Composite (`JFA_INIT_FS`, `JFA_STEP_FS`, `COMPOSITE_FS`)
-- **Zero Float-FBO JFA:** Encodes normalized `(u, v)` seed coordinates into two 16-bit integers split across `RGBA8` (`hiX, loX, hiY, loY` — up to `65,535 × 65,535` precision).
-- **Live AA Quality Softswitch (`renderer.setQuality("eco" | "balanced" | "ultra", world)`):**
+- **Zero Float-FBO JFA:** Encodes normalized `(u, v)` seed coordinates into two 16-bit integers split across `RGBA8` (`hiX, loX, hiY, loY`, up to `65,535 × 65,535` precision).
+- **Live AA Quality Toggle (`renderer.setQuality("eco" | "balanced" | "ultra", world)`):**
   - `"eco"` (`2×` RGSS, `1.25×` DPR) and `"balanced"` (`4×` RGSS, `1.5×` DPR) run **half-resolution JFA** with a 2×2 sub-texel seed probe (`-75%` outline memory bandwidth) to keep laptops and mobile devices cool.
-  - `"ultra"` (`8×` RGSS, `2.0×` native Retina DPR) runs **full-resolution JFA** for razor-smooth outlines even under 4× magnification.
-- **5-Tap Emissive Early-Out + Premultiplied Transparent Composite:** Skips the 25-tap Gaussian bloom loop on ~97% of non-emissive screen pixels; when `background === "transparent"`, un-premultiplies foreground coverage and outputs Porter-Duff premultiplied alpha (`vec4(srgb * finalA, finalA)`) so edges blend seamlessly over any host canvas without dark fringes.
+  - `"ultra"` (`8×` RGSS, `2.0×` native Retina DPR) runs **full-resolution JFA** for clean outlines even under 4× magnification.
+- **5-Tap Emissive Early-Out + Premultiplied Transparent Composite:** Skips the 25-tap Gaussian bloom loop on ~97% of non-emissive screen pixels. When `background === "transparent"`, Pass 3 un-premultiplies foreground coverage and outputs Porter-Duff premultiplied alpha (`vec4(srgb * finalA, finalA)`) so edges blend cleanly over any host canvas without dark fringes.
 - **Hardware GPU Timing:** Uses non-blocking `EXT_disjoint_timer_query_webgl2` queries (ring of up to 4 frames) to surface real `EngineTelemetry.gpuMs` and feed the adaptive DRS thermal governor.
 
 ### Standalone Engine Reference Shaders (`shaders/`)
@@ -110,21 +110,21 @@ Copy-paste single-quad 4× RGSS 3D Voxel DDA reference shaders for non-WebGL2 en
 
 ---
 
-## 5. How the Live `RenderStyle` Softswitch Works
+## 5. How the Live `RenderStyle` Switch Works
 
 `SceneDocument.style` compiles to a single integer uniform (`uStyle`: `0=arcade-8bit`, `1=hd-2d`, `2=smooth-toy`, `3=retro-raw`) shared by `TERRAIN_FS`, `ENTITY_OBB_FS`, and `COMPOSITE_FS`:
 
 - **`0` (`arcade-8bit`):**
-  - Terrain uses derivative-width `aaBand(edge, val, minW)` (`smoothstep` over `max(fwidth(val) * 0.85, minW)`) so color steps between cobalt ocean → azure → turquoise shallows → crisp surf foam → golden sand → lime → emerald → pine look **razor-sharp like 8/16-bit pixel art**, yet remain **100% shimmer-free** at sub-pixel borders.
-  - Pushes horizon haze out (`fogStart = 115.0`) so midground islands stay electric and saturated.
-  - Entities use tight hue-shifted 3-stop cel bands (`bw = 0.06`, cool indigo shadows → warm golden highlights).
+  - Terrain uses derivative-width `aaBand(edge, val, minW)` (`smoothstep` over `max(fwidth(val) * 0.85, minW)`) so color steps between cobalt ocean, azure, turquoise shallows, surf foam, sand, lime, emerald, and pine stay sharp like 8/16-bit pixel art without sub-pixel shimmer.
+  - Pushes horizon haze out (`fogStart = 115.0`) so midground islands stay bright and legible.
+  - Entities use tight hue-shifted 3-stop cel bands (`bw = 0.06`, cool indigo shadows to warm golden highlights).
   - Composite applies subtle vibrance (`1.16×` saturation) and contrast (`1.06×`).
 - **`1` (`hd-2d`):**
   - Broader atmospheric gradients (`fogStart = 45.0`), softer cel bands (`bw = 0.16`), gentler cloud shadow penumbra, and neutral color grade.
 - **`2` (`smooth-toy`):**
   - Automatically routes raycasting to continuous 3D SDF sphere tracing (`smooth-sdf`) with curved silhouettes and soft lighting.
 - **`3` (`retro-raw`):**
-  - Quantizes screen rays to low-res pixel blocks (`1×` sampling), enables hard unblended cel thresholds, and switches outlines to classic 4-neighbor pixel checks — ideal for pure retro aesthetics or side-by-side `A/B` curtain comparisons.
+  - Quantizes screen rays to low-res pixel blocks (`1×` sampling), enables hard unblended cel thresholds, and switches outlines to classic 4-neighbor pixel checks for pure retro aesthetics or side-by-side `A/B` curtain comparisons.
 
 ---
 

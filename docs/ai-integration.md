@@ -1,8 +1,8 @@
-# AI-First Engine Architecture & Live Agent Bridge (`@aastack/bridge` + `@aastack/mcp`)
+# AI Tooling & Live Agent Bridge (`@aastack/bridge` + `@aastack/mcp`)
 
-**AASpriteStacker** is designed from inception to be **frontier-AI native** without putting a single AI API key, vendor SDK, or bloated abstraction inside `@aastack/core`.
+**AASpriteStacker** supports AI coding agents out of the box without putting any API keys, model SDKs, or extra runtime dependencies inside `@aastack/core`.
 
-Instead of assuming a model must "one-shot" a game in a single prompt, the engine exposes **six first-principles iterative hooks** paired with a **zero-dependency localhost WebSocket dev bridge** so any coding agent can inspect, patch, hot-swap blueprints, visually self-critique 2×2 multi-angle renders, and persist clean Git-diffable JSON over multiple turns.
+Instead of expecting an agent to one-shot a scene in a single prompt, the engine exposes six iterative hooks plus a zero-dependency localhost WebSocket dev bridge. Any coding agent can inspect state, apply patches, hot-swap blueprints, review 2×2 multi-angle captures, and save Git-diffable JSON across turns.
 
 ![Live 2×2 Multi-Angle Contact Sheet Captured via @aastack/mcp](assets/mcp-capture-2x2.png)
 
@@ -28,7 +28,7 @@ flowchart LR
 ```
 
 - **Zero production bloat:** `@aastack/core` stays 100% pure. Apps lazy-load `@aastack/bridge/client` only when `?bridge=1` is present (or the dev toggle is clicked), so normal visitors download **0 bytes** of bridge, linter, or schema code.
-- **Multi-agent port sharing:** The zero-dependency RFC 6455 WebSocket relay runs inside `@aastack/mcp` on `ws://127.0.0.1:8787` (override via `AASTACK_BRIDGE_PORT`). If a second IDE window or agent starts another `@aastack/mcp` process, it automatically attaches as a **follower peer** to the active leader on the same port—zero `EADDRINUSE` conflicts.
+- **Multi-agent port sharing:** The zero-dependency RFC 6455 WebSocket relay runs inside `@aastack/mcp` on `ws://127.0.0.1:8787` (override via `AASTACK_BRIDGE_PORT`). If a second IDE window or agent starts another `@aastack/mcp` process, it attaches automatically as a **follower peer** to the active leader on the same port without `EADDRINUSE` conflicts.
 - **Vendor-neutral schemas:** `@aastack/bridge/schemas` exports Draft 2020-12 JSON Schemas plus one-line adapters (`toOpenAITools()`, `toAnthropicTools()`, `toGeminiFunctionDeclarations()`) so any future in-browser BYOK AI Studio plugs into the exact same `executeEngineTool()` contract.
 
 ---

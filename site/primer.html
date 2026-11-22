@@ -4,10 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
-  <title>What Is Sprite Stacking? — A Visual Primer | AASpriteStacker</title>
-  <meta name="description" content="A clear visual primer on sprite stacking: how flat 2D pixel-art slices create rotating 3D objects without polygons, why classic stackers always alias, and how full AA solves it." />
-  <meta property="og:title" content="What Is Sprite Stacking? — A Visual Primer | AASpriteStacker" />
-  <meta property="og:description" content="How flat 2D pixel-art slices become rotating 3D objects without polygons—and how MIT open-source AASpriteStacker finally eliminates rotation aliasing." />
+  <title>What Is Sprite Stacking? | AASpriteStacker</title>
+  <meta name="description" content="A visual primer on sprite stacking: how stacked 2D pixel-art slices create rotating 3D objects without polygons, why classic stackers alias, and how AA fixes it." />
+  <meta property="og:title" content="What Is Sprite Stacking? | AASpriteStacker" />
+  <meta property="og:description" content="How flat 2D pixel-art slices become rotating 3D objects without polygons, where the technique came from, and how AASpriteStacker removes rotation aliasing." />
   <meta property="og:type" content="article" />
   <meta property="og:image" content="https://aasprite.com/assets/og-card.png" />
   <meta property="og:image:width" content="1200" />
@@ -27,8 +27,8 @@
         <div class="section-kicker">Visual Primer · 3-Minute Read</div>
         <h1>What is sprite stacking?</h1>
         <p class="primer-lead">
-          How game artists turn flat 2D pixel-art layers into rotating 3D objects without a single polygon—where
-          the technique came from, which games popularized it, why classic stackers alias, and how full anti-aliasing solves it.
+          How flat 2D pixel-art layers build rotating 3D objects without polygons, where the technique came from,
+          which games use it, and why classic stackers shimmer when rotated.
         </p>
       </header>
 
@@ -37,12 +37,12 @@
         <h2>1. The "Loaf of Bread" Trick</h2>
         <p>
           Imagine slicing a 3D object horizontally from bottom to top, like a CT scan or a loaf of sliced bread.
-          Each slice is just a tiny, flat <strong>2D pixel-art sprite</strong>.
+          Each slice is just a small, flat <strong>2D pixel-art sprite</strong>.
         </p>
         <p>
-          Take our <code>24×24×28</code> pixel cottage from the homepage. Underneath, it isn't a 3D mesh with
-          vertices or UV maps—it is simply <strong>28 stacked 2D pixel images</strong>, from the grass lawn on
-          layer <code>z = 0</code> up to the 1-pixel golden weathervane on layer <code>z = 27</code>:
+          Take the <code>24×24×28</code> pixel cottage from the homepage. Underneath, there is no 3D mesh, no
+          vertices, and no UV map. It is simply <strong>28 stacked 2D pixel images</strong>, running from the grass
+          lawn on layer <code>z = 0</code> up to the 1-pixel golden weathervane on layer <code>z = 27</code>:
         </p>
 
         <figure class="primer-figure">
@@ -79,9 +79,9 @@ for (let z = 0; z &lt; slices.length; z++) {
       <section class="primer-section" id="stacking">
         <h2>2. Exploded View: Seeing How Flat Layers Build 3D Form</h2>
         <p>
-          The easiest way to understand sprite stacking is an <strong>exploded view</strong>—pulling the vertical
-          spacing apart (<code>step &gt; 1.0</code>) so the solid model separates back into its individual 2D cards.
-          Compress the spacing back down to <code>1.0</code>, and those exact same slices fuse into a tactile 3D object.
+          The easiest way to see how sprite stacking works is an <strong>exploded view</strong>. Pulling the vertical
+          spacing apart (<code>step &gt; 1.0</code>) separates the solid model back into its individual 2D cards.
+          Compress the spacing back to <code>1.0</code> and those same slices lock into a solid 3D shape.
         </p>
 
         <!-- Dedicated Exploded-Stack Explainer Card -->
@@ -96,27 +96,27 @@ for (let z = 0; z &lt; slices.length; z++) {
             <span class="compare-badge cyan">Exploded Stack · spacing = 2.0</span>
             <h3>Anatomy of an Exploded Sprite Stack</h3>
             <p>
-              Increasing the vertical offset between slices (<code>y − z × 2.0</code>) lifts every layer apart like an
-              architectural cutaway so you can literally read the 3D volume slice by slice:
+              Increasing the vertical offset between slices (<code>y - z × 2.0</code>) lifts every layer apart like a
+              cutaway diagram so you can read the volume slice by slice:
             </p>
             <ul class="exploded-layers">
-              <li><code>z = 0–3</code> — Earth base &amp; rounded grass lawn plinth</li>
-              <li><code>z = 4–12</code> — Cream walls, teal doorway, glowing windows &amp; 1px brass doorknob</li>
-              <li><code>z = 13–21</code> — Stepped blue roof gable &amp; brick-red chimney</li>
-              <li><code>z = 22–27</code> — Floating 1px iron mast &amp; golden rooftop weathervane</li>
+              <li><code>z = 0..3</code>: Earth base and rounded grass plinth</li>
+              <li><code>z = 4..12</code>: Cream walls, teal doorway, glowing windows, and 1px brass doorknob</li>
+              <li><code>z = 13..21</code>: Stepped blue roof gable and brick-red chimney</li>
+              <li><code>z = 22..27</code>: Floating 1px iron mast and golden rooftop weathervane</li>
             </ul>
             <p class="exploded-why">
-              <strong>Why artists rely on exploded views:</strong> Pulling layers apart immediately reveals overhangs,
-              hollow interiors, floating disconnected voxels, and thin 1px details before collapsing <code>step</code>
-              back to <code>1.0</code> for runtime rendering.
+              <strong>Why exploded views are useful:</strong> Separating layers makes overhangs, hollow interiors,
+              floating pixels, and thin 1px details easy to check before collapsing <code>step</code> back to
+              <code>1.0</code> for gameplay.
             </p>
             <div class="exploded-actions">
-              <a class="btn btn-sm btn-primary" href="/studio/">Inspect Live Exploded View in Studio →</a>
+              <a class="btn btn-sm btn-primary" href="/studio/">Inspect Exploded View in Studio →</a>
             </div>
           </div>
         </article>
 
-        <!-- Paired Assembled-Stack Card (no duplicated exploded image!) -->
+        <!-- Paired Assembled-Stack Card -->
         <article class="primer-exploded-card primer-assembled-card" id="assembled-view">
           <div class="primer-exploded-media">
             <img src="/assets/compare-crisp-aa.png" alt="Assembled 28-layer cottage sprite stack at spacing 1.0 forming a solid anti-aliased 3D object" loading="lazy" />
@@ -125,9 +125,9 @@ for (let z = 0; z &lt; slices.length; z++) {
             <span class="compare-badge cyan">Assembled Stack · spacing = 1.0</span>
             <h3>Collapsed Back Into Solid 3D Form</h3>
             <p>
-              Compress the vertical offset from <code>2.0</code> back down to <code>1.0</code> and those exact same 28
-              flat pixel layers lock tightly together into a solid, tactile 3D building that rotates smoothly 360°—with
-              self-shadows, crisp roof edges, and an intact 1px rooftop weathervane.
+              Drop the vertical offset from <code>2.0</code> back down to <code>1.0</code> and the same 28 flat pixel
+              layers close together into a solid 3D building that rotates 360°, complete with self-shadows, crisp roof
+              edges, and an intact 1px weathervane.
             </p>
             <div class="exploded-actions">
               <a class="btn btn-sm" href="/iso/">Try Live 2.5D Iso &amp; Oblique Stacking →</a>
@@ -140,43 +140,43 @@ for (let z = 0; z &lt; slices.length; z++) {
       <section class="primer-section" id="history">
         <h2>3. Where Sprite Stacking Came From &amp; Games That Use It</h2>
         <p>
-          Sprite stacking grew out of a decades-long tradition of faking 3D depth with 2D hardware—before finding a
-          modern identity in indie pixel art as a fast, charming alternative to full 3D polygon pipelines.
+          Sprite stacking grew out of older 2D hardware tricks for faking depth, then caught on in indie pixel art as
+          a fast alternative to polygon modeling and UV mapping.
         </p>
 
         <div class="grid-3 history-timeline">
           <article class="card">
-            <span class="history-era">1980s–1990s · Roots</span>
+            <span class="history-era">1980s to 1990s · Roots</span>
             <h3>Arcade &amp; Console Pseudo-3D</h3>
             <p>
-              Before affordable 3D GPUs, engineers created volume out of 2D planes: Sega's <em>Super Scaler</em> arcade
+              Before affordable 3D GPUs, developers built volume out of 2D planes: Sega's <em>Super Scaler</em> arcade
               boards (<em>OutRun</em>, <em>Power Drift</em>), SNES <em>Mode 7</em> plane-warping, NovaLogic's non-polygon
               <em>Voxel Space</em> terrain (<em>Comanche</em>, 1992), Zyrinx's layered top-down hardware tricks in
-              <em>Red Zone</em> (Sega Genesis, 1994), and DMA Design's original <em>Grand Theft Auto</em> (1997) proving
-              top-down 2D worlds could convey multi-story height.
+              <em>Red Zone</em> (Sega Genesis, 1994), and DMA Design's original <em>Grand Theft Auto</em> (1997), which
+              showed that top-down 2D worlds could convey multi-story height.
             </p>
           </article>
 
           <article class="card">
-            <span class="history-era">2016 · Indie Watershed</span>
+            <span class="history-era">2016 · Indie Breakout</span>
             <h3><em>NIUM</em> &amp; the GameMaker Wave</h3>
             <p>
-              Modern sprite stacking exploded into indie gamedev in 2016 when <strong>Ojiro "Moppin" Fumoto</strong>
-              (creator of <em>Downwell</em>) and artist <strong>Nemk</strong> debuted <strong><em>NIUM</em></strong> in
-              GameMaker at <em>Fantastic Arcade</em>. Rotating a top-down camera smoothly over stacked pixel-art slices
-              sparked community frameworks like <em>Fauxton3D</em> and <em>Like 100 Bears</em>' scripts across GameMaker,
-              Godot, and PICO-8.
+              Modern sprite stacking took off in indie gamedev in 2016 when <strong>Ojiro "Moppin" Fumoto</strong>
+              (creator of <em>Downwell</em>) and artist <strong>Nemk</strong> showed <strong><em>NIUM</em></strong> in
+              GameMaker at <em>Fantastic Arcade</em>. Smoothly rotating a top-down camera over stacked pixel-art slices
+              inspired frameworks like <em>Fauxton3D</em> and <em>Like 100 Bears</em>' scripts across GameMaker, Godot,
+              and PICO-8.
             </p>
           </article>
 
           <article class="card">
-            <span class="history-era">2018–Present · Tooling Boom</span>
+            <span class="history-era">2018 to Today · Tooling Boom</span>
             <h3>Voxel &amp; Slice-Sheet Editors</h3>
             <p>
-              Dedicated creation tools—<strong>MagicaVoxel</strong> (<code>.vox</code> slice export),
-              <strong>SpriteStack</strong> (by Rezoner), and <strong>SpritePile</strong> (by Fern Nigro)—turned sprite
-              stacking into an everyday pipeline. Artists paint layer-by-layer in 2D pixel tools and export straight to
-              2D engines—skipping polygon modeling, UV unwrapping, and rigging.
+              Dedicated editors like <strong>MagicaVoxel</strong> (<code>.vox</code> slice export),
+              <strong>SpriteStack</strong> (by Rezoner), and <strong>SpritePile</strong> (by Fern Nigro) made sprite
+              stacking practical for everyday production. Artists paint layer-by-layer in 2D pixel tools and export
+              directly to 2D engines without polygon modeling, UV unwrapping, or rigging.
             </p>
           </article>
         </div>
@@ -185,11 +185,11 @@ for (let z = 0; z &lt; slices.length; z++) {
         <div class="grid-2 games-grid">
           <article class="card">
             <span class="game-tag">GameMaker · 2016 Showcase</span>
-            <h4><em>NIUM</em> — Ojiro "Moppin" Fumoto &amp; Nemk</h4>
+            <h4><em>NIUM</em> (Ojiro "Moppin" Fumoto &amp; Nemk)</h4>
             <p>
-              The landmark Fantastic Arcade showcase that defined the modern sprite-stack look. Its rotatable pseudo-3D
-              pixel-art rooms and characters proved that pure 2D draw loops could feel tactile and volumetric, directly
-              inspiring most modern sprite-stacking tutorials.
+              The Fantastic Arcade showcase that set the modern sprite-stack look. Its rotatable pseudo-3D pixel-art
+              rooms and characters showed how volumetric pure 2D draw loops could feel, sparking most of today's
+              sprite-stacking tutorials.
             </p>
           </article>
 
@@ -197,8 +197,9 @@ for (let z = 0; z &lt; slices.length; z++) {
             <span class="game-tag">Steam · Open-World Action RPG</span>
             <h4><em>Legend of Radiance</em> (2023)</h4>
             <p>
-              A top-down Zelda- and Souls-inspired open-world action RPG built with sprite stacking so players can rotate
-              the camera freely around miniature pixel-art towers, dungeons, and terrain without losing handcrafted 2D charm.
+              A top-down Zelda- and Souls-inspired open-world action RPG built with sprite stacking. Players can rotate
+              the camera freely around miniature pixel-art towers, dungeons, and terrain while keeping a handcrafted
+              2D look.
             </p>
           </article>
 
@@ -206,8 +207,8 @@ for (let z = 0; z &lt; slices.length; z++) {
             <span class="game-tag">PICO-8 &amp; Picotron · Fantasy Consoles</span>
             <h4><em>Death Dash Crash</em> &amp; <em>Chunky Rally / RallyTron</em></h4>
             <p>
-              Fantasy-console developers love sprite stacking for squeezing drifting 3D cars, tanks, and arena props into
-              strict <code>128×128</code> 2D constraints—proving how lightweight and expressive stacked slices can be.
+              Fantasy-console developers often use sprite stacking to fit drifting 3D cars, tanks, and arena props into
+              strict <code>128×128</code> 2D budgets, showing how small and fast stacked slices can be.
             </p>
           </article>
 
@@ -215,9 +216,9 @@ for (let z = 0; z &lt; slices.length; z++) {
             <span class="game-tag">Godot · GameMaker · itch.io</span>
             <h4>Top-Down Racers, Shooters &amp; Isometric Indies</h4>
             <p>
-              Hundreds of indie top-down driving games, twin-stick shooters, and tactical isometric prototypes on itch.io
-              and Steam use MagicaVoxel, SpriteStack, or SpritePile slice strips—and until now, all of them had to live
-              with rotation aliasing.
+              Hundreds of indie top-down driving games, twin-stick shooters, and tactical isometric projects on itch.io
+              and Steam run on MagicaVoxel, SpriteStack, or SpritePile slice strips. Until recently, every one of them
+              had to accept rotation aliasing as part of the style.
             </p>
           </article>
         </div>
@@ -225,17 +226,17 @@ for (let z = 0; z &lt; slices.length; z++) {
 
       <!-- 4. THE CATCH: WHY CLASSIC STACKING ALIASES -->
       <section class="primer-section" id="the-catch">
-        <h2>4. The Catch: Why Classic Sprite Stackers Always Alias</h2>
+        <h2>4. The Catch: Why Classic Sprite Stackers Alias</h2>
         <p>
-          Drawing stacked 2D quads works great at exact 0° / 90° angles—but the moment an object rotates smoothly in
-          a real game, classic 2D slice stacking hits three brutal visual walls:
+          Drawing stacked 2D quads works well at exact 0° and 90° angles. Once an object rotates smoothly in a real
+          game, classic 2D slice stacking runs into three problems:
         </p>
 
         <div class="grid-3" style="margin: 20px 0 24px;">
           <article class="card">
             <h3>1. Rotation Shimmer ("Pixel Boil")</h3>
             <p>
-              Nearest-neighbor texture sampling snaps each rotated slice to the closest screen pixel independently.
+              Nearest-neighbor texture sampling snaps each rotated slice to the closest screen pixel on its own.
               Turn 1° at a time and diagonal roofs, wings, and outlines visibly crawl and shimmer.
             </p>
           </article>
@@ -243,14 +244,14 @@ for (let z = 0; z &lt; slices.length; z++) {
             <h3>2. Black Halos &amp; Vanishing 1px Details</h3>
             <p>
               Trying to smooth edges with standard bilinear filtering pulls transparent <code>rgba(0,0,0,0)</code>
-              pixels into solid borders—leaving ugly dark fringes and melting thin 1px details like antennas or doorknobs.
+              pixels into solid borders. That leaves dark fringes and melts thin 1px details like antennas or doorknobs.
             </p>
           </article>
           <article class="card">
             <h3>3. Pancake Splitting in 3D</h3>
             <p>
-              Because classic stacks are flat 2D quads drawn vertically in screen space, tilting the camera toward
-              the horizon exposes ugly gaps between layers—locking most games to fixed top-down views.
+              Because classic stacks are flat 2D quads offset vertically in screen space, tilting the camera toward
+              the horizon exposes gaps between layers, keeping most games locked to steep top-down views.
             </p>
           </article>
         </div>
@@ -264,8 +265,8 @@ for (let z = 0; z &lt; slices.length; z++) {
               <span class="compare-badge warn">Classic Stackers · No AA</span>
               <h3>Legacy 1× Nearest</h3>
               <p>
-                Jagged staircase outline, broken rooftop weathervane, and a completely vanished brass doorknob—all of
-                which shimmer and boil on every degree of rotation.
+                Jagged staircase outline, broken rooftop weathervane, and a vanished brass doorknob. Every degree of
+                rotation makes these pixels crawl.
               </p>
             </figcaption>
           </figure>
@@ -278,8 +279,8 @@ for (let z = 0; z &lt; slices.length; z++) {
               <span class="compare-badge cyan">AASpriteStacker · Full AA</span>
               <h3>Crisp Anti-Aliased Stack (8× RGSS)</h3>
               <p>
-                Authentic pixel-art interior with a razor-smooth silhouette, 100% solid 1px weathervane and brass
-                doorknob, and <strong>−58%</strong> less rotation shimmer.
+                Chunky pixel-art interior with a clean silhouette, intact 1px weathervane and brass doorknob, and
+                <strong>−58%</strong> less rotation shimmer.
               </p>
             </figcaption>
           </figure>
@@ -297,21 +298,20 @@ for (let z = 0; z &lt; slices.length; z++) {
         <ol class="primer-steps">
           <li>
             <strong>RGB Edge Dilation &amp; Linear Light:</strong> Transparent neighbor texels inherit border colors
-            during asset load and all blending runs in linear light—eliminating black bilinear halos completely.
+            at load time and all blending runs in linear light, preventing black bilinear halos.
           </li>
           <li>
             <strong>Rotated-Grid Supersampling (RGSS):</strong> Each screen pixel shoots a rotated sub-pixel ray
-            pattern (<code>2×</code>, <code>4×</code>, or <code>8×</code> via a live quality softswitch) directly
-            through the 3D volume, giving razor-smooth diagonal silhouettes while keeping crisp pixel interiors.
+            pattern (<code>2×</code>, <code>4×</code>, or <code>8×</code> via the runtime quality toggle) directly
+            through the 3D volume, giving smooth diagonal silhouettes while keeping crisp pixel interiors.
           </li>
           <li>
-            <strong>Continuous 3D Stepping (2.5D → 6-DOF):</strong> Exact 3D DDA volume traversal works identically
-            from classic orthographic 2.5D top-down all the way to full 6-DOF barrel-rolling flight cameras—with zero
-            pancake gaps.
+            <strong>Continuous 3D Stepping (2.5D to 6-DOF):</strong> Exact 3D DDA volume traversal works identically
+            from orthographic 2.5D top-down views to full 6-DOF barrel-rolling flight cameras, with no pancake gaps.
           </li>
           <li>
-            <strong>Distance-Field Outlines (JFA):</strong> A fast 2D Jump Flood pass computes crisp,
-            resolution-independent ink outlines that stay smooth even under 4× magnification.
+            <strong>Distance-Field Outlines (JFA):</strong> A fast 2D Jump Flood pass computes clean,
+            resolution-independent ink outlines that hold up even at 4× zoom.
           </li>
         </ol>
       </section>

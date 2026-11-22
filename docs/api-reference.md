@@ -74,7 +74,7 @@ const renderer = new AASpriteRenderer(canvas: HTMLCanvasElement, opts?: {
 | --- | --- |
 | `renderer.isReady` | `true` if WebGL2 context and core shader programs linked cleanly |
 | `renderer.isMobile` | Resolved mobile profile flag |
-| `renderer.setQuality(preset: AAQuality, world?)` | Live runtime AA quality softswitch (`"eco"` 2× / `"balanced"` 4× / `"ultra"` 8× Retina + full-res JFA) |
+| `renderer.setQuality(preset: AAQuality, world?)` | Runtime AA quality preset (`"eco"` 2× / `"balanced"` 4× / `"ultra"` 8× Retina + full-res JFA) |
 | `renderer.getQuality(): AAQuality` | Returns active runtime AA quality preset |
 | `renderer.setBackground(mode: BackgroundMode, color?: RGB)` | Switches backdrop mode at runtime (`"transparent"`, `"studio"`, `"solid"`, `"terrain"`) without recreating WebGL2 |
 | `renderer.getBackground(): BackgroundMode` | Returns active background mode |
@@ -101,7 +101,7 @@ const renderer = new AASpriteRenderer(canvas: HTMLCanvasElement, opts?: {
 | Function | Description |
 | --- | --- |
 | `createVolumeAsset(input)` | Builds a complete `VolumeAsset` (optional 3D EDT SDF via `computeSdf?: boolean`, smooth normals + AO, 3D RGB edge dilation, emissive mask, content hash) from raw `rgba` voxels |
-| `compute3DSdf(rgba, w, l, h, smoothStrength?)` | Exact `O(N)` 3-pass Felzenszwalb–Huttenlocher 3D Euclidean SDF with boundary air clamping |
+| `compute3DSdf(rgba, w, l, h, smoothStrength?)` | Exact `O(N)` 3-pass Felzenszwalb-Huttenlocher 3D Euclidean SDF with boundary air clamping |
 | `parseVox(buffer: ArrayBuffer, opts: VoxParseOptions)` | Zero-dependency MagicaVoxel `.vox` binary parser supporting both single-model files and full multi-model scene graphs (`SIZE`, `XYZI`, `RGBA`, `nTRN`, `nGRP`, `nSHP`, `_t`, `_r`, `_hidden`, optional `modelIndex`) |
 | `loadVoxUrl(url: string, opts: VoxParseOptions)` | Async one-line drop-in loader fetching and compiling any MagicaVoxel `.vox` URL |
 | `loadSliceStripPixels(pixels, stripW, stripH, opts)` | Loads horizontal `slices.png` RGBA pixel buffers into a `VolumeAsset` |
@@ -150,11 +150,11 @@ interface BlueprintSpec {
 | `"paint"` | `min: Vec3, max: Vec3, color: RGB` | `emissive`, `mirrorX` |
 
 ### Built-In Presets (`presets.ts`)
-- `createSportsCarBlueprint(id = "sports-car")` — Sleek crimson retro sports coupe with chunky tires, silver rims, twin white racing stripes, 1px-strut rear spoiler, and glowing headlights/taillights (`headlightL`, `headlightR`, `tailL`, `tailR`, `roof` sockets).
-- `createCottageBlueprint(id = "aa-cottage")` — Classic 2.5D pixel-art cottage with pitched blue-shingled roof, glowing windows, brick chimney, and 1px rooftop weathervane (`chimney`, `vane` sockets).
-- `createFighterJetBlueprint(id = "fighter-jet")` — Swept-wing twin-engine interceptor with `thrusterL`, `thrusterR`, `wingtipL`, `wingtipR`, `cockpitCam` sockets.
-- `createCloudBlueprint(variant: 0 | 1 | 2 = 0, id?)` — 3-tone sunlit multi-lobed volumetric cumulus clouds.
-- `createSkyGateBlueprint(id = "sky-gate")` — Hollow emissive sky-ring checkpoint with `center` socket.
+- `createSportsCarBlueprint(id = "sports-car")`: Crimson retro sports coupe with chunky tires, silver rims, twin white racing stripes, 1px-strut rear spoiler, and glowing headlights/taillights (`headlightL`, `headlightR`, `tailL`, `tailR`, `roof` sockets).
+- `createCottageBlueprint(id = "aa-cottage")`: Classic 2.5D pixel-art cottage with pitched blue-shingled roof, glowing windows, brick chimney, and 1px rooftop weathervane (`chimney`, `vane` sockets).
+- `createFighterJetBlueprint(id = "fighter-jet")`: Swept-wing twin-engine interceptor with `thrusterL`, `thrusterR`, `wingtipL`, `wingtipR`, and `cockpitCam` sockets.
+- `createCloudBlueprint(variant: 0 | 1 | 2 = 0, id?)`: 3-tone sunlit multi-lobed volumetric cumulus clouds.
+- `createSkyGateBlueprint(id = "sky-gate")`: Hollow emissive sky-ring checkpoint with `center` socket.
 
 ---
 
@@ -164,19 +164,19 @@ Zero-dependency isomorphic package (`sideEffects: false`) providing strict schem
 
 ### `@aastack/bridge/schemas`
 - `BLUEPRINT_SPEC_SCHEMA`, `SCENE_PATCH_OPS_SCHEMA`, `SCENE_DOCUMENT_SCHEMA` (Draft 2020-12 JSON Schemas)
-- `ENGINE_TOOL_DEFINITIONS` — vendor-neutral tool array
+- `ENGINE_TOOL_DEFINITIONS`: vendor-neutral tool array
 - `toOpenAITools()`, `toAnthropicTools()`, `toGeminiFunctionDeclarations()`
 - `validateBlueprintSpec(raw)`, `validateScenePatchOps(raw)`, `validateSceneDocument(raw)` → `Diagnostic[]`
 
 ### `@aastack/bridge/linter`
-- `lintVolumeAsset(asset: VolumeAsset): VolumeLintReport` — returns `{ ok, metrics, diagnostics }` including 3D 6-connected-component floating island detection (`FLOATING_VOXEL_ISLAND`), socket bounds/detachment checks, occupancy, and mobile VRAM checks.
+- `lintVolumeAsset(asset: VolumeAsset): VolumeLintReport`: returns `{ ok, metrics, diagnostics }` including 3D 6-connected-component floating island detection (`FLOATING_VOXEL_ISLAND`), socket bounds/detachment checks, occupancy, and mobile VRAM checks.
 - `lintSceneWorld(world: SceneWorld, checkAssetRegistry?): Diagnostic[]`
 
 ### `@aastack/bridge/tools`
-- `executeEngineTool(ctx: EngineToolContext, tool: string, args?: Record<string, unknown>): Promise<EngineToolResult>` — executes `aastack_live_state`, `aastack_live_patch`, `aastack_live_undo`, `aastack_live_redo`, `aastack_live_hot_swap_blueprint`, `aastack_live_query`, `aastack_live_snapshot`, `aastack_live_restore`, `aastack_live_capture`, and `aastack_live_capture_views` (2×2 labeled PNG contact sheet).
+- `executeEngineTool(ctx: EngineToolContext, tool: string, args?: Record<string, unknown>): Promise<EngineToolResult>`: executes `aastack_live_state`, `aastack_live_patch`, `aastack_live_undo`, `aastack_live_redo`, `aastack_live_hot_swap_blueprint`, `aastack_live_query`, `aastack_live_snapshot`, `aastack_live_restore`, `aastack_live_capture`, and `aastack_live_capture_views` (2×2 labeled PNG contact sheet).
 
 ### `@aastack/bridge/client`
-- `connectDevBridge(ctx: EngineToolContext, opts?: DevBridgeOptions): DevBridgeHandle` — connects to `ws://127.0.0.1:8787` (or `?bridgePort=` / `opts.url`), auto-reconnects cleanly, and emits `onStatusChange` / `onAgentEvent` updates.
+- `connectDevBridge(ctx: EngineToolContext, opts?: DevBridgeOptions): DevBridgeHandle`: connects to `ws://127.0.0.1:8787` (or `?bridgePort=` / `opts.url`), auto-reconnects cleanly, and emits `onStatusChange` / `onAgentEvent` updates.
 
 ---
 

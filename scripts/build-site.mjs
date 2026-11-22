@@ -382,7 +382,7 @@ for (const page of DOC_PAGES) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
-  <title>${escapeHtml(page.title)} — AASpriteStacker Docs</title>
+  <title>${escapeHtml(page.title)} | AASpriteStacker Docs</title>
   ${FAVICON_LINK}
   <link rel="stylesheet" href="/assets/styles.css" />
   ${GLOBAL_NAV_CSS}
@@ -426,7 +426,7 @@ writeFileSync(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>404 — AASpriteStacker</title>
+  <title>404 | AASpriteStacker</title>
   <link rel="stylesheet" href="/assets/styles.css" />
   ${GLOBAL_NAV_CSS}
 </head>

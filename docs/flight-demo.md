@@ -1,6 +1,6 @@
-# SkyStack — Flagship 6-DOF Flight Demo Guide
+# SkyStack 6-DOF Flight Demo Guide
 
-`examples/flight-6dof/` is the flagship playable showcase for **AASpriteStacker**, demonstrating that an entire anti-aliased 6-DOF flight sandbox — with Overhead, Chase, and Cockpit cameras, volumetric clouds, terraced island archipelago, live rendering style softswitch, 16-bit Cockpit HUD, and mobile multi-touch controls — ships in **`29.3 KB` gzipped** (`90 KB` raw JS) with **zero polygons** and **zero runtime dependencies**.
+`examples/flight-6dof/` is a playable 6-DOF flight sandbox built on **AASpriteStacker**. It includes Overhead, Chase, and Cockpit cameras, volumetric clouds, a terraced island archipelago, live render style switching, a 16-bit Cockpit HUD, and mobile multi-touch controls in **`29.8 KB` gzipped** (`94 KB` raw JS) with **zero polygons** and **zero runtime dependencies**.
 
 ![SkyStack 6-DOF Chase View in 8-Bit AA Mode](assets/skystack-chase-8bit.png)
 
@@ -33,7 +33,7 @@ Open: `http://127.0.0.1:8765/examples/flight-6dof/index.html`
 
 ### Mobile / Touch Controls (`pointer: coarse` or `< 760px`)
 - **Left Half Drag:** Floating virtual thumbstick (`createTouchController`) controls yaw, bank, and climb/dive.
-- **Right Action Pad:** `BOOST` (press-and-hold afterburner) and `ROLL` (360° barrel roll) — `66×66 px` touch targets with safe-area notch clearance.
+- **Right Action Pad:** `BOOST` (press-and-hold afterburner) and `ROLL` (360° barrel roll), using `66×66 px` touch targets with safe-area notch clearance.
 - **Top Bar:** All camera, style, split-screen, and time-of-day buttons expand to `≥ 46 px` touch height automatically.
 
 ---
@@ -42,7 +42,7 @@ Open: `http://127.0.0.1:8765/examples/flight-6dof/index.html`
 
 1. **Zero-Mesh Asset Compilation:** Compiles `FighterJet`, three `Cloud` variants, and hollow `SkyGate` checkpoint rings directly from `@aastack/blueprint` at startup (~25 ms total).
 2. **Infinite Volumetric Cloud Field:** Spawns `22` clouds on desktop (`14` on mobile) with `outline: false` and `castShadow: true`, wrapping smoothly around the jet's XZ coordinates so the sky never runs out.
-3. **1:1 Terrain Clearance & Radar:** Calls `world.sampleTerrainHeight(x, z)` — the exact CPU twin of `TERRAIN_FS` — both to enforce a smooth minimum terrain-clearance floor and to paint the live rotating `27×27` green CRT island radar in Cockpit mode.
+3. **1:1 Terrain Clearance & Radar:** Calls `world.sampleTerrainHeight(x, z)` (the exact CPU twin of `TERRAIN_FS`) to enforce a smooth minimum terrain-clearance floor and paint the rotating `27×27` green CRT island radar in Cockpit mode.
 4. **Semantic Socket Attachments:** Every frame reads live world coordinates from `world.getSocketWorldPos("jet", ...)`:
    - `wingtipL` / `wingtipR`: feeds depth-tested 3D white contrail ribbons.
    - `thrusterL` / `thrusterR`: spawns dual-layer emissive afterburner ribbons (outer red-orange flame `[255, 96, 26]` + inner white-gold core `[255, 240, 128]`), lively at cruise and roaring on boost.
@@ -96,7 +96,7 @@ A subtle **"Agent Live"** pill appears below the brand badge with a live status 
 
 Built via `scripts/bundle-demos.mjs` (`esbuild --bundle --splitting --minify`):
 
-- **Default Initial Load (`bundle.js` + core chunk):** **`30.7 KB` gzipped** (`0` bytes of bridge/linter/validators downloaded until `?bridge=1` is active!)
-- **Lazy Dev Bridge Chunk (`dev-bridge-client-*.js`):** `8.5 KB` gzipped (loaded on demand only in `?bridge=1` dev sessions)
+- **Default Initial Load (`bundle.js` + core chunk):** **`29.8 KB` gzipped** (`0` bytes of bridge/linter/validators downloaded until `?bridge=1` is active)
+- **Lazy Dev Bridge Chunk (`dev-bridge-client-*.js`):** `8.7 KB` gzipped (loaded on demand only in `?bridge=1` dev sessions)
 - **HTML + CSS (`examples/flight-6dof/index.html`):** `~3.4 KB` gzipped
 - **External Runtime Dependencies:** `0`

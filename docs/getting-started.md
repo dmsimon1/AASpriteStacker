@@ -31,7 +31,7 @@ Useful root scripts:
 
 ## 2. Drop-In 2.5D Isometric & Oblique Overlay (Shortest Path)
 
-Want to drop anti-aliased sprite stacks straight on top of an existing 2D tilemap, Canvas2D, PixiJS, or Phaser game? Set `background: "transparent"`, pick a first-class 2.5D projection preset via `createIsometricCamera()` (`"dimetric-2to1"`, `"isometric"`, `"oblique-stack"`, or `"topdown-3quarter"`), and use our one-line URL loaders (`loadSliceStripUrl` or `loadVoxUrl`):
+Want to layer anti-aliased sprite stacks over an existing 2D tilemap, Canvas2D, PixiJS, or Phaser game? Set `background: "transparent"`, pick a 2.5D projection preset via `createIsometricCamera()` (`"dimetric-2to1"`, `"isometric"`, `"oblique-stack"`, or `"topdown-3quarter"`), and load your strips with `loadSliceStripUrl` or `loadVoxUrl`:
 
 ```ts
 import {
@@ -60,7 +60,7 @@ world.applyPatch([
 // Click-to-tile ground picking works identically across dimetric, true iso, oblique, and perspective:
 const hit = unprojectScreenToGround(mouseX, mouseY, world.doc.camera, canvas.clientWidth, canvas.clientHeight, 0);
 
-// Runtime AA quality softswitch ("eco" 2x | "balanced" 4x | "ultra" 8x Retina + full-res JFA):
+// Switch AA quality at runtime ("eco" 2x | "balanced" 4x | "ultra" 8x Retina + full-res JFA):
 renderer.setQuality("ultra", world);
 renderer.render(world);
 ```
@@ -144,7 +144,7 @@ requestAnimationFrame(loop);
 ```
 
 ### Orthographic 2.5D Mode (Classic Top-Down / Isometric)
-Want classic isometric/top-down sprite stacking with silky anti-aliasing and zero wobble? Just switch the camera to `"ortho"` and turn off terrain (or keep terrain enabled for top-down islands):
+Want classic isometric or top-down sprite stacking with clean anti-aliasing and no rotation wobble? Switch the camera to `"ortho"` and turn off terrain (or keep terrain enabled for top-down islands):
 
 ```ts
 world.applyPatch([
@@ -170,7 +170,7 @@ world.applyPatch([
 
 ## 3. Asset Pipelines (4 Ways to Create Volumetric Sprites)
 
-AASpriteStacker supports four first-class asset workflows — mix and match freely in the same scene:
+AASpriteStacker supports four asset workflows that can be mixed freely in the same scene:
 
 ### Pipeline A: Declarative Voxel + 3D SDF Blueprints (`@aastack/blueprint`)
 Best for procedural craft, rapid iteration, Git-diffable assets, hollow cavities, and AI-assisted creation.
@@ -206,7 +206,7 @@ const asset = compileBlueprint(turretSpec);
 world.registerAsset(asset);
 ```
 
-Supported `BlueprintOp` primitives: `box`, `sphere`, `ellipsoid`, `capsule`, `wedge`, `torus`, `paint` — with `subtract: true` (CSG cutout), `mirrorX: true` (X-axis symmetry), and `emissive: true` (bloom mask).
+Supported `BlueprintOp` primitives: `box`, `sphere`, `ellipsoid`, `capsule`, `wedge`, `torus`, and `paint`, with `subtract: true` (CSG cutout), `mirrorX: true` (X-axis symmetry), and `emissive: true` (bloom mask).
 
 ### Pipeline B: MagicaVoxel `.vox` Files (`parseVox`)
 Zero-dependency binary parser supporting `SIZE`, `XYZI`, `RGBA`, and default palette fallback:
@@ -244,7 +244,7 @@ const asset = loadSliceStripPixels(pixels, img.width, img.height, {
 world.registerAsset(asset);
 ```
 
-### Pipeline D: 4-View Orthographic PNGs (Python Carver CLI + Browser Look-Dev Studio)
+### Pipeline D: 4-View Orthographic PNGs (Python Carver CLI + Browser Studio)
 Turn a 2×2 or 1×4 orthographic turnaround (`Front / Right / Back / Left` PNG) into an edge-dilated slice strip, 3D SDF atlas, smooth normals atlas, comparison sheet, and standalone interactive HTML viewer:
 
 ```bash
@@ -291,7 +291,7 @@ world.applyPatch([
 
 ## 5. Mobile Multi-Touch Integration
 
-Use `createTouchController` from `@aastack/core` for rock-solid concurrent steering + action buttons on phones and tablets:
+Use `createTouchController` from `@aastack/core` for concurrent steering and action buttons on phones and tablets:
 
 ```ts
 import { createTouchController } from "@aastack/core";
@@ -312,7 +312,7 @@ Be sure your CSS sets `touch-action: none` on the stage container, `viewport-fit
 
 ---
 
-## 6. Connecting a Frontier Coding Agent Live (`?bridge=1`)
+## 6. Connecting a Coding Agent Live (`?bridge=1`)
 
 To let **Antigravity, Claude Code, Cursor, Codex, or Gemini CLI** patch your live browser scene, hot-swap blueprints, and inspect 2×2 PNG contact sheets with zero production overhead, lazy-load `@aastack/bridge/client` only when `?bridge=1` is present:
 
