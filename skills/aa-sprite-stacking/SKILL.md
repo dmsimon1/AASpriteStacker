@@ -59,3 +59,9 @@ Open `check.png` and `viewer.html` to compare modes side-by-side with the dragga
 ### 4. Integrate into your engine
 
 Open [`references/engines.md`](references/engines.md) for single-draw-call GPU shaders for **Godot 4**, **Unity URP 2D**, **WebGL2**, and **Canvas 2D** that read standard horizontal `slices.png` strips directly.
+
+### 5. Advanced Carving & Diorama Rules (credited to `@danielwh2/sprite-stacking`, MIT)
+
+- **Spherical bodies under orthographic pitch:** An equal-radius sphere (`R_z = R_xy`) stretches vertically into an egg under pitch `squash` and vertical `spacing`. Compensate vertical half-height with the Cauchy-Schwarz envelope `R_z = R_xy * sqrt(1 - squash^2) / spacing`, store pure surface albedo in rotating planet/moon strips, evaluate world-space directional lighting at render time, and split planetary rings into back (`y_local < 0`) and front (`y_local >= 0`) passes.
+- **Smooth slice-bloom entrances & cutaways:** Grow grounded props bottom-to-top using `@aastack/core`'s `sliceClip: [0, zFrac]` (or per-slice `lifts` whose reveal frontier extends past `count` by the blend width so upper slices finish easing cleanly).
+- **Articulated creatures & underwater depth:** Keep multi-frame creature strips (`f0..fN-1`) on identical `(W, H, count)` dimensions with shared symmetric pivots and extra Z-slice headroom so flapping wings or tail flukes never clip. Apply Beer-Lambert red-channel attenuation and softer outlines to submerged stacks.
