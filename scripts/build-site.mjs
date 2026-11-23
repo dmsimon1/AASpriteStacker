@@ -141,6 +141,32 @@ const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"
 const FAVICON_LINK = `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />`;
 writeFileSync(resolve(DIST, "favicon.svg"), FAVICON_SVG, "utf-8");
 
+function escAttr(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function renderSocialMeta({ title, description, url, image, width = 1200, height = 630, alt, type = "website" }) {
+  const t = escAttr(title);
+  const d = escAttr(description);
+  const u = escAttr(url);
+  const img = escAttr(image);
+  const a = escAttr(alt || title);
+  return `  <meta name="description" content="${d}" />
+  <meta property="og:title" content="${t}" />
+  <meta property="og:description" content="${d}" />
+  <meta property="og:type" content="${escAttr(type)}" />
+  <meta property="og:url" content="${u}" />
+  <meta property="og:image" content="${img}" />
+  <meta property="og:image:width" content="${width}" />
+  <meta property="og:image:height" content="${height}" />
+  <meta property="og:image:alt" content="${a}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${t}" />
+  <meta name="twitter:description" content="${d}" />
+  <meta name="twitter:image" content="${img}" />
+  <meta name="twitter:image:alt" content="${a}" />`;
+}
+
 // 1. Build landing page + visual primer with unified global nav, copy stylesheet, verified screenshots, and llms-full.txt
 let homeHtml = readFileSync(resolve(ROOT, "site/index.html"), "utf-8");
 homeHtml = homeHtml.replace("</head>", `${FAVICON_LINK}\n${GLOBAL_NAV_CSS}\n</head>`).replace("<!--AA_GLOBAL_NAV-->", renderGlobalNav("home"));
@@ -174,7 +200,17 @@ const isoLayoutPatch = `${GLOBAL_NAV_CSS}
   body { display: flex !important; flex-direction: column; align-items: center; min-height: 100dvh; }
   .demo-wrap { margin: auto 0; }
 </style>`;
+const isoMeta = renderSocialMeta({
+  title: "2.5D Isometric & Oblique Sprite-Stacking Sandbox | AASpriteStacker",
+  description: "Interactive WebGL2 2.5D isometric, dimetric, oblique, and 3/4 top-down transparent overlay sandbox with 64x hardware instancing.",
+  url: "https://aasprite.com/iso/",
+  image: "https://aasprite.com/assets/og-card.png",
+  width: 1200,
+  height: 630,
+  alt: "AASpriteStacker anti-aliased isometric sprite stacking comparison",
+});
 isoHtml = isoHtml
+  .replace("</title>", `</title>\n${isoMeta}`)
   .replace("</head>", `${FAVICON_LINK}\n${isoLayoutPatch}\n</head>`)
   .replace("<body>", `<body>\n${renderGlobalNav("iso")}`);
 writeFileSync(resolve(DIST, "iso/index.html"), isoHtml, "utf-8");
@@ -196,7 +232,17 @@ const playLayoutPatch = `${GLOBAL_NAV_CSS}
   body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
   #stage { flex: 1 1 auto; height: auto !important; min-height: 0; }
 </style>`;
+const playMeta = renderSocialMeta({
+  title: "SkyStack 6-DOF Flight Demo | AASpriteStacker",
+  description: "Playable WebGL2 6-DOF anti-aliased sprite-stacking flight demo with Chase, Overhead, and Cockpit views plus live Eco 2x / Bal 4x / Ultra 8x quality toggles.",
+  url: "https://aasprite.com/play/",
+  image: "https://aasprite.com/assets/skystack-chase-8bit.png",
+  width: 1024,
+  height: 640,
+  alt: "SkyStack 6-DOF anti-aliased sprite-stacking fighter jet flying over islands",
+});
 playHtml = playHtml
+  .replace("</title>", `</title>\n${playMeta}`)
   .replace("</head>", `${FAVICON_LINK}\n${playLayoutPatch}\n</head>`)
   .replace("<body>", `<body>\n${renderGlobalNav("play", true)}`);
 writeFileSync(resolve(DIST, "play/index.html"), playHtml, "utf-8");
@@ -225,7 +271,17 @@ const normandyLayoutPatch = `${GLOBAL_NAV_CSS}
   #badge { top: 72px; }
   #splitBar { top: 56px; }
 </style>`;
+const normandyMeta = renderSocialMeta({
+  title: "Normandy 1944 Deferred AA + 6-DOF | AASpriteStacker",
+  description: "Single-OBB 3D volume DDA, 4x RGSS sub-pixel anti-aliasing, exact overdraw telemetry, and a banking 6-DOF Spitfire running inside @loktar00's Normandy 1944 village (MIT).",
+  url: "https://aasprite.com/normandy/",
+  image: "https://aasprite.com/assets/og-normandy.jpg",
+  width: 1200,
+  height: 630,
+  alt: "Normandy 1944 voxel village rendered in WebGL2 with single-OBB 3D volume DDA and 4x RGSS anti-aliasing",
+});
 normandyHtml = normandyHtml
+  .replace("</title>", `</title>\n${normandyMeta}`)
   .replace("</head>", `${FAVICON_LINK}\n${normandyLayoutPatch}\n</head>`)
   .replace("<body>", `<body>\n${renderGlobalNav("normandy", true)}`);
 writeFileSync(resolve(DIST, "normandy/index.html"), normandyHtml, "utf-8");
@@ -236,7 +292,17 @@ const studioLayoutPatch = `${GLOBAL_NAV_CSS}
 <style>
   body { grid-template-rows: auto auto 1fr auto !important; }
 </style>`;
+const studioMeta = renderSocialMeta({
+  title: "4-View A/B Anti-Aliasing Studio | AASpriteStacker",
+  description: "Drop in MagicaVoxel .vox models or slice strips, inspect edges under a 4x pixel loupe, and export 16-direction anti-aliased sprite sheets.",
+  url: "https://aasprite.com/studio/",
+  image: "https://aasprite.com/assets/studio-preview.png",
+  width: 1024,
+  height: 566,
+  alt: "AASpriteStacker 4-View A/B Studio inspecting anti-aliased sprite stacks with a 4x pixel loupe",
+});
 studioHtml = studioHtml
+  .replace("</title>", `</title>\n${studioMeta}`)
   .replace("</head>", `${FAVICON_LINK}\n${studioLayoutPatch}\n</head>`)
   .replace("<body>", `<body>\n${renderGlobalNav("studio", true)}`);
 writeFileSync(resolve(DIST, "studio/index.html"), studioHtml, "utf-8");
@@ -395,6 +461,18 @@ for (const page of DOC_PAGES) {
     (n) => `<li><a href="/docs/${n.slug}/" class="${n.slug === activeSlug ? "active" : ""}">${n.title}</a></li>`,
   ).join("");
 
+  const docUrl = page.slug ? `https://aasprite.com/docs/${page.slug}/` : "https://aasprite.com/docs/";
+  const docMeta = renderSocialMeta({
+    title: `${page.title} | AASpriteStacker Docs`,
+    description: `Documentation for AASpriteStacker (${page.title}): zero-dependency WebGL2 anti-aliased sprite-stacking SDK, shaders, and live MCP bridge.`,
+    url: docUrl,
+    image: "https://aasprite.com/assets/og-card.png",
+    width: 1200,
+    height: 630,
+    alt: "AASpriteStacker anti-aliased sprite-stacking engine documentation",
+    type: "article",
+  });
+
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -402,6 +480,7 @@ for (const page of DOC_PAGES) {
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <title>${escapeHtml(page.title)} | AASpriteStacker Docs</title>
+${docMeta}
   ${FAVICON_LINK}
   <link rel="stylesheet" href="/assets/styles.css" />
   ${GLOBAL_NAV_CSS}
