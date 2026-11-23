@@ -899,3 +899,53 @@ export function createStoneArchBridge(detail: DetailLevel): VolumeAsset {
 
   return v.toAsset("xmas_bridge", "Granite Arch Creek Bridge", vs);
 }
+
+/**
+ * 9. COZY SNOW-DRAPED HILLSIDE VALLEY COTTAGE (44x38x52 @ 0.14)
+ *    - Stone-and-timber storybook cottage tucked into the surrounding evergreen hills with
+ *      glowing mullioned windows, holly wreath, brick chimney & deep snowy roof!
+ */
+export function createHillsideCottage(detail: DetailLevel): VolumeAsset {
+  const { s, c, n } = mkScale(detail);
+  const W = n(44), L = n(38), H = n(52);
+  const vs = 0.14 / s;
+  const v = new VoxelCanvas(W, L, H);
+  const cx = Math.floor(W * 0.5);
+  const bx0 = c(4), bx1 = W - 1 - c(4);
+  const by0 = c(4), by1 = L - 1 - c(6);
+  const wallH = c(24);
+
+  v.masonryShell(bx0, by0, 0, bx1, by1, c(9), PAL.stoneMid, 97, Math.max(2, n(2)), PAL.stoneHi);
+  v.masonryShell(bx0, by0, c(9), bx1, by1, wallH, PAL.stuccoCream, 101, Math.max(2, n(2)), PAL.oakDark);
+  // Front glowing cottage door & warm candle-lit windows on front + sides
+  v.recessedWindow({ face: "+y", wallCoord: by1, uCenter: cx, zBot: c(2), halfW: n(3.2), height: n(13), trim: PAL.oakDark, sill: PAL.stoneHi, lit: true, warmCol: PAL.winCandle, arched: true, curtains: false, snowSill: false, recessDepth: n(2) });
+  v.recessedWindow({ face: "+y", wallCoord: by1, uCenter: cx - c(10), zBot: c(7), halfW: n(3.8), height: n(10), trim: PAL.oakDark, sill: PAL.stoneHi, lit: true, warmCol: PAL.winHoney, candle: true, recessDepth: n(2) });
+  v.recessedWindow({ face: "+y", wallCoord: by1, uCenter: cx + c(10), zBot: c(7), halfW: n(3.8), height: n(10), trim: PAL.oakDark, sill: PAL.stoneHi, lit: true, warmCol: PAL.winCandle, candle: true, recessDepth: n(2) });
+  for (const side of ["+x", "-x"] as const) {
+    v.recessedWindow({ face: side, wallCoord: side === "+x" ? bx1 : bx0, uCenter: Math.round((by0 + by1) * 0.5), zBot: c(8), halfW: n(3.5), height: n(9), trim: PAL.oakDark, sill: PAL.stoneHi, lit: true, warmCol: PAL.winHoney, recessDepth: n(2) });
+  }
+  v.wreath("+y", by1 + 1, cx, c(17), n(2.4), true);
+
+  // Deep overhanging snow-blanketed pitched roof + glowing attic window + smoking stone chimney!
+  const roofH = c(20);
+  const midY = (by0 + by1) * 0.5;
+  const halfD = (by1 - by0) * 0.5 + n(3);
+  for (let dz = 0; dz <= roofH; dz++) {
+    const u = dz / Math.max(1, roofH);
+    const ySpan = Math.max(0.5, (1 - u) * halfD);
+    for (let x = bx0 - n(2); x <= bx1 + n(2); x++) {
+      const gable = x <= bx0 || x >= bx1;
+      for (let y = Math.round(midY - ySpan); y <= Math.round(midY + ySpan); y++) {
+        const slope = Math.abs(y - midY) >= ySpan - 1.4;
+        if (!slope && !gable) continue;
+        if (gable && !slope) v.put(x, y, wallH + dz, PAL.stuccoCream);
+        else v.put(x, y, wallH + dz, dz === 0 ? PAL.cedarRoof : (u > 0.45 ? PAL.snowHi : PAL.snowMid));
+      }
+    }
+  }
+  v.box(bx1 - c(6), by0 + c(3), wallH + c(4), bx1 - c(2), by0 + c(7), H - c(2), PAL.brickRed);
+  v.box(bx1 - c(6), by0 + c(3), H - c(2), bx1 - c(2), by0 + c(7), H - 1, PAL.snowHi);
+  v.eaveLightsAndIcicles(bx0, bx1, by1 + 2, wallH, 97, Math.max(2, n(3)));
+
+  return v.toAsset("xmas_cottage", "Hillside Valley Cottage", vs);
+}

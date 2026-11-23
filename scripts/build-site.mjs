@@ -23,6 +23,7 @@ mkdirSync(resolve(DIST, "assets"), { recursive: true });
 mkdirSync(resolve(DIST, "iso"), { recursive: true });
 mkdirSync(resolve(DIST, "play"), { recursive: true });
 mkdirSync(resolve(DIST, "heli"), { recursive: true });
+mkdirSync(resolve(DIST, "xmas"), { recursive: true });
 mkdirSync(resolve(DIST, "normandy"), { recursive: true });
 mkdirSync(resolve(DIST, "studio"), { recursive: true });
 mkdirSync(resolve(DIST, "docs"), { recursive: true });
@@ -130,6 +131,7 @@ function renderGlobalNav(active, fullbleed = false) {
       <a class="aa-glink" href="/iso/"${cur("iso")}>2.5D Iso</a>
       <a class="aa-glink" href="/play/"${cur("play")}>6-DOF Demo</a>
       <a class="aa-glink" href="/heli/"${cur("heli")}>Airwolf</a>
+      <a class="aa-glink" href="/xmas/"${cur("xmas")}>Xmas</a>
       <a class="aa-glink aa-ghide-sm" href="/normandy/"${cur("normandy")}>Normandy</a>
       <a class="aa-glink" href="/studio/"${cur("studio")}>Studio</a>
       <a class="aa-glink" href="/docs/"${cur("docs")}>Docs</a>
@@ -289,6 +291,41 @@ writeFileSync(resolve(DIST, "heli/index.html"), heliHtml, "utf-8");
 await build({
   entryPoints: [resolve(ROOT, "examples/airwolf-city/src/main.ts")],
   outfile: resolve(DIST, "heli/bundle.js"),
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  minify: true,
+  alias: ALIASES,
+});
+
+// 3a2. Bundle Main Street Christmas x Airwolf (HD-2D Micro-Voxel Winter Village Patrol) into /xmas/
+let xmasHtml = readFileSync(resolve(ROOT, "examples/xmas-mainstreet/index.html"), "utf-8");
+const xmasLayoutPatch = `${GLOBAL_NAV_CSS}
+<style>
+  body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+  body.nohud .aa-gnav { display: none !important; }
+  canvas { flex: 1 1 auto; width: 100%; height: auto !important; min-height: 0; }
+  #panel, #controls { top: 68px; }
+  #splitBar { top: 56px; }
+</style>`;
+const xmasMeta = renderSocialMeta({
+  title: "Main Street Christmas x Airwolf (HD-2D Winter Village) | AASpriteStacker",
+  description: "Playable HD-2D micro-voxel winter village diorama with 56-slice articulated Airwolf helicopter patrol, sweeping volumetric searchlight, 132-slice Clocktower, 116-slice Christmas Tree, Frozen Ice Rink, Heritage Trolley, and 6-DOF Santa Sleigh.",
+  url: "https://aasprite.com/xmas/",
+  image: "https://aasprite.com/assets/og-xmas.jpg",
+  width: 1200,
+  height: 630,
+  alt: "Main Street Christmas HD-2D winter village diorama with Airwolf sweeping a golden volumetric searchlight over snowy Victorian shops, Heritage Trolley, Giant Christmas Tree, and Frozen Ice Rink",
+});
+xmasHtml = xmasHtml
+  .replace("</title>", `</title>\n${xmasMeta}`)
+  .replace("</head>", `${FAVICON_LINK}\n${xmasLayoutPatch}\n</head>`)
+  .replace("<body>", `<body>\n${renderGlobalNav("xmas", true)}`);
+writeFileSync(resolve(DIST, "xmas/index.html"), xmasHtml, "utf-8");
+
+await build({
+  entryPoints: [resolve(ROOT, "examples/xmas-mainstreet/src/main.ts")],
+  outfile: resolve(DIST, "xmas/bundle.js"),
   bundle: true,
   format: "esm",
   target: "es2022",

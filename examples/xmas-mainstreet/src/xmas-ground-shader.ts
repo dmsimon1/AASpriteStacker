@@ -44,6 +44,18 @@ float hash21(vec2 p) {
   return fract((p3.x + p3.y) * p3.z);
 }
 
+float bayer4(vec2 p) {
+  ivec2 ip = ivec2(mod(floor(p), 4.0));
+  int idx = ip.y * 4 + ip.x;
+  const float b[16] = float[16](
+     0.0,  8.0,  2.0, 10.0,
+    12.0,  4.0, 14.0,  6.0,
+     3.0, 11.0,  1.0,  9.0,
+    15.0,  7.0, 13.0,  5.0
+  );
+  return (b[idx] + 0.5) / 16.0;
+}
+
 float vnoise(vec2 p) {
   vec2 i = floor(p);
   vec2 f = fract(p);
@@ -111,15 +123,15 @@ void main() {
   float nFine = vnoise(xz * 1.85);
   float grain = (hash21(floor(xz * 2.6)) - 0.5) * 0.032;
 
-  // 1. Winding Frozen Winter Creek meandering across the southern village entrance (Z ~ 49)!
-  float creekCenterZ = 49.0 + sin(xz.x * 0.085) * 3.4 + cos(xz.x * 0.035) * 2.0;
+  // 1. Winding Frozen Winter Creek meandering across the southern village entrance (dead-center Z = 45.5 at X = 0)!
+  float creekCenterZ = 45.5 + sin(xz.x * 0.085) * 2.8 + (cos(xz.x * 0.035) - 1.0) * 1.8;
   float creekDist = abs(xz.y - creekCenterZ);
-  bool inCreek = creekDist < 4.2;
-  bool inCreekBank = creekDist >= 4.2 && creekDist < 6.4;
+  bool inCreek = creekDist < 3.8;
+  bool inCreekBank = creekDist >= 3.8 && creekDist < 6.0;
 
   // 2. Main Street Roadway, Shoveled Heritage Brick Sidewalks, Grand Town Square & Frozen Ice Skating Rink
-  bool inMainRoad = abs(xz.x) <= 6.2 && xz.y >= -10.0 && xz.y <= 56.0 && !inCreek;
-  bool inSidewalk = abs(xz.x) <= 12.6 && xz.y >= -10.0 && xz.y <= 45.0 && !inMainRoad && !inCreek;
+  bool inMainRoad = abs(xz.x) <= 6.2 && xz.y >= -10.0 && xz.y <= 54.0 && !inCreek;
+  bool inSidewalk = abs(xz.x) <= 12.6 && xz.y >= -10.0 && xz.y <= 41.5 && !inMainRoad && !inCreek;
   bool inPlaza = abs(xz.x) <= 29.5 && xz.y >= -43.0 && xz.y <= -8.0;
 
   vec2 rinkRel = abs(xz - vec2(-18.5, -21.0)) - vec2(7.8, 9.2);
@@ -144,8 +156,8 @@ void main() {
     float ripple = sin(xz.x * 0.9 + xz.y * 2.2 + uWaveTime * 1.2) * 0.5 + 0.5;
     col = mix(creekDeep, creekFrost, clamp(iceMix * 0.75 + ripple * 0.16, 0.0, 0.92));
     // Warm bridge lantern reflection dancing on the creek ice around X = 0!
-    float dBr = length(vec2(xz.x, xz.y - 49.0));
-    col += vec3(0.85, 0.56, 0.20) * exp(-dBr * 0.14) * warmGlowW * 0.45;
+    float dBr = length(vec2(xz.x, xz.y - 45.5));
+    col += vec3(0.85, 0.56, 0.20) * exp(-dBr * 0.14) * warmGlowW * 0.48;
   } else if (inRink) {
     // Gleaming Frozen Ice Skating Rink with skate-blade scratch swirls & twinkling Christmas Tree reflection!
     vec3 iceDeep = mix(vec3(0.42, 0.70, 0.88), vec3(0.075, 0.175, 0.32), nightW);
@@ -274,15 +286,34 @@ void main() {
     }
   }
 
-  // 8. Santa's Sleigh Soft Aerial Shadow (uShadowCasters[1])
+  // 8. Airwolf Soft Aerial Drop Shadow (uShadowCasters[1])
   if (uShadowCount > 1) {
-    vec4 sl = uShadowCasters[1];
-    if (sl.y > 1.0) {
+    vec4 aw = uShadowCasters[1];
+    if (aw.y > 1.0) {
       vec2 sunHoriz = uSunDir.xz / max(uSunDir.y, 0.35);
-      vec2 proj = sl.xz - sunHoriz * sl.y;
+      vec2 proj = aw.xz - sunHoriz * aw.y;
       float d = length(xz - proj);
-      float sh = 1.0 - smoothstep(sl.w * 0.45, sl.w * 1.25, d);
-      col *= (1.0 - sh * 0.30);
+      float sh = 1.0 - smoothstep(aw.w * 0.42, aw.w * 1.18, d);
+      col *= (1.0 - sh * 0.36);
+    }
+  }
+
+  // 9. AIRWOLF REAL-TIME NOSE SEARCHLIGHT POOL SWEEPING OVER SNOWY MAIN STREET & ICE RINK (uShadowCasters[2])!
+  if (uShadowCount > 2) {
+    vec4 spot = uShadowCasters[2];
+    if (spot.w > 0.5) {
+      vec2 toSpot = xz - spot.xz;
+      float d = length(toSpot);
+      float rad = spot.w * 2.5;
+      if (d < rad * 1.35) {
+        float normD = d / max(rad, 0.1);
+        float softPool = exp(-normD * normD * 1.85);
+        float ditherMask = step(bayer4(xz * 1.8), clamp(1.12 - normD, 0.0, 1.0));
+        float spotStrength = mix(softPool, max(softPool, ditherMask * 0.45), 0.34) * (0.32 + nightW * 0.92);
+        vec3 spotCol = vec3(1.0, 0.93, 0.68);
+        col = col * (1.0 + spotStrength * 1.35) + spotCol * spotStrength * 0.36;
+        emis = max(emis, spotStrength * 0.35);
+      }
     }
   }
 

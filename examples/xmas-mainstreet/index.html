@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Main Street Christmas (Ultra-Detail Diorama) | AASpriteStacker</title>
+<title>Main Street Christmas x Airwolf (HD-2D Winter Village) | AASpriteStacker</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c1224'/%3E%3Cpolygon points='32,8 50,48 14,48' fill='%23228b4c'/%3E%3Ccircle cx='32' cy='10' r='5' fill='%23fbbf24'/%3E%3C/svg%3E">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0a1024; }
@@ -19,16 +19,16 @@
   #hud { font: 12px/1.42 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; color: #f8fafc; pointer-events: none; }
   #panel {
     position: fixed; left: 14px; top: 14px; padding: 10px 14px;
-    background: rgba(12, 18, 36, 0.76); border: 1px solid rgba(251, 191, 36, 0.28);
+    background: rgba(12, 18, 36, 0.78); border: 1px solid rgba(251, 191, 36, 0.30);
     border-radius: 10px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-    max-width: 560px; z-index: 6;
+    width: fit-content; max-width: 660px; z-index: 6;
   }
   #panel h1 {
     margin: 0 0 4px; font-size: 13px; font-weight: 800; letter-spacing: 0.09em;
     text-transform: uppercase; color: #fcd34d;
   }
   #panel h1 span {
-    color: rgba(248, 250, 252, 0.74); font-weight: 500; letter-spacing: 0.02em;
+    color: rgba(248, 250, 252, 0.76); font-weight: 500; letter-spacing: 0.02em;
     text-transform: none; font-size: 11.5px; margin-left: 6px;
   }
   #stats { margin: 0; font: inherit; white-space: pre; color: rgba(248, 250, 252, 0.92); }
@@ -50,6 +50,9 @@
   .row button:hover { background: rgba(251, 191, 36, 0.22); border-color: rgba(251, 191, 36, 0.65); }
   .row button[aria-pressed="true"] {
     background: #fbbf24; color: #1a1102; border-color: #fde68a;
+  }
+  .row button.airwolf[aria-pressed="true"] {
+    background: #38bdf8; color: #041322; border-color: #bae6fd;
   }
   .row button.festive[aria-pressed="true"] {
     background: #ef4444; color: #fff5f5; border-color: #fca5a5;
@@ -94,15 +97,15 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="wait">sculpting Main Street Christmas ultra-detail diorama...</div>
+<div id="wait">scrambling Airwolf over Main Street Christmas...</div>
 <div id="splitBar" title="Drag to compare Classic 1x Nearest vs AASpriteStacker 8x RGSS AA"></div>
 <div id="splitLabels">
   <span>LEFT: Classic 1x Nearest (No AA)</span>
-  <span id="splitRightLabel">RIGHT: AASpriteStacker (8x RGSS AA + Ultra HD 2x)</span>
+  <span id="splitRightLabel">RIGHT: AASpriteStacker (8x RGSS AA + Micro-Voxel Ultra HD)</span>
 </div>
 <div id="hud">
   <div id="panel">
-    <h1>MAIN STREET CHRISTMAS <span>Ultra-Detail Winter Village Showcase</span></h1>
+    <h1>MAIN STREET CHRISTMAS x AIRWOLF <span>HD-2D Winter Village Patrol</span></h1>
     <pre id="stats"></pre>
   </div>
   <div id="controls">
@@ -110,15 +113,19 @@
       <button id="btnCamWide" aria-pressed="true" type="button">Wide Main St</button>
       <button id="btnCamStreet" aria-pressed="false" type="button">Street Level</button>
       <button id="btnCamPlaza" aria-pressed="false" type="button">Tree &amp; Rink</button>
+      <button id="btnCamAirwolf" class="airwolf" aria-pressed="false" type="button">Airwolf 6-DOF</button>
       <button id="btnCamSleigh" class="festive" aria-pressed="false" type="button">Sleigh 6-DOF</button>
     </div>
     <div class="row">
-      <button id="btnDetail_classic" aria-pressed="false" type="button">Detail: Classic 1x</button>
-      <button id="btnDetail_ultra" aria-pressed="true" type="button">Detail: Ultra HD 2x (G)</button>
+      <button id="btnExploded" class="airwolf" aria-pressed="false" type="button">Exploded 56-Slice (X)</button>
+      <button id="btnTurbo" class="airwolf" aria-pressed="false" type="button">Mach Turbo (Shift)</button>
+      <button id="btnSearchlight" aria-pressed="true" type="button">Searchlight (M)</button>
       <button id="btnSnow" aria-pressed="true" type="button">Snow: Gentle</button>
       <button id="btnSplit" aria-pressed="false" type="button">A/B Split (E)</button>
     </div>
     <div class="row">
+      <button id="btnDetail_classic" aria-pressed="false" type="button">Classic 1x</button>
+      <button id="btnDetail_ultra" aria-pressed="true" type="button">Ultra HD 2x (G)</button>
       <button id="btnTod_eve" aria-pressed="true" type="button">Christmas Eve</button>
       <button id="btnTod_midnight" aria-pressed="false" type="button">Midnight</button>
       <button id="btnTod_morning" aria-pressed="false" type="button">Morning</button>
@@ -128,12 +135,14 @@
     </div>
   </div>
   <div id="keys">
+    <span><b>WASD</b>Fly Airwolf</span>
+    <span><b>Space/C</b>Altitude</span>
+    <span><b>Shift</b>Mach Turbo</span>
+    <span><b>X</b>56-Slice Explode</span>
+    <span><b>M</b>Searchlight</span>
     <span><b>V</b>Camera</span>
     <span><b>G</b>Ultra HD / Classic</span>
     <span><b>E</b>A/B Split</span>
-    <span><b>N</b>Lighting</span>
-    <span><b>WASD</b>Fly Sleigh (in Sleigh Cam)</span>
-    <span><b>Drag / Wheel</b>Orbit &amp; Zoom</span>
     <span><b>H</b>HUD</span>
   </div>
 </div>
