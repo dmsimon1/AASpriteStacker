@@ -64,3 +64,19 @@ await build({
 });
 
 console.log("Bundled examples/airwolf-city/bundle.js");
+
+const XMAS_DIR = resolve(ROOT, "examples/xmas-mainstreet");
+await build({
+  entryPoints: [resolve(XMAS_DIR, "src/main.ts")],
+  outfile: resolve(XMAS_DIR, "bundle.js"),
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  minify: true,
+  sourcemap: true,
+  alias: {
+    "@aastack/core": resolve(ROOT, "packages/core/dist/index.js"),
+  },
+});
+
+console.log("Bundled examples/xmas-mainstreet/bundle.js");
