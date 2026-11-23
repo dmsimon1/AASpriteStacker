@@ -20,7 +20,7 @@
     position: fixed; left: 14px; top: 14px; padding: 10px 14px;
     background: rgba(7, 13, 28, 0.74); border: 1px solid rgba(56, 189, 248, 0.24);
     border-radius: 10px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-    max-width: 490px; z-index: 6;
+    max-width: 560px; z-index: 6;
   }
   #panel h1 {
     margin: 0 0 4px; font-size: 13px; font-weight: 800; letter-spacing: 0.09em;
@@ -109,15 +109,20 @@
 </div>
 <div id="hud">
   <div id="panel">
-    <h1>AIRWOLF MIDNIGHT CITY <span>28-Slice 6-DOF + Volumetric Searchlight</span></h1>
+    <h1>AIRWOLF MIDNIGHT CITY <span>HD 56-Slice 6-DOF + Volumetric Searchlight</span></h1>
     <pre id="stats"></pre>
   </div>
   <div id="controls">
     <div class="row">
-      <button id="btnCamIso" aria-pressed="true" type="button">2.5D Iso</button>
+      <button id="btnCamIso" aria-pressed="true" type="button">Wide Iso</button>
       <button id="btnCamChase" aria-pressed="false" type="button">Chase 6-DOF</button>
       <button id="btnCamOrbit" aria-pressed="false" type="button">Bay Orbit</button>
-      <button id="btnExplode" class="explode" aria-pressed="false" type="button">Exploded 28-Slice (X)</button>
+      <button id="btnExplode" class="explode" aria-pressed="false" type="button">Exploded 56-Slice (X)</button>
+    </div>
+    <div class="row">
+      <button id="btnDetail_classic" aria-pressed="false" type="button">Detail: Classic 1x</button>
+      <button id="btnDetail_hd" aria-pressed="true" type="button">Detail: HD 2x (G)</button>
+      <button id="btnSplit" aria-pressed="false" type="button">A/B Split (E)</button>
     </div>
     <div class="row">
       <button id="btnAutopilot" aria-pressed="true" type="button">Autopilot (P)</button>
@@ -129,9 +134,6 @@
       <button id="btnTod_night" aria-pressed="true" type="button">Midnight</button>
       <button id="btnTod_sunset" aria-pressed="false" type="button">Sunset</button>
       <button id="btnTod_day" aria-pressed="false" type="button">Day</button>
-      <button id="btnSplit" aria-pressed="false" type="button">A/B Split (E)</button>
-    </div>
-    <div class="row">
       <button id="btnQual_eco" aria-pressed="false" type="button">Eco 2x</button>
       <button id="btnQual_balanced" aria-pressed="false" type="button">Bal 4x</button>
       <button id="btnQual_ultra" aria-pressed="true" type="button">Ultra 8x</button>
@@ -139,12 +141,13 @@
   </div>
   <div id="keys">
     <span><b>WASD</b>Fly 6-DOF</span>
-    <span><b>Space / C</b>Climb / Descend</span>
-    <span><b>Shift</b>Mach Turbo</span>
-    <span><b>X</b>Exploded 28-Slice</span>
+    <span><b>Space / C</b>Climb</span>
+    <span><b>Shift</b>Turbo</span>
+    <span><b>G</b>HD / Classic</span>
+    <span><b>X</b>Exploded</span>
     <span><b>V</b>Camera</span>
     <span><b>M</b>Searchlight</span>
-    <span><b>L</b>Land on H Pad</span>
+    <span><b>L</b>Land H Pad</span>
     <span><b>E</b>A/B Split</span>
     <span><b>N</b>Time</span>
     <span><b>Drag / Wheel</b>Orbit &amp; Zoom</span>

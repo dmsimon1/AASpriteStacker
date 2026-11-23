@@ -1,11 +1,12 @@
 /**
  * Airwolf Midnight Pixel City (@aastack/core).
- * Original playable 6-DOF & 2.5D anti-aliased sprite-stacking helicopter showcase:
- *  - 28-layer articulated Airwolf (Bell 222A) with independently spinning main & tail rotors
- *  - Real 6-DOF helicopter physics + Supersonic Turbo Boost (Shift) + Rooftop H Helipad landing
- *  - Real-time volumetric nose searchlight cone + exact 3D voxel-DDA building raycast + Bayer-dithered ground pool
- *  - Exploded 28-Layer Assembly Mode (X) rendering all 28 separated slices in 1 WebGL2 instanced draw call via sliceClip
- *  - Live A/B Split (Classic 1x Nearest vs AASpriteStacker 8x RGSS AA) + Eco 2x / Bal 4x / Ultra 8x runtime quality toggle
+ * Playable dual-resolution (Classic 28-Slice / HD 56-Slice) miniature pixel-city showcase:
+ *  - Wide diorama establishing shot framing the entire midnight coastal island, Art Deco skyline,
+ *    harbor pier, moored boats, Keeper's Cottage + Coastal Lighthouse, and cruising taxis/police
+ *  - Live Detail Toggle (G): hot-swaps Classic 1x (28-slice) <-> HD 2x (56-slice) in place
+ *  - Real 6-DOF helicopter physics + Mach Turbo Boost (Shift) + Rooftop H Helipad landing (L)
+ *  - Real-time volumetric nose searchlight cone + exact 3D voxel-DDA raycast + Bayer-dithered ground pool
+ *  - Exploded Slice Assembly Mode (X): draws all 28 (Classic) or 56 (HD) slices in 1 WebGL2 instanced draw call
  */
 
 import {
@@ -23,10 +24,12 @@ import {
   type EntityState,
   type RibbonPoint,
   type Vec3,
+  type VolumeAsset,
 } from "@aastack/core";
 import {
   createAirwolfFuselageAsset,
   createCityCarAsset,
+  createHarborBoatAsset,
   createHelipadTowerAsset,
   createLightProxyAsset,
   createLighthouseAsset,
@@ -35,17 +38,18 @@ import {
   createStreetLampAsset,
   createTailRotorAsset,
   createTowerAsset,
+  type DetailLevel,
 } from "./assets.js";
 import { CITY_GROUND_FS } from "./city-ground-shader.js";
 
 type CamMode = "iso" | "chase" | "orbit";
 type TodPreset = "night" | "sunset" | "day";
 
-const HELIPAD_POS: Vec3 = [-13, 13.64, -12];
+const HELIPAD_POS: Vec3 = [-13, 20 * 0.62, -12]; // 12.40 exact rooftop height
 const LIGHTHOUSE_POS: Vec3 = [0, 0, -73];
-const LIGHTHOUSE_BEACON_POS: Vec3 = [0, 26 * 0.58, -73];
-const AIRWOLF_SCALE = 0.76;
-const SLICE_COUNT = 28;
+const LIGHTHOUSE_BEACON_POS: Vec3 = [0, 26.8 * 0.58, -73];
+const AIRWOLF_SCALE = 0.78;
+const MAX_SLICES = 56;
 
 // ---------------------------------------------------------------------------
 // 1. Parse URL Query Parameters (deterministic visual QA & deep-links)
@@ -53,14 +57,15 @@ const SLICE_COUNT = 28;
 const params = new URLSearchParams(window.location.search);
 const noHud = params.get("nohud") === "1";
 const holdLoop = params.get("hold") === "1";
-
 if (noHud) document.body.classList.add("nohud");
+
+const initQuality = (params.get("quality") as AAQuality | null) ?? "ultra";
+const initDetail: DetailLevel = params.get("detail") === "classic" ? "classic" : "hd";
 
 // ---------------------------------------------------------------------------
 // 2. Initialize WebGL2 AASpriteRenderer + Midnight Pixel City SceneWorld
 // ---------------------------------------------------------------------------
 const canvas = document.getElementById("c") as HTMLCanvasElement;
-const initQuality = (params.get("quality") as AAQuality | null) ?? "ultra";
 
 const renderer = new AASpriteRenderer(canvas, {
   background: "terrain",
@@ -79,21 +84,21 @@ const world = new SceneWorld({
   samples: initQuality === "eco" ? 2 : initQuality === "balanced" ? 4 : 8,
   camera: {
     mode: "free",
-    pos: [28, 36, 46],
-    target: [0, 12, 8],
+    pos: [52, 46, 56],
+    target: [0, 10, -10],
     up: [0, 1, 0],
-    fovDeg: 44,
-    orthoSize: 28,
+    fovDeg: 38,
+    orthoSize: 36,
     near: 0.4,
-    far: 620,
+    far: 700,
   },
   lighting: {
     sunAzimuthDeg: 34,
     sunElevationDeg: 42,
     timeOfDay: 0.94,
-    fogDensity: 0.24,
+    fogDensity: 0.22,
     shadeStyle: "toon-aa",
-    outlineWidth: 0.88,
+    outlineWidth: 0.84,
     selfShadow: true,
   },
   terrain: {
@@ -113,32 +118,62 @@ const world = new SceneWorld({
 });
 
 // ---------------------------------------------------------------------------
-// 3. Register Procedural Voxel Assets
+// 3. Dual-Resolution Asset Cache (Classic 1x / HD 2x live hot-swap!)
 // ---------------------------------------------------------------------------
-world.registerAsset(createAirwolfFuselageAsset());
-world.registerAsset(createMainRotorAsset());
-world.registerAsset(createTailRotorAsset());
+const assetPacks: Partial<Record<DetailLevel, VolumeAsset[]>> = {};
 world.registerAsset(createLightProxyAsset());
-world.registerAsset(createHelipadTowerAsset());
-world.registerAsset(createLighthouseAsset());
-world.registerAsset(createStreetLampAsset());
-world.registerAsset(createParkTreeAsset());
 
-// 6 varied skyline tower blueprints (hardware-instanced across all city blocks)
-world.registerAsset(createTowerAsset("tower_tall_office", 18, 18, 34, 11, "office"));
-world.registerAsset(createTowerAsset("tower_mid_office", 20, 16, 26, 23, "office"));
-world.registerAsset(createTowerAsset("tower_neon_hotel", 20, 18, 28, 37, "neon"));
-world.registerAsset(createTowerAsset("tower_brick_lofts", 18, 18, 20, 51, "brick"));
-world.registerAsset(createTowerAsset("tower_waterfront", 18, 16, 16, 67, "office"));
-world.registerAsset(createTowerAsset("tower_neon_low", 16, 16, 18, 83, "neon"));
+function buildAssetPack(detail: DetailLevel): VolumeAsset[] {
+  return [
+    createAirwolfFuselageAsset(detail),
+    createMainRotorAsset(detail),
+    createTailRotorAsset(detail),
+    createHelipadTowerAsset(detail),
+    createLighthouseAsset(detail),
+    createStreetLampAsset(detail),
+    createParkTreeAsset(detail),
+    // 6 handcrafted miniature diorama skyline blueprints
+    createTowerAsset("tower_artdeco_tall", 18, 18, 34, 11, "artdeco", detail),
+    createTowerAsset("tower_glass_mid", 20, 16, 26, 23, "glass", detail),
+    createTowerAsset("tower_neon_hotel", 20, 18, 28, 37, "neon", detail),
+    createTowerAsset("tower_brick_lofts", 18, 18, 20, 51, "brick", detail),
+    createTowerAsset("tower_waterfront", 18, 16, 16, 67, "glass", detail),
+    createTowerAsset("tower_neon_low", 16, 16, 18, 83, "neon", detail),
+    // Moored harbor vessels
+    createHarborBoatAsset("boat_tug", [188, 48, 52], detail),
+    createHarborBoatAsset("boat_patrol", [54, 96, 148], detail),
+    // Cruising midnight street traffic
+    createCityCarAsset("car_taxi", [244, 196, 46], "taxi", detail),
+    createCityCarAsset("car_police", [34, 42, 62], "police", detail),
+    createCityCarAsset("car_crimson", [214, 52, 62], "sedan", detail),
+  ];
+}
 
-// 3 midnight street car liveries
-world.registerAsset(createCityCarAsset("car_crimson", [218, 54, 62]));
-world.registerAsset(createCityCarAsset("car_taxi", [244, 196, 46]));
-world.registerAsset(createCityCarAsset("car_cyan", [74, 178, 224]));
+function applyDetailPack(detail: DetailLevel): void {
+  state.detail = detail;
+  if (!assetPacks[detail]) {
+    assetPacks[detail] = buildAssetPack(detail);
+  }
+  for (const a of assetPacks[detail]!) {
+    world.registerAsset(a);
+  }
+  // Slightly finer JFA outline scale at HD 2x so intricate mullions, fire escapes & water towers stay ultra-crisp!
+  world.doc.lighting.outlineWidth = detail === "hd" ? 0.68 : 0.88;
+  // Sync exploded slice clips to active slice count (28 for Classic, 56 for HD)
+  const activeSlices = detail === "hd" ? 56 : 28;
+  for (let z = 0; z < MAX_SLICES; z++) {
+    const sl = world.getEntity(`airwolf_s${z}`);
+    if (!sl) continue;
+    if (z < activeSlices) {
+      sl.sliceClip = [z / activeSlices, (z + 1) / activeSlices];
+    } else {
+      sl.visible = false;
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
-// 4. Populate Midnight City, Harbor Pier, Streetlamps, Park Trees, Cars & Airwolf
+// 4. Populate Midnight City, Harbor Pier, Moored Boats, Streetlamps, Trees, Cars & Airwolf
 // ---------------------------------------------------------------------------
 const initialEntities: EntityState[] = [];
 
@@ -146,7 +181,7 @@ const initialEntities: EntityState[] = [];
 initialEntities.push({
   id: "heli_shadow_proxy",
   assetId: "light_proxy",
-  pos: [10, 18, 18],
+  pos: [-14, 21, -36],
   rot: quatIdentity(),
   scale: 3.6,
   outline: false,
@@ -159,7 +194,7 @@ initialEntities.push({
 initialEntities.push({
   id: "searchlight_spot",
   assetId: "light_proxy",
-  pos: [10, 0.2, 6],
+  pos: [-14, 0.2, -24],
   rot: quatIdentity(),
   scale: 4.8,
   outline: false,
@@ -168,11 +203,11 @@ initialEntities.push({
   tag: "proxy",
 });
 
-// Hero 28-slice Airwolf Bell 222A Fuselage
+// Hero Airwolf Bell 222A Fuselage
 initialEntities.push({
   id: "airwolf",
   assetId: "airwolf_hull",
-  pos: [10, 18, 18],
+  pos: [-14, 21, -36],
   rot: quatIdentity(),
   scale: AIRWOLF_SCALE,
   aaPriority: "hero",
@@ -216,8 +251,8 @@ initialEntities.push({
   tag: "player",
 });
 
-// 28 single-slice instanced entities for Exploded 28-Layer Assembly Mode (1 WebGL2 instanced draw call!)
-for (let z = 0; z < SLICE_COUNT; z++) {
+// Up to 56 single-slice instanced entities for Exploded Slice Assembly Mode (1 WebGL2 instanced draw call!)
+for (let z = 0; z < MAX_SLICES; z++) {
   initialEntities.push({
     id: `airwolf_s${z}`,
     assetId: "airwolf_hull",
@@ -228,7 +263,7 @@ for (let z = 0; z < SLICE_COUNT; z++) {
     aaPriority: "hero",
     outline: true,
     emissiveBoost: 1.55,
-    sliceClip: [z / SLICE_COUNT, (z + 1) / SLICE_COUNT],
+    sliceClip: [z / MAX_SLICES, (z + 1) / MAX_SLICES],
     castShadow: false,
     visible: false,
     tag: "player_slice",
@@ -248,7 +283,7 @@ initialEntities.push({
   tag: "building",
 });
 
-// Iconic Red-and-White Coastal Lighthouse at end of harbor pier (0, 0, 72)
+// Iconic Red-and-White Coastal Lighthouse + Keeper's Cottage at end of harbor pier (0, 0, -73)
 initialEntities.push({
   id: "coastal_lighthouse",
   assetId: "coastal_lighthouse",
@@ -261,26 +296,49 @@ initialEntities.push({
   tag: "landmark",
 });
 
+// Moored Harbor Tugboat & Coastal Patrol Boat bobbing beside the stone pier slips!
+initialEntities.push({
+  id: "harbor_tug",
+  assetId: "boat_tug",
+  pos: [-12.5, 0.05, -62.5],
+  rot: quatFromYawPitchRoll(0.32, 0, 0),
+  scale: 1.0,
+  aaPriority: "hero",
+  outline: true,
+  emissiveBoost: 1.65,
+  tag: "boat",
+});
+initialEntities.push({
+  id: "harbor_patrol",
+  assetId: "boat_patrol",
+  pos: [13.5, 0.05, -52.0],
+  rot: quatFromYawPitchRoll(-0.45, 0, 0),
+  scale: 0.92,
+  aaPriority: "hero",
+  outline: true,
+  emissiveBoost: 1.65,
+  tag: "boat",
+});
+
 // Skyline block specs aligned cleanly between avenues (X = -26, 0, 26; Z = -24, 0, 24)
-// North harbor row (Z = -36) steps down near Central Ave so the stone pier & Coastal Lighthouse shine cleanly!
 const BLOCK_BUILDINGS: Array<{ id: string; asset: string; x: number; z: number; yawDeg: number; halfW: number; halfL: number; topY: number }> = [
   // North harbor waterfront row (Z = -36) — low stepped waterfront framing the North Pier & Coastal Lighthouse!
   { id: "b_nw", asset: "tower_brick_lofts", x: -39, z: -36, yawDeg: 0, halfW: 6.0, halfL: 6.0, topY: 20 * 0.62 },
   { id: "b_n1", asset: "tower_waterfront", x: -13, z: -36, yawDeg: 90, halfW: 6.0, halfL: 5.4, topY: 16 * 0.62 },
   { id: "b_n2", asset: "tower_neon_low", x: 13, z: -36, yawDeg: 180, halfW: 5.4, halfL: 5.4, topY: 18 * 0.62 },
-  { id: "b_ne", asset: "tower_mid_office", x: 39, z: -36, yawDeg: 0, halfW: 6.5, halfL: 5.5, topY: 26 * 0.62 },
+  { id: "b_ne", asset: "tower_glass_mid", x: 39, z: -36, yawDeg: 0, halfW: 6.5, halfL: 5.5, topY: 26 * 0.62 },
   // Mid-north row (Z = -12) — note (-13, -12) is HQ Helipad Tower!
-  { id: "b_w1", asset: "tower_mid_office", x: -39, z: -12, yawDeg: 90, halfW: 5.5, halfL: 6.5, topY: 26 * 0.62 },
-  { id: "b_c1", asset: "tower_tall_office", x: 13, z: -12, yawDeg: 0, halfW: 6.0, halfL: 6.0, topY: 34 * 0.62 },
-  { id: "b_e1", asset: "tower_tall_office", x: 39, z: -12, yawDeg: 270, halfW: 6.0, halfL: 6.0, topY: 34 * 0.62 },
+  { id: "b_w1", asset: "tower_glass_mid", x: -39, z: -12, yawDeg: 90, halfW: 5.5, halfL: 6.5, topY: 26 * 0.62 },
+  { id: "b_c1", asset: "tower_artdeco_tall", x: 13, z: -12, yawDeg: 0, halfW: 6.0, halfL: 6.0, topY: 36 * 0.62 },
+  { id: "b_e1", asset: "tower_artdeco_tall", x: 39, z: -12, yawDeg: 270, halfW: 6.0, halfL: 6.0, topY: 36 * 0.62 },
   // Mid-south row (Z = +12) — note (-13, 12) is Central Pocket Park + Fountain!
   { id: "b_w2", asset: "tower_neon_hotel", x: -39, z: 12, yawDeg: 0, halfW: 6.5, halfL: 6.0, topY: 28 * 0.62 },
   { id: "b_c2", asset: "tower_neon_hotel", x: 13, z: 12, yawDeg: 180, halfW: 6.5, halfL: 6.0, topY: 28 * 0.62 },
   { id: "b_e2", asset: "tower_brick_lofts", x: 39, z: 12, yawDeg: 90, halfW: 6.0, halfL: 6.0, topY: 20 * 0.62 },
   // South skyline row (Z = +36)
-  { id: "b_sw", asset: "tower_tall_office", x: -39, z: 36, yawDeg: 0, halfW: 6.0, halfL: 6.0, topY: 34 * 0.62 },
-  { id: "b_s1", asset: "tower_mid_office", x: -13, z: 36, yawDeg: 180, halfW: 6.5, halfL: 5.5, topY: 26 * 0.62 },
-  { id: "b_s2", asset: "tower_waterfront", x: 13, z: 36, yawDeg: 180, halfW: 6.0, halfL: 5.4, topY: 16 * 0.62 },
+  { id: "b_sw", asset: "tower_artdeco_tall", x: -39, z: 36, yawDeg: 0, halfW: 6.0, halfL: 6.0, topY: 36 * 0.62 },
+  { id: "b_s1", asset: "tower_glass_mid", x: -13, z: 36, yawDeg: 180, halfW: 6.5, halfL: 5.5, topY: 26 * 0.62 },
+  { id: "b_s2", asset: "tower_brick_lofts", x: 13, z: 36, yawDeg: 180, halfW: 6.0, halfL: 6.0, topY: 20 * 0.62 },
   { id: "b_se", asset: "tower_neon_low", x: 39, z: 36, yawDeg: 0, halfW: 5.4, halfL: 5.4, topY: 18 * 0.62 },
 ];
 
@@ -291,20 +349,23 @@ for (const b of BLOCK_BUILDINGS) {
     pos: [b.x, 0, b.z],
     rot: quatFromYawPitchRoll((b.yawDeg * Math.PI) / 180, 0, 0),
     scale: 1.0,
+    aaPriority: "hero",
     outline: true,
     emissiveBoost: 1.45,
     tag: "building",
   });
 }
 
-// Pocket Park trees nestled around the fountain at (-13, 0, 12)
+// Pocket Park trees nestled around the fountain at (-13, 0, 12) + waterfront promenade trees
 const TREE_COORDS: Array<[number, number, number]> = [
   [-18.8, 7.4, 1.05],
   [-7.2, 7.4, 0.95],
   [-18.6, 16.6, 1.0],
   [-7.4, 16.4, 1.08],
-  [-13.0, 6.8, 0.9],
-  [-18.8, 12.0, 0.92],
+  [-13.0, 6.8, 0.92],
+  [-18.8, 12.0, 0.95],
+  [-30.0, -45.5, 0.85],
+  [30.0, -45.5, 0.85],
 ];
 TREE_COORDS.forEach(([tx, tz, sc], i) => {
   initialEntities.push({
@@ -318,9 +379,8 @@ TREE_COORDS.forEach(([tx, tz, sc], i) => {
   });
 });
 
-// Slender 1px Streetlamps lining main intersections & Lighthouse Pier (1 instanced draw call!)
+// Slender 1px Streetlamps lining avenues & North Lighthouse Pier (1 instanced draw call!)
 const LAMP_COORDS: Array<[number, number, number]> = [
-  // Central avenue corners (match CITY_GROUND_FS warm lamp pools!)
   [-5.2, -5.2, 0], [5.2, 5.2, Math.PI],
   [-5.2, 18.8, 0], [5.2, -18.8, Math.PI],
   [-31.2, -5.2, 0], [-20.8, 5.2, Math.PI],
@@ -328,7 +388,6 @@ const LAMP_COORDS: Array<[number, number, number]> = [
   [-5.2, 29.2, 0], [5.2, 29.2, Math.PI],
   [-31.2, 29.2, 0], [31.2, 29.2, Math.PI],
   [-20.8, -18.8, 0], [20.8, -18.8, Math.PI],
-  // North Lighthouse Stone Pier lamps
   [-5.1, -52, 0], [5.1, -52, Math.PI],
   [-5.1, -62, 0], [5.1, -62, Math.PI],
 ];
@@ -346,7 +405,7 @@ LAMP_COORDS.forEach(([lx, lz, yaw], i) => {
   });
 });
 
-// 12 Midnight Cruising Street Cars looping cleanly along the avenue grid
+// 12 Midnight Cruising Street Cars (Taxis, Police Cruisers, Crimson Sedans)
 interface TrafficCar {
   id: string;
   axis: "x" | "z";
@@ -371,7 +430,7 @@ const CARS: TrafficCar[] = [
   { id: "car_10", axis: "x", laneCoord: -25.9, dir: -1, minT: -49, maxT: 49, posT: 32, speed: 10.0 },
   { id: "car_11", axis: "x", laneCoord: -22.1, dir: 1, minT: -49, maxT: 49, posT: -30, speed: 9.1 },
 ];
-const CAR_ASSETS = ["car_taxi", "car_crimson", "car_cyan"];
+const CAR_ASSETS = ["car_taxi", "car_police", "car_crimson"];
 
 CARS.forEach((c, i) => {
   const yaw = c.axis === "z" ? (c.dir < 0 ? 0 : Math.PI) : (c.dir > 0 ? -Math.PI / 2 : Math.PI / 2);
@@ -391,18 +450,18 @@ CARS.forEach((c, i) => {
 world.doc.entities = initialEntities;
 
 // ---------------------------------------------------------------------------
-// 5. Simulation State: 6-DOF Helicopter Physics, Autopilot, Turbo, Searchlight, Exploded 28-Layer
+// 5. Simulation State: Wide Diorama Framing, HD/Classic Detail, 6-DOF Physics
 // ---------------------------------------------------------------------------
 const state = {
-  // Helicopter kinematics
-  pos: [14, 19.5, 28] as Vec3,
+  detail: initDetail as DetailLevel,
+  pos: [-14, 21, -36] as Vec3,
   vel: [0, 0, 0] as Vec3,
-  yaw: 0.42, // radians; yaw=0 faces -Z
-  pitch: -0.14, // negative tilts nose DOWN (forward thrust)
-  roll: 0.16, // positive banks right wing DOWN
+  yaw: 0.42,
+  pitch: -0.16,
+  roll: 0.16,
   rotorAng: 0,
   tailAng: 0,
-  turbo: 0, // 0..1 smooth turbo boost blend
+  turbo: 0,
   turboForced: params.get("turbo") === "1",
   autopilot: params.get("autopilot") !== "0",
   landed: false,
@@ -411,7 +470,6 @@ const state = {
   exploded: params.get("cam") === "exploded",
   explodeT: params.get("cam") === "exploded" ? 1 : 0,
 
-  // Camera & presentation
   camMode: ((): CamMode => {
     const c = params.get("cam");
     if (c === "chase" || c === "orbit") return c;
@@ -425,22 +483,21 @@ const state = {
   quality: initQuality as AAQuality,
   splitEnabled: params.get("split") === "1",
   splitX: clamp(Number(params.get("splitX") ?? 0.5) || 0.5, 0.08, 0.92),
-  orbitYawOffset: 0.34,
-  orbitPitchOffset: 0.34,
-  zoomDist: 38,
-  camPosSmooth: [4, 34, -4] as Vec3,
-  camTargetSmooth: [-10, 15, -34] as Vec3,
+  // Wide sweeping diorama opening shot framing the full glowing island, skyline, harbor boats, lighthouse & Airwolf!
+  orbitYawOffset: 0.52,
+  orbitPitchOffset: 0.43,
+  zoomDist: 86,
+  camPosSmooth: [46, 48, 58] as Vec3,
+  camTargetSmooth: [-2, 10, -14] as Vec3,
   camUpSmooth: [0, 1, 0] as Vec3,
-  simTime: Number(params.get("t") ?? 18.6) || 18.6,
-  spotWorld: [10, 0.2, 16] as Vec3,
-  spotTargetLabel: "Harbor Ave",
+  simTime: Number(params.get("t") ?? 18.4) || 18.4,
+  spotWorld: [-10, 0.2, -24] as Vec3,
+  spotTargetLabel: "Midnight Avenue",
 };
 
-// Twin supersonic turbojet contrail ring buffers
 const trailL: RibbonPoint[] = [];
 const trailR: RibbonPoint[] = [];
 
-// Keyboard + pointer state
 const keys = new Set<string>();
 let dragOrbit = false;
 let dragSplit = false;
@@ -453,17 +510,17 @@ function applyTod(preset: TodPreset): void {
     world.doc.lighting.timeOfDay = 0.94;
     world.doc.lighting.sunAzimuthDeg = 34;
     world.doc.lighting.sunElevationDeg = 42;
-    world.doc.lighting.fogDensity = 0.24;
+    world.doc.lighting.fogDensity = 0.20;
   } else if (preset === "sunset") {
     world.doc.lighting.timeOfDay = 0.52;
     world.doc.lighting.sunAzimuthDeg = -32;
     world.doc.lighting.sunElevationDeg = 18;
-    world.doc.lighting.fogDensity = 0.30;
+    world.doc.lighting.fogDensity = 0.26;
   } else {
     world.doc.lighting.timeOfDay = 0.06;
     world.doc.lighting.sunAzimuthDeg = 42;
     world.doc.lighting.sunElevationDeg = 56;
-    world.doc.lighting.fogDensity = 0.22;
+    world.doc.lighting.fogDensity = 0.18;
   }
 }
 
@@ -490,17 +547,17 @@ function applySplit(): void {
   }
   if (rightLbl) {
     const s = state.quality === "eco" ? "2x" : state.quality === "balanced" ? "4x" : "8x";
-    rightLbl.textContent = `RIGHT: AASpriteStacker (${s} RGSS AA + 1-OBB 3D Volume)`;
+    const d = state.detail === "hd" ? "HD 56-Slice" : "Classic 28-Slice";
+    rightLbl.textContent = `RIGHT: AASpriteStacker (${s} RGSS AA + ${d})`;
   }
 }
 
-// Smooth closed patrol figure-loop sweeping over downtown skyline, HQ helipad, and out around the North Coastal Lighthouse!
 function sampleAutopilotPose(t: number): { pos: Vec3; vel: Vec3; yaw: number; bank: number; turboPulse: number } {
   const w = 0.22;
   const a = t * w;
   const xAt = (s: number) => Math.sin(s) * 26.0 + Math.sin(s * 2.0) * 7.5;
   const zAt = (s: number) => -18.0 + Math.cos(s) * 44.0 - Math.cos(s * 2.0) * 5.0;
-  const yAt = (s: number) => 19.6 + Math.sin(s * 1.5 + 0.4) * 3.0;
+  const yAt = (s: number) => 20.5 + Math.sin(s * 1.5 + 0.4) * 3.0;
 
   const eps = 0.04;
   const x = xAt(a), y = yAt(a), z = zAt(a);
@@ -511,11 +568,9 @@ function sampleAutopilotPose(t: number): { pos: Vec3; vel: Vec3; yaw: number; ba
   const vx = (xn - x) / dtSec;
   const vy = (yn - y) / dtSec;
   const vz = (zn - z) / dtSec;
-
   const vxPrev = (x - xp) / dtSec;
   const vzPrev = (z - zp) / dtSec;
 
-  // Forward vector for yaw is [-sin(yaw), 0, -cos(yaw)]
   const yaw = Math.atan2(-vx, -vz);
   const yawPrev = Math.atan2(-vxPrev, -vzPrev);
   let dYaw = yaw - yawPrev;
@@ -523,21 +578,17 @@ function sampleAutopilotPose(t: number): { pos: Vec3; vel: Vec3; yaw: number; ba
   while (dYaw < -Math.PI) dYaw += Math.PI * 2;
   const yawRate = dYaw / dtSec;
 
-  // Coordinated Airwolf bank angle into turns
   const bank = clamp(-yawRate * 0.72, -0.52, 0.52);
-  // Subtle supersonic afterburner surge when sweeping along the harbor strait!
   const turboPulse = clamp(Math.sin(a * 2.0 - 0.8) * 1.4 - 0.55, 0, 1);
   return { pos: [x, y, z], vel: [vx, vy, vz], yaw, bank, turboPulse };
 }
 
 function getObstacleCeiling(x: number, z: number): number {
-  // Rooftop H Helipad at (-13, -12) — allows smooth landing on the glowing H!
   if (Math.abs(x - HELIPAD_POS[0]) < 7.2 && Math.abs(z - HELIPAD_POS[2]) < 7.2) {
-    return HELIPAD_POS[1] + 2.05;
+    return HELIPAD_POS[1] + 2.12;
   }
-  // Coastal lighthouse tower
-  if (Math.hypot(x - LIGHTHOUSE_POS[0], z - LIGHTHOUSE_POS[2]) < 6.2) {
-    return 21.5;
+  if (Math.hypot(x - LIGHTHOUSE_POS[0], z - LIGHTHOUSE_POS[2]) < 7.2) {
+    return 22.5;
   }
   for (const b of BLOCK_BUILDINGS) {
     if (Math.abs(x - b.x) < b.halfW + 3.2 && Math.abs(z - b.z) < b.halfL + 3.2) {
@@ -551,11 +602,11 @@ function updateSearchlightAndRibbons(dt: number): void {
   const ribbons = [];
   const nightW = clamp((world.doc.lighting.timeOfDay - 0.48) / 0.52, 0, 1);
 
-  // 1. Coastal Lighthouse Rotating Volumetric Bay Beam (synced 1:1 with CITY_GROUND_FS uWaveTime * 0.72 + 0.65!)
+  // 1. Coastal Lighthouse Rotating Volumetric Bay Beam (synced 1:1 with CITY_GROUND_FS!)
   const lhAng = world.doc.terrain.waveTime * 0.72 + 0.65;
   const lhDir: Vec3 = [Math.cos(lhAng), -0.17, Math.sin(lhAng)];
   const lhPts: RibbonPoint[] = [];
-  const lhLen = 50;
+  const lhLen = 54;
   for (let i = 0; i <= 7; i++) {
     const u = i / 7;
     lhPts.push({
@@ -565,32 +616,28 @@ function updateSearchlightAndRibbons(dt: number): void {
         LIGHTHOUSE_BEACON_POS[2] + lhDir[2] * (1.4 + u * lhLen),
       ],
       age: 0.08 + u * 0.84,
-      width: 1.0 + u * 15.5,
+      width: 1.0 + u * 16.5,
     });
   }
   ribbons.push({
     id: "lighthouse_beam",
     points: lhPts,
     color: [255, 232, 146] as [number, number, number],
-    alpha: 0.14 + nightW * 0.24,
+    alpha: 0.14 + nightW * 0.25,
     emissive: true,
   });
 
-  // 2. Airwolf Real-Time Volumetric Nose Searchlight Cone + Exact Building/Ground Raycast!
+  // 2. Airwolf Real-Time Volumetric Nose Searchlight Cone + Exact 3D Voxel-DDA Raycast!
   const spotEnt = world.getEntity("searchlight_spot")!;
   if (state.searchlightOn && state.explodeT < 0.15) {
     const sockPos = world.getSocketWorldPos("airwolf", "searchlight") ?? state.pos;
-    // Slight sweeping search gimbal around Airwolf's nose heading
     const sweep = state.autopilot ? Math.sin(state.simTime * 1.15) * 0.28 : Math.sin(state.simTime * 0.7) * 0.12;
     const aimYaw = state.yaw + sweep;
     const aimPitch = clamp(-0.56 + state.pitch * 0.45, -1.05, -0.26);
     const cp = Math.cos(aimPitch);
     const beamDir: Vec3 = vec3Norm([-Math.sin(aimYaw) * cp, Math.sin(aimPitch), -Math.cos(aimYaw) * cp]);
 
-    // Intersect ground plane Y = 0
-    const tGround = beamDir[1] < -0.04 ? clamp((0.15 - sockPos[1]) / beamDir[1], 4, 82) : 64;
-
-    // Exact 3D voxel-DDA raycast against buildings & coastal lighthouse (skip Airwolf nose via 1.6u offset)
+    const tGround = beamDir[1] < -0.04 ? clamp((0.15 - sockPos[1]) / beamDir[1], 4, 88) : 64;
     const rayStart: Vec3 = vec3Add(sockPos, vec3Scale(beamDir, 1.6));
     const hit = world.raycastEntities(rayStart, beamDir, Math.max(1, tGround - 1.6));
     let beamLen = tGround;
@@ -602,9 +649,11 @@ function updateSearchlightAndRibbons(dt: number): void {
         ? "Coastal Lighthouse"
         : hit.entityId === "tower_hq_helipad"
           ? "Airwolf HQ Helipad"
-          : hit.entityId.startsWith("car_")
-            ? "Street Traffic"
-            : "Downtown Tower";
+          : hit.entityId.startsWith("harbor_")
+            ? "Harbor Vessel"
+            : hit.entityId.startsWith("car_")
+              ? "Street Traffic"
+              : "Downtown Tower";
     } else {
       state.spotWorld = [
         sockPos[0] + beamDir[0] * tGround,
@@ -617,11 +666,9 @@ function updateSearchlightAndRibbons(dt: number): void {
     }
     state.spotTargetLabel = targetLabel;
 
-    // Pass exact spotlight XZ into CITY_GROUND_FS via uShadowCasters[1]!
     spotEnt.pos = [state.spotWorld[0], 0.2, state.spotWorld[2]];
-    spotEnt.scale = hit ? 3.2 : 5.0;
+    spotEnt.scale = hit ? 3.5 : 5.4;
 
-    // Outer translucent volumetric cone + bright inner core beam
     const outerPts: RibbonPoint[] = [];
     const innerPts: RibbonPoint[] = [];
     const steps = 9;
@@ -633,8 +680,8 @@ function updateSearchlightAndRibbons(dt: number): void {
         Math.max(0.15, sockPos[1] + beamDir[1] * d),
         sockPos[2] + beamDir[2] * d,
       ];
-      outerPts.push({ pos: p, age: 0.04 + u * 0.84, width: 0.9 + u * 19.5 });
-      innerPts.push({ pos: p, age: 0.02 + u * 0.80, width: 0.45 + u * 7.8 });
+      outerPts.push({ pos: p, age: 0.04 + u * 0.84, width: 0.9 + u * 20.5 });
+      innerPts.push({ pos: p, age: 0.02 + u * 0.80, width: 0.45 + u * 8.2 });
     }
     ribbons.push({
       id: "searchlight_outer",
@@ -652,10 +699,12 @@ function updateSearchlightAndRibbons(dt: number): void {
     });
   } else {
     spotEnt.scale = 0.001;
-    state.spotTargetLabel = state.exploded ? "28-Slice Inspect" : "Off";
+    state.spotTargetLabel = state.exploded
+      ? `${state.detail === "hd" ? 56 : 28}-Slice Inspect`
+      : "Off";
   }
 
-  // 3. Sleek Twin Supersonic Dorsal Turbojet Afterburner Ribbons (cyan-gold plumes from jetL / jetR!)
+  // 3. Sleek Twin Supersonic Dorsal Turbojet Afterburner Ribbons
   const jetLPos = world.getSocketWorldPos("airwolf", "jetL");
   const jetRPos = world.getSocketWorldPos("airwolf", "jetR");
   const speed = Math.hypot(state.vel[0], state.vel[1], state.vel[2]);
@@ -673,7 +722,6 @@ function updateSearchlightAndRibbons(dt: number): void {
       }
     }
     if (emitJet && jetLPos && jetRPos) {
-      // Guard against discontinuous teleport jumps
       if (trailL.length > 0) {
         const dJump = Math.hypot(jetLPos[0] - trailL[0].pos[0], jetLPos[1] - trailL[0].pos[1], jetLPos[2] - trailL[0].pos[2]);
         if (dJump > 6.0) { trailL.length = 0; trailR.length = 0; }
@@ -700,10 +748,21 @@ function stepSimulation(dt: number): void {
   state.simTime += safeDt;
   world.stepClock(safeDt);
 
-  // Smooth exploded assembly transition
   const targetExplode = state.exploded ? 1 : 0;
   state.explodeT = lerp(state.explodeT, targetExplode, 1 - Math.exp(-safeDt * 6.0));
   if (Math.abs(state.explodeT - targetExplode) < 0.002) state.explodeT = targetExplode;
+
+  // Gently bob moored harbor tugboat & patrol yacht on midnight waves
+  const tug = world.getEntity("harbor_tug");
+  if (tug) {
+    tug.pos[1] = 0.08 + Math.sin(state.simTime * 1.9) * 0.14;
+    tug.rot = quatFromYawPitchRoll(0.32, Math.sin(state.simTime * 1.4) * 0.04, Math.cos(state.simTime * 1.7) * 0.05);
+  }
+  const patrol = world.getEntity("harbor_patrol");
+  if (patrol) {
+    patrol.pos[1] = 0.08 + Math.sin(state.simTime * 2.2 + 1.4) * 0.12;
+    patrol.rot = quatFromYawPitchRoll(-0.45, Math.cos(state.simTime * 1.6) * 0.04, Math.sin(state.simTime * 1.9) * 0.05);
+  }
 
   // Move 12 midnight cruising street cars along avenues
   for (const c of CARS) {
@@ -717,11 +776,9 @@ function stepSimulation(dt: number): void {
     }
   }
 
-  // Helicopter flight physics / autopilot / exploded showcase hover
   const turboKey = keys.has("ShiftLeft") || keys.has("ShiftRight") || state.turboForced;
 
   if (state.exploded) {
-    // Freeze forward travel and showcase all 28 Airwolf slices high above the midnight skyline & bay!
     state.vel[0] *= 0.85;
     state.vel[1] *= 0.85;
     state.vel[2] *= 0.85;
@@ -732,8 +789,7 @@ function stepSimulation(dt: number): void {
     state.rotorAng += safeDt * 4.5;
     state.tailAng += safeDt * 9.0;
   } else if (state.landingToPad) {
-    // Smooth autonomous approach & touchdown onto the glowing rooftop H Helipad!
-    const target: Vec3 = [HELIPAD_POS[0], HELIPAD_POS[1] + 2.08, HELIPAD_POS[2]];
+    const target: Vec3 = [HELIPAD_POS[0], HELIPAD_POS[1] + 2.12, HELIPAD_POS[2]];
     const diff = vec3Sub(target, state.pos);
     const dist = Math.hypot(diff[0], diff[1], diff[2]);
     const k = 1 - Math.exp(-safeDt * 2.4);
@@ -759,7 +815,6 @@ function stepSimulation(dt: number): void {
     state.pos[2] = lerp(state.pos[2], ap.pos[2], blend);
     state.vel = ap.vel;
 
-    // Shortest-angle yaw tracking
     let dy = ap.yaw - state.yaw;
     while (dy > Math.PI) dy -= Math.PI * 2;
     while (dy < -Math.PI) dy += Math.PI * 2;
@@ -774,7 +829,6 @@ function stepSimulation(dt: number): void {
     state.rotorAng += safeDt * (26.0 + state.turbo * 14.0);
     state.tailAng += safeDt * 38.0;
   } else {
-    // Full responsive manual 6-DOF helicopter flight!
     const fwdIn = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
     const yawIn = (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) - (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0);
     const climbIn = (keys.has("Space") || keys.has("KeyR") ? 1 : 0) - (keys.has("KeyC") || keys.has("KeyF") ? 1 : 0);
@@ -796,11 +850,10 @@ function stepSimulation(dt: number): void {
     state.vel[2] = state.vel[2] * drag + fwdZ * thrust * safeDt;
     state.vel[1] = state.vel[1] * Math.exp(-safeDt * 3.0) + climbIn * 24.0 * safeDt;
 
-    state.pos[0] = clamp(state.pos[0] + state.vel[0] * safeDt, -72, 72);
-    state.pos[2] = clamp(state.pos[2] + state.vel[2] * safeDt, -64, 92);
-    state.pos[1] = clamp(state.pos[1] + state.vel[1] * safeDt, 3.4, 48);
+    state.pos[0] = clamp(state.pos[0] + state.vel[0] * safeDt, -74, 74);
+    state.pos[2] = clamp(state.pos[2] + state.vel[2] * safeDt, -92, 64);
+    state.pos[1] = clamp(state.pos[1] + state.vel[1] * safeDt, 3.4, 52);
 
-    // Gentle rooftop / obstacle clearance
     const floorY = getObstacleCeiling(state.pos[0], state.pos[2]);
     if (state.pos[1] < floorY) {
       state.pos[1] = floorY;
@@ -810,7 +863,6 @@ function stepSimulation(dt: number): void {
       }
     }
 
-    // Authentic helicopter attitude coupling: forward acceleration pitches nose DOWN; turns bank smoothly!
     const fwdSpeed = state.vel[0] * fwdX + state.vel[2] * fwdZ;
     const targetPitch = state.landed ? 0 : -clamp(fwdSpeed * 0.015 + fwdIn * 0.14 + state.turbo * 0.12, -0.26, 0.38);
     const targetRoll = state.landed ? 0 : clamp(-yawIn * (0.28 + Math.min(Math.abs(fwdSpeed), 22) * 0.014), -0.58, 0.58);
@@ -821,7 +873,7 @@ function stepSimulation(dt: number): void {
     state.tailAng += safeDt * (state.landed ? 14.0 : 40.0);
   }
 
-  // Apply transforms to Airwolf hull, shadow proxy, rotors, and 28 exploded slices!
+  // Apply transforms to Airwolf hull, shadow proxy, rotors, and 28/56 exploded slices!
   const airwolf = world.getEntity("airwolf")!;
   airwolf.pos = [...state.pos];
   airwolf.rot = quatFromYawPitchRoll(state.yaw, state.pitch, state.roll);
@@ -832,25 +884,25 @@ function stepSimulation(dt: number): void {
   shadowProxy.pos = [...state.pos];
 
   const mainRotor = world.getEntity("airwolf_main_rotor")!;
-  mainRotor.pos = [0, state.explodeT * 6.2, 0];
+  mainRotor.pos = [0, state.explodeT * 6.4, 0];
   mainRotor.rot = quatFromYawPitchRoll(state.rotorAng, 0, 0);
 
   const tailRotor = world.getEntity("airwolf_tail_rotor")!;
-  tailRotor.pos = [-state.explodeT * 2.4, 0, 0];
+  tailRotor.pos = [-state.explodeT * 2.5, 0, 0];
   tailRotor.rot = quatFromYawPitchRoll(0, state.tailAng, 0);
 
-  for (let z = 0; z < SLICE_COUNT; z++) {
+  const activeSlices = state.detail === "hd" ? 56 : 28;
+  const gapPerSlice = state.detail === "hd" ? 0.22 : 0.44;
+  for (let z = 0; z < MAX_SLICES; z++) {
     const sl = world.getEntity(`airwolf_s${z}`)!;
-    sl.visible = showSlices;
-    if (showSlices) {
-      sl.pos[1] = (z - (SLICE_COUNT - 1) * 0.5) * 0.44 * state.explodeT;
+    const active = showSlices && z < activeSlices;
+    sl.visible = active;
+    if (active) {
+      sl.pos[1] = (z - (activeSlices - 1) * 0.5) * gapPerSlice * state.explodeT;
     }
   }
 
-  // Update volumetric nose searchlight cone, lighthouse beam, & twin turbojet contrails
   updateSearchlightAndRibbons(safeDt);
-
-  // Camera framing
   updateCamera(safeDt);
 }
 
@@ -862,64 +914,65 @@ function updateCamera(dt: number, snap = false): void {
   let wantPos: Vec3;
   let wantTarget: Vec3;
   let wantUp: Vec3 = [0, 1, 0];
-  let wantFov = 44;
+  let wantFov = 38;
 
   if (state.explodeT > 0.25) {
-    // Tight heroic museum turntable framing around all 28 separated Airwolf slices + floating rotors!
-    const orbYaw = state.yaw + state.orbitYawOffset + state.simTime * 0.22;
-    const dist = clamp(state.zoomDist * 0.68, 23, 38);
-    const elev = clamp(state.orbitPitchOffset * 0.62, 0.14, 0.68);
+    const orbYaw = state.yaw + state.orbitYawOffset + state.simTime * 0.20;
+    const dist = clamp(state.zoomDist * 0.34, 21, 34);
+    const elev = clamp(state.orbitPitchOffset * 0.62, 0.14, 0.65);
     wantPos = [
       state.pos[0] + Math.sin(orbYaw) * Math.cos(elev) * dist,
-      state.pos[1] + Math.sin(elev) * dist + 1.2,
+      state.pos[1] + Math.sin(elev) * dist + 1.0,
       state.pos[2] + Math.cos(orbYaw) * Math.cos(elev) * dist,
     ];
-    wantTarget = [state.pos[0], state.pos[1] + 1.0, state.pos[2]];
-    wantFov = 42;
+    wantTarget = [state.pos[0], state.pos[1] + 0.9, state.pos[2]];
+    wantFov = 40;
   } else if (state.camMode === "chase") {
-    // Dramatic 6-DOF tactical tail chase behind Airwolf's twin dorsal turbojets & banking horizon!
-    const dist = 17.5 + state.turbo * 3.8;
-    const height = 6.2 - state.turbo * 0.8;
+    const dist = 17.0 + state.turbo * 3.8;
+    const height = 5.8 - state.turbo * 0.8;
     wantPos = [
       state.pos[0] - fwdX * dist,
       Math.max(4.5, state.pos[1] + height),
       state.pos[2] - fwdZ * dist,
     ];
     wantTarget = [
-      state.pos[0] + fwdX * 12.0,
-      state.pos[1] - 1.6,
-      state.pos[2] + fwdZ * 12.0,
+      state.pos[0] + fwdX * 14.0,
+      state.pos[1] - 1.8,
+      state.pos[2] + fwdZ * 14.0,
     ];
-    // Subtle horizon roll matching Airwolf's bank angle!
     const bankCam = state.roll * 0.28;
     const rightX = Math.cos(state.yaw);
     const rightZ = -Math.sin(state.yaw);
     wantUp = vec3Norm([rightX * Math.sin(bankCam), Math.cos(bankCam), rightZ * Math.sin(bankCam)]);
     wantFov = 50 + state.turbo * 8;
   } else if (state.camMode === "orbit") {
-    // Sweeping Coastal Lighthouse & Midnight City panorama orbiting the island
     const a = state.orbitYawOffset + state.simTime * 0.14;
-    const r = clamp(state.zoomDist * 1.45, 42, 110);
-    const elev = clamp(state.orbitPitchOffset, 0.2, 1.05);
-    wantPos = [Math.sin(a) * Math.cos(elev) * r, Math.sin(elev) * r + 8, 12 + Math.cos(a) * Math.cos(elev) * r];
-    wantTarget = [0, 9, 14];
-    wantFov = 42;
+    const r = clamp(state.zoomDist * 1.15, 58, 130);
+    const elev = clamp(state.orbitPitchOffset, 0.22, 1.05);
+    wantPos = [Math.sin(a) * Math.cos(elev) * r, Math.sin(elev) * r + 10, -14 + Math.cos(a) * Math.cos(elev) * r];
+    wantTarget = [0, 9, -14];
+    wantFov = 38;
   } else {
-    // Default "iso": Rich 3/4 miniature pixel city tracking camera inspired by diorama helicopter classics!
-    const dist = clamp(state.zoomDist, 22, 82);
-    const elev = clamp(state.orbitPitchOffset, 0.22, 1.12);
+    // Wide Miniature Diorama Establishing Shot!
+    // When zoomed wide (default ~86), anchors gracefully on the full glowing island + north lighthouse bay;
+    // as you zoom in closer (wheel in), smoothly tracks right onto Airwolf!
+    const dist = clamp(state.zoomDist, 24, 128);
+    const closeTrack = clamp((78 - dist) / 48, 0, 1);
+    const wHeli = lerp(0.32, 0.85, closeTrack);
+    const elev = clamp(state.orbitPitchOffset, 0.20, 1.15);
     const az = state.orbitYawOffset;
+
     wantTarget = [
-      state.pos[0] * 0.72 + fwdX * 4.5,
-      state.pos[1] * 0.58 + 3.5,
-      state.pos[2] * 0.72 + fwdZ * 4.5,
+      lerp(-2.0, state.pos[0] + fwdX * 3.5, wHeli),
+      lerp(10.5, state.pos[1] * 0.72 + 2.5, wHeli),
+      lerp(-18.0, state.pos[2] + fwdZ * 3.5, wHeli),
     ];
     wantPos = [
       wantTarget[0] + Math.sin(az) * Math.cos(elev) * dist,
-      Math.max(8, wantTarget[1] + Math.sin(elev) * dist),
+      Math.max(9, wantTarget[1] + Math.sin(elev) * dist),
       wantTarget[2] + Math.cos(az) * Math.cos(elev) * dist,
     ];
-    wantFov = 40;
+    wantFov = 38;
   }
 
   const k = snap ? 1 : 1 - Math.exp(-dt * 5.2);
@@ -951,6 +1004,11 @@ function syncUiButtons(): void {
   setPressed("btnSpot", state.searchlightOn);
   setPressed("btnSplit", state.splitEnabled);
   setPressed("btnPad", state.landed || state.landingToPad);
+  setPressed("btnDetail_classic", state.detail === "classic");
+  setPressed("btnDetail_hd", state.detail === "hd");
+
+  const expBtn = document.getElementById("btnExplode");
+  if (expBtn) expBtn.textContent = `Exploded ${state.detail === "hd" ? "56" : "28"}-Slice (X)`;
 
   for (const t of ["night", "sunset", "day"] as TodPreset[]) {
     setPressed(`btnTod_${t}`, state.tod === t);
@@ -966,8 +1024,10 @@ function updateStatsHud(): void {
   const s = renderer.getStats();
   const spdKts = Math.round(Math.hypot(state.vel[0], state.vel[2]) * 9.5 + state.turbo * 165);
   const altFt = Math.round(state.pos[1] * 24);
+  const sliceNum = state.detail === "hd" ? 56 : 28;
+  const detailTag = state.detail === "hd" ? "HD 2x (56-Slice)" : "Classic 1x (28-Slice)";
   const modeStr = state.exploded
-    ? "EXPLODED 28-SLICE (1 instanced draw call)"
+    ? `EXPLODED ${sliceNum}-SLICE (1 instanced draw call)`
     : state.landed
       ? "ROOFTOP H HELIPAD (IDLE)"
       : state.turbo > 0.35
@@ -976,52 +1036,39 @@ function updateStatsHud(): void {
           ? "AUTOPILOT PATROL"
           : "MANUAL 6-DOF FLIGHT";
   statsEl.textContent =
-    `STATUS  ${modeStr}\n` +
+    `STATUS  ${modeStr}  |  ${detailTag}\n` +
     `FLIGHT  ${String(spdKts).padStart(3, " ")} KTS  |  ALT ${String(altFt).padStart(3, " ")} FT  |  SPOT: ${state.spotTargetLabel}\n` +
     `ENGINE  ${s.fps.toFixed(0).padStart(2, " ")} FPS  |  ${s.drawCalls} draws (${s.visibleEntities}/${s.totalEntities} ents)  |  ${s.activeSamples}x RGSS AA`;
 }
 
-// Wire toolbar clicks
 document.getElementById("btnCamIso")?.addEventListener("click", () => { state.exploded = false; state.camMode = "iso"; syncUiButtons(); });
 document.getElementById("btnCamChase")?.addEventListener("click", () => { state.exploded = false; state.camMode = "chase"; syncUiButtons(); });
 document.getElementById("btnCamOrbit")?.addEventListener("click", () => { state.exploded = false; state.camMode = "orbit"; syncUiButtons(); });
 document.getElementById("btnExplode")?.addEventListener("click", () => { state.exploded = !state.exploded; syncUiButtons(); });
 document.getElementById("btnAutopilot")?.addEventListener("click", () => {
-  state.exploded = false;
-  state.landingToPad = false;
-  state.landed = false;
+  state.exploded = false; state.landingToPad = false; state.landed = false;
   state.autopilot = !state.autopilot;
   syncUiButtons();
 });
 document.getElementById("btnTurbo")?.addEventListener("click", () => {
-  state.exploded = false;
-  state.landingToPad = false;
-  state.landed = false;
+  state.exploded = false; state.landingToPad = false; state.landed = false;
   state.turboForced = !state.turboForced;
   syncUiButtons();
 });
-document.getElementById("btnSpot")?.addEventListener("click", () => {
-  state.searchlightOn = !state.searchlightOn;
-  syncUiButtons();
-});
+document.getElementById("btnSpot")?.addEventListener("click", () => { state.searchlightOn = !state.searchlightOn; syncUiButtons(); });
 document.getElementById("btnPad")?.addEventListener("click", () => {
   state.exploded = false;
   if (state.landed || state.landingToPad) {
-    state.landed = false;
-    state.landingToPad = false;
-    state.autopilot = true;
+    state.landed = false; state.landingToPad = false; state.autopilot = true;
   } else {
-    state.autopilot = false;
-    state.turboForced = false;
-    state.landingToPad = true;
+    state.autopilot = false; state.turboForced = false; state.landingToPad = true;
   }
   syncUiButtons();
 });
-document.getElementById("btnSplit")?.addEventListener("click", () => {
-  state.splitEnabled = !state.splitEnabled;
-  applySplit();
-  syncUiButtons();
-});
+document.getElementById("btnSplit")?.addEventListener("click", () => { state.splitEnabled = !state.splitEnabled; applySplit(); syncUiButtons(); });
+
+document.getElementById("btnDetail_classic")?.addEventListener("click", () => { applyDetailPack("classic"); applySplit(); syncUiButtons(); });
+document.getElementById("btnDetail_hd")?.addEventListener("click", () => { applyDetailPack("hd"); applySplit(); syncUiButtons(); });
 
 for (const t of ["night", "sunset", "day"] as TodPreset[]) {
   document.getElementById(`btnTod_${t}`)?.addEventListener("click", () => { applyTod(t); syncUiButtons(); });
@@ -1030,53 +1077,33 @@ for (const q of ["eco", "balanced", "ultra"] as AAQuality[]) {
   document.getElementById(`btnQual_${q}`)?.addEventListener("click", () => { applyQuality(q); applySplit(); syncUiButtons(); });
 }
 
-// Keyboard shortcuts
 window.addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
   keys.add(e.code);
 
-  // Instant seamless handoff from Autopilot to Manual 6-DOF on flight input
   if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "KeyR", "KeyC", "KeyF"].includes(e.code)) {
     if (state.autopilot || state.landingToPad) {
-      state.autopilot = false;
-      state.landingToPad = false;
-      state.exploded = false;
+      state.autopilot = false; state.landingToPad = false; state.exploded = false;
       syncUiButtons();
     }
     if (e.code === "Space") e.preventDefault();
   }
 
   if (e.code === "KeyX") { state.exploded = !state.exploded; syncUiButtons(); }
+  else if (e.code === "KeyG") { applyDetailPack(state.detail === "hd" ? "classic" : "hd"); applySplit(); syncUiButtons(); }
   else if (e.code === "KeyV") {
     state.exploded = false;
     state.camMode = state.camMode === "iso" ? "chase" : state.camMode === "chase" ? "orbit" : "iso";
     syncUiButtons();
-  } else if (e.code === "KeyP") {
-    state.exploded = false;
-    state.landingToPad = false;
-    state.autopilot = !state.autopilot;
-    syncUiButtons();
-  } else if (e.code === "KeyM") {
-    state.searchlightOn = !state.searchlightOn;
-    syncUiButtons();
-  } else if (e.code === "KeyE") {
-    state.splitEnabled = !state.splitEnabled;
-    applySplit();
-    syncUiButtons();
-  } else if (e.code === "KeyN") {
-    applyTod(state.tod === "night" ? "sunset" : state.tod === "sunset" ? "day" : "night");
-    syncUiButtons();
-  } else if (e.code === "KeyL") {
-    document.getElementById("btnPad")?.click();
-  } else if (e.code === "KeyH" || e.code === "KeyU") {
-    document.body.classList.toggle("nohud");
-  }
+  } else if (e.code === "KeyP") { state.exploded = false; state.landingToPad = false; state.autopilot = !state.autopilot; syncUiButtons(); }
+  else if (e.code === "KeyM") { state.searchlightOn = !state.searchlightOn; syncUiButtons(); }
+  else if (e.code === "KeyE") { state.splitEnabled = !state.splitEnabled; applySplit(); syncUiButtons(); }
+  else if (e.code === "KeyN") { applyTod(state.tod === "night" ? "sunset" : state.tod === "sunset" ? "day" : "night"); syncUiButtons(); }
+  else if (e.code === "KeyL") { document.getElementById("btnPad")?.click(); }
+  else if (e.code === "KeyH" || e.code === "KeyU") { document.body.classList.toggle("nohud"); }
 });
-window.addEventListener("keyup", (e) => {
-  keys.delete(e.code);
-});
+window.addEventListener("keyup", (e) => { keys.delete(e.code); });
 
-// Pointer drag orbit + wheel zoom + draggable A/B Split handle
 const splitBar = document.getElementById("splitBar");
 splitBar?.addEventListener("pointerdown", (e) => {
   dragSplit = true;
@@ -1097,28 +1124,21 @@ window.addEventListener("pointermove", (e) => {
   state.orbitYawOffset -= dx * 0.0065;
   state.orbitPitchOffset = clamp(state.orbitPitchOffset + dy * 0.0055, 0.16, 1.18);
 });
-window.addEventListener("pointerup", () => {
-  dragSplit = false;
-  dragOrbit = false;
-});
-canvas.addEventListener("pointerdown", (e) => {
-  dragOrbit = true;
-  lastPtrX = e.clientX;
-  lastPtrY = e.clientY;
-});
+window.addEventListener("pointerup", () => { dragSplit = false; dragOrbit = false; });
+canvas.addEventListener("pointerdown", (e) => { dragOrbit = true; lastPtrX = e.clientX; lastPtrY = e.clientY; });
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
-  state.zoomDist = clamp(state.zoomDist + e.deltaY * 0.03, 18, 92);
+  state.zoomDist = clamp(state.zoomDist + e.deltaY * 0.045, 24, 128);
 }, { passive: false });
 
 // ---------------------------------------------------------------------------
 // 7. Initial Pose, Deterministic API Hook, and 60fps Loop
 // ---------------------------------------------------------------------------
+applyDetailPack(state.detail);
 applyTod(state.tod);
 applyQuality(state.quality);
 applySplit();
 
-// Snap Airwolf cleanly onto its patrol pose at t = state.simTime so frame 0 is already heroic!
 const initAp = sampleAutopilotPose(state.simTime);
 state.pos = [...initAp.pos];
 state.vel = [...initAp.vel];
@@ -1126,27 +1146,6 @@ state.yaw = initAp.yaw;
 state.pitch = -0.18;
 state.roll = initAp.bank;
 state.turbo = state.turboForced ? 1 : initAp.turboPulse * 0.65;
-if (state.turboForced) {
-  // Pre-seed glowing twin afterburner ribbons behind Airwolf for instant capture beauty!
-  const fwdX = -Math.sin(state.yaw);
-  const fwdZ = -Math.cos(state.yaw);
-  const rightX = Math.cos(state.yaw);
-  const rightZ = -Math.sin(state.yaw);
-  for (let i = 0; i < 18; i++) {
-    const back = 1.6 + i * 0.95;
-    const age = i / 18;
-    trailL.push({
-      pos: [state.pos[0] - fwdX * back - rightX * 0.72, state.pos[1] + 1.32 - i * 0.04, state.pos[2] - fwdZ * back - rightZ * 0.72],
-      age,
-      width: 1.55,
-    });
-    trailR.push({
-      pos: [state.pos[0] - fwdX * back + rightX * 0.72, state.pos[1] + 1.32 - i * 0.04, state.pos[2] - fwdZ * back + rightZ * 0.72],
-      age,
-      width: 1.55,
-    });
-  }
-}
 
 stepSimulation(0.016);
 updateCamera(1.0, true);
@@ -1155,13 +1154,13 @@ syncUiButtons();
 updateStatsHud();
 document.body.classList.add("ready");
 
-// Expose clean deterministic control API for verification & interactive scripting
 declare global {
   interface Window {
     heliDemo?: {
       world: SceneWorld;
       renderer: AASpriteRenderer;
       set: (opts: Partial<{
+        detail: DetailLevel;
         camMode: CamMode;
         exploded: boolean;
         explodeT: number;
@@ -1188,6 +1187,7 @@ window.heliDemo = {
   world,
   renderer,
   set(opts) {
+    if (opts.detail !== undefined && opts.detail !== state.detail) applyDetailPack(opts.detail);
     if (opts.camMode !== undefined) state.camMode = opts.camMode;
     if (opts.exploded !== undefined) state.exploded = opts.exploded;
     if (opts.explodeT !== undefined) state.explodeT = opts.explodeT;

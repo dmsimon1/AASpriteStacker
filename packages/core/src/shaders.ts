@@ -277,7 +277,7 @@ bool traceLocalShadow(vec3 ro, vec3 rd) {
   if (stepDir.y == 0) tMax.y = 1e20;
   if (stepDir.z == 0) tMax.z = 1e20;
 
-  for (int i = 0; i < 32; i++) {
+  for (int i = 0; i < 64; i++) {
     if (texelFetch(uAlbedoTex, cell, 0).a >= 0.5) return true;
     if (tMax.x <= tMax.y && tMax.x <= tMax.z) { cell.x += stepDir.x; tMax.x += tDelta.x; }
     else if (tMax.y <= tMax.z) { cell.y += stepDir.y; tMax.y += tDelta.y; }
@@ -344,7 +344,7 @@ bool traceVoxelDdaHit(
   else faceN = vec3(0.0, 0.0, -float(stepDir.z));
 
   float tCur = 0.0;
-  for (int i = 0; i < 96; i++) {
+  for (int i = 0; i < 256; i++) {
     vec4 tex = texelFetch(uAlbedoTex, cell, 0);
     if (tex.a >= 0.5) {
       outCell = cell;

@@ -108,9 +108,10 @@ void main() {
   vec3 wp = ro + rd * t;
   vec2 xz = wp.xz;
 
-  // City Island footprint: X in [-56, 56], Z in [-48, 52] + Harbor Lighthouse Pier extending NORTH to Z = -80 at X in [-6.2, 6.2]
+  // City Island footprint: X in [-56, 56], Z in [-48, 52] + North Lighthouse Pier (Z in [-80, -48]) + Boat Dock Slips
   bool inIsland = abs(xz.x) <= 56.0 && xz.y >= -48.0 && xz.y <= 52.0;
-  bool inPier = abs(xz.x) <= 6.2 && xz.y < -48.0 && xz.y >= -80.0;
+  bool inPier = (abs(xz.x) <= 6.2 && xz.y < -48.0 && xz.y >= -80.0) ||
+                (abs(xz.x) <= 13.5 && xz.y <= -55.0 && xz.y >= -58.5);
   bool inLand = inIsland || inPier;
 
   vec3 col = vec3(0.0);
