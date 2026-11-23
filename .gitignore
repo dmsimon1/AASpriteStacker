@@ -14,5 +14,7 @@ examples/minimal-2d/bundle.js
 examples/minimal-2d/bundle.js.map
 examples/airwolf-city/bundle.js
 examples/airwolf-city/bundle.js.map
+examples/xmas-mainstreet/bundle.js
+examples/xmas-mainstreet/bundle.js.map
 site/dist/
 .cloudflare/

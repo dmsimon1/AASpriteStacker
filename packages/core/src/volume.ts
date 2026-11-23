@@ -271,8 +271,34 @@ export function createVolumeAsset(opts: CreateVolumeAssetOptions): VolumeAsset {
     for (let y = 0; y < l; y++) {
       for (let x = 0; x < w; x++) {
         const idx = z * area + y * w + x;
+        const p = idx * 4;
         const dNorm = clamp(sdfF32[idx] / sdfRange, -1, 1);
         sdfU8[idx] = clamp(Math.round(dNorm * 127 + 128), 0, 255);
+
+        const solid = rgba[p + 3] >= 128;
+        if (!solid && !useSdf) {
+          normAo[p] = 128;
+          normAo[p + 1] = 128;
+          normAo[p + 2] = 255;
+          normAo[p + 3] = 255;
+          continue;
+        }
+
+        const nXm = atOcc(z, y, x - 1);
+        const nXp = atOcc(z, y, x + 1);
+        const nYm = atOcc(z, y - 1, x);
+        const nYp = atOcc(z, y + 1, x);
+        const nZm = atOcc(z - 1, y, x);
+        const nZp = atOcc(z + 1, y, x);
+        const interior = solid && nXm && nXp && nYm && nYp && nZm && nZp;
+
+        if (interior && !useSdf) {
+          normAo[p] = 128;
+          normAo[p + 1] = 128;
+          normAo[p + 2] = 255;
+          normAo[p + 3] = 140;
+          continue;
+        }
 
         let gx = atSdf(z, y, x + 1) - atSdf(z, y, x - 1);
         let gy = atSdf(z, y + 1, x) - atSdf(z, y - 1, x);
@@ -284,31 +310,31 @@ export function createVolumeAsset(opts: CreateVolumeAssetOptions): VolumeAsset {
           gx = 0; gy = 0; gz = 1;
         }
 
-        const upOcc =
-          atOcc(z + 1, y, x) +
-          atOcc(z + 1, y - 1, x) +
-          atOcc(z + 1, y + 1, x) +
-          atOcc(z + 1, y, x - 1) +
-          atOcc(z + 1, y, x + 1);
-        const ao = clamp(1.0 - upOcc * 0.045, 0.72, 1.0);
+        // Rich 18-neighbor cavity & upper-hemisphere baked voxel AO (MagicaVoxel-grade depth in window reveals, under eaves & boughs!)
+        let occWeighted = 0;
+        if (solid) {
+          const sameRing =
+            (nXm + nXp + nYm + nYp) * 0.45 +
+            (atOcc(z, y - 1, x - 1) + atOcc(z, y - 1, x + 1) + atOcc(z, y + 1, x - 1) + atOcc(z, y + 1, x + 1)) * 0.55;
+          const upRing =
+            nZp * 1.15 +
+            (atOcc(z + 1, y - 1, x) + atOcc(z + 1, y + 1, x) + atOcc(z + 1, y, x - 1) + atOcc(z + 1, y, x + 1)) * 0.95 +
+            (atOcc(z + 1, y - 1, x - 1) + atOcc(z + 1, y - 1, x + 1) + atOcc(z + 1, y + 1, x - 1) + atOcc(z + 1, y + 1, x + 1)) * 0.65;
+          const up2 = atOcc(z + 2, y, x) * 0.6;
+          occWeighted = sameRing + upRing + up2;
+        }
+        const ao = clamp(1.0 - Math.max(0, occWeighted - 1.8) * 0.068, 0.44, 1.0);
 
-        const p = idx * 4;
         normAo[p] = clamp(Math.round((gx * 0.5 + 0.5) * 255), 0, 255);
         normAo[p + 1] = clamp(Math.round((gy * 0.5 + 0.5) * 255), 0, 255);
         normAo[p + 2] = clamp(Math.round((gz * 0.5 + 0.5) * 255), 0, 255);
         normAo[p + 3] = clamp(Math.round(ao * 255), 0, 255);
 
-        if (!opts.explicitEmissive && rgba[p + 3] >= 128) {
-          const interior =
-            atOcc(z - 1, y, x) && atOcc(z + 1, y, x) &&
-            atOcc(z, y - 1, x) && atOcc(z, y + 1, x) &&
-            atOcc(z, y, x - 1) && atOcc(z, y, x + 1);
-          if (!interior) {
-            isSurf[idx] = 1;
-            surfCount++;
-            const key = (rgba[p] << 16) | (rgba[p + 1] << 8) | rgba[p + 2];
-            colorCounts.set(key, (colorCounts.get(key) ?? 0) + 1);
-          }
+        if (!opts.explicitEmissive && solid && !interior) {
+          isSurf[idx] = 1;
+          surfCount++;
+          const key = (rgba[p] << 16) | (rgba[p + 1] << 8) | rgba[p + 2];
+          colorCounts.set(key, (colorCounts.get(key) ?? 0) + 1);
         }
       }
     }

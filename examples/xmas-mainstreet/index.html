@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Main Street Christmas (Ultra-Detail Diorama) | AASpriteStacker</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c1224'/%3E%3Cpolygon points='32,8 50,48 14,48' fill='%23228b4c'/%3E%3Ccircle cx='32' cy='10' r='5' fill='%23fbbf24'/%3E%3C/svg%3E">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a1024; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: grab; touch-action: none; }
+  canvas:active { cursor: grabbing; }
+  #wait {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #fef3c7; background: #0a1024; z-index: 20;
+    font: 600 13px/1 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; letter-spacing: 0.08em;
+  }
+  body.ready #wait { display: none; }
+  body.nohud #hud, body.nohud #splitBar, body.nohud #splitLabels { display: none !important; }
+  #hud { font: 12px/1.42 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; color: #f8fafc; pointer-events: none; }
+  #panel {
+    position: fixed; left: 14px; top: 14px; padding: 10px 14px;
+    background: rgba(12, 18, 36, 0.76); border: 1px solid rgba(251, 191, 36, 0.28);
+    border-radius: 10px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    max-width: 560px; z-index: 6;
+  }
+  #panel h1 {
+    margin: 0 0 4px; font-size: 13px; font-weight: 800; letter-spacing: 0.09em;
+    text-transform: uppercase; color: #fcd34d;
+  }
+  #panel h1 span {
+    color: rgba(248, 250, 252, 0.74); font-weight: 500; letter-spacing: 0.02em;
+    text-transform: none; font-size: 11.5px; margin-left: 6px;
+  }
+  #stats { margin: 0; font: inherit; white-space: pre; color: rgba(248, 250, 252, 0.92); }
+  #controls {
+    position: fixed; right: 14px; top: 14px; display: flex; flex-direction: column;
+    gap: 6px; align-items: flex-end; pointer-events: auto; z-index: 7;
+  }
+  .row {
+    display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; padding: 5px 6px;
+    background: rgba(12, 18, 36, 0.78); border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 9px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  }
+  .row button {
+    font: 700 11px/1.2 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+    color: #f1f5f9; background: rgba(148, 163, 184, 0.14);
+    border: 1px solid rgba(148, 163, 184, 0.26); border-radius: 6px;
+    padding: 5px 8px; cursor: pointer; transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .row button:hover { background: rgba(251, 191, 36, 0.22); border-color: rgba(251, 191, 36, 0.65); }
+  .row button[aria-pressed="true"] {
+    background: #fbbf24; color: #1a1102; border-color: #fde68a;
+  }
+  .row button.festive[aria-pressed="true"] {
+    background: #ef4444; color: #fff5f5; border-color: #fca5a5;
+  }
+  #splitBar {
+    position: fixed; top: 0; bottom: 0; left: 50%; width: 16px; margin-left: -8px;
+    cursor: ew-resize; z-index: 9; display: none; pointer-events: auto;
+  }
+  #splitBar::before {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
+    margin-left: -1px; background: rgba(251, 191, 36, 0.88);
+  }
+  #splitBar::after {
+    content: "A | B"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    padding: 4px 8px; border-radius: 999px; background: #fbbf24; color: #1a1102;
+    font: 800 11px/1 ui-monospace, monospace; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.55); white-space: nowrap;
+  }
+  #splitLabels {
+    position: fixed; left: 16px; right: 16px; bottom: 54px; display: none;
+    justify-content: space-between; pointer-events: none; z-index: 8;
+  }
+  #splitLabels span {
+    padding: 4px 10px; border-radius: 7px; background: rgba(12, 18, 36, 0.86);
+    border: 1px solid rgba(251, 191, 36, 0.5); color: #fde68a;
+    font: 700 11px/1.2 ui-monospace, monospace;
+  }
+  #keys {
+    position: fixed; left: 14px; right: 14px; bottom: 10px; display: flex; flex-wrap: nowrap;
+    gap: 5px; font-size: 10.5px; z-index: 6; overflow: hidden;
+  }
+  #keys span {
+    padding: 2.5px 7px 2.5px 5px; background: rgba(12, 18, 36, 0.74);
+    border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 6px;
+    color: rgba(241, 245, 249, 0.88); white-space: nowrap;
+  }
+  #keys b {
+    display: inline-block; min-width: 14px; margin-right: 5px; padding: 0 4px;
+    text-align: center; border-radius: 4px; background: rgba(251, 191, 36, 0.22);
+    color: #fde68a; font-weight: 700;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="wait">sculpting Main Street Christmas ultra-detail diorama...</div>
+<div id="splitBar" title="Drag to compare Classic 1x Nearest vs AASpriteStacker 8x RGSS AA"></div>
+<div id="splitLabels">
+  <span>LEFT: Classic 1x Nearest (No AA)</span>
+  <span id="splitRightLabel">RIGHT: AASpriteStacker (8x RGSS AA + Ultra HD 2x)</span>
+</div>
+<div id="hud">
+  <div id="panel">
+    <h1>MAIN STREET CHRISTMAS <span>Ultra-Detail Winter Village Showcase</span></h1>
+    <pre id="stats"></pre>
+  </div>
+  <div id="controls">
+    <div class="row">
+      <button id="btnCamWide" aria-pressed="true" type="button">Wide Main St</button>
+      <button id="btnCamStreet" aria-pressed="false" type="button">Street Level</button>
+      <button id="btnCamPlaza" aria-pressed="false" type="button">Tree &amp; Rink</button>
+      <button id="btnCamSleigh" class="festive" aria-pressed="false" type="button">Sleigh 6-DOF</button>
+    </div>
+    <div class="row">
+      <button id="btnDetail_classic" aria-pressed="false" type="button">Detail: Classic 1x</button>
+      <button id="btnDetail_ultra" aria-pressed="true" type="button">Detail: Ultra HD 2x (G)</button>
+      <button id="btnSnow" aria-pressed="true" type="button">Snow: Gentle</button>
+      <button id="btnSplit" aria-pressed="false" type="button">A/B Split (E)</button>
+    </div>
+    <div class="row">
+      <button id="btnTod_eve" aria-pressed="true" type="button">Christmas Eve</button>
+      <button id="btnTod_midnight" aria-pressed="false" type="button">Midnight</button>
+      <button id="btnTod_morning" aria-pressed="false" type="button">Morning</button>
+      <button id="btnQual_eco" aria-pressed="false" type="button">Eco 2x</button>
+      <button id="btnQual_balanced" aria-pressed="false" type="button">Bal 4x</button>
+      <button id="btnQual_ultra" aria-pressed="true" type="button">Ultra 8x</button>
+    </div>
+  </div>
+  <div id="keys">
+    <span><b>V</b>Camera</span>
+    <span><b>G</b>Ultra HD / Classic</span>
+    <span><b>E</b>A/B Split</span>
+    <span><b>N</b>Lighting</span>
+    <span><b>WASD</b>Fly Sleigh (in Sleigh Cam)</span>
+    <span><b>Drag / Wheel</b>Orbit &amp; Zoom</span>
+    <span><b>H</b>HUD</span>
+  </div>
+</div>
+<script type="module" src="./bundle.js"></script>
+</body>
+</html>
