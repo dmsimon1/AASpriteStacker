@@ -23,7 +23,6 @@ mkdirSync(resolve(DIST, "assets"), { recursive: true });
 mkdirSync(resolve(DIST, "iso"), { recursive: true });
 mkdirSync(resolve(DIST, "play"), { recursive: true });
 mkdirSync(resolve(DIST, "normandy"), { recursive: true });
-mkdirSync(resolve(DIST, "diorama"), { recursive: true });
 mkdirSync(resolve(DIST, "studio"), { recursive: true });
 mkdirSync(resolve(DIST, "docs"), { recursive: true });
 
@@ -130,7 +129,6 @@ function renderGlobalNav(active, fullbleed = false) {
       <a class="aa-glink" href="/iso/"${cur("iso")}>2.5D Iso</a>
       <a class="aa-glink" href="/play/"${cur("play")}>6-DOF Demo</a>
       <a class="aa-glink aa-ghide-sm" href="/normandy/"${cur("normandy")}>Normandy</a>
-      <a class="aa-glink aa-ghide-sm" href="/diorama/"${cur("diorama")}>Diorama</a>
       <a class="aa-glink" href="/studio/"${cur("studio")}>Studio</a>
       <a class="aa-glink" href="/docs/"${cur("docs")}>Docs</a>
       <a class="aa-ggh" href="https://github.com/dmsimon1/AASpriteStacker" target="_blank" rel="noopener" aria-label="AASpriteStacker open-source repository on GitHub">${GH_ICON_SVG}<span class="aa-ghide-sm">GitHub</span><span class="aa-gstars aa-ghide-sm" data-aa-stars></span></a>
@@ -287,28 +285,6 @@ normandyHtml = normandyHtml
   .replace("</head>", `${FAVICON_LINK}\n${normandyLayoutPatch}\n</head>`)
   .replace("<body>", `<body>\n${renderGlobalNav("normandy", true)}`);
 writeFileSync(resolve(DIST, "normandy/index.html"), normandyHtml, "utf-8");
-
-// 3c. Copy Living Diorama & Drive AA Showcase (MIT attribution to @danielwh2) into /diorama/
-cpSync(resolve(ROOT, "examples/diorama-aa/LICENSE-danielwh2.txt"), resolve(DIST, "diorama/LICENSE-danielwh2.txt"));
-let dioramaHtml = readFileSync(resolve(ROOT, "examples/diorama-aa/index.html"), "utf-8");
-const dioramaLayoutPatch = `${GLOBAL_NAV_CSS}
-<style>
-  body { grid-template-rows: auto auto 1fr auto !important; }
-</style>`;
-const dioramaMeta = renderSocialMeta({
-  title: "Living Diorama & Drive AA | AASpriteStacker",
-  description: "WebGL2 8x RGSS anti-aliasing, Smooth 3D SDF, live A/B split, and MagicaVoxel .vox support inside @danielwh2's Neon Street & Meadow Island diorama, Drive, Rain, and Snow sandbox (MIT).",
-  url: "https://aasprite.com/diorama/",
-  image: "https://aasprite.com/assets/og-diorama.jpg",
-  width: 1200,
-  height: 630,
-  alt: "Neon Street midnight voxel diorama rendered in WebGL2 with AASpriteStacker 8x RGSS anti-aliasing, glowing streetlights, vending kiosk, Cyber GT, and wet rain reflections",
-});
-dioramaHtml = dioramaHtml
-  .replace("</title>", `</title>\n${dioramaMeta}`)
-  .replace("</head>", `${FAVICON_LINK}\n${dioramaLayoutPatch}\n</head>`)
-  .replace("<body>", `<body>\n${renderGlobalNav("diorama", true)}`);
-writeFileSync(resolve(DIST, "diorama/index.html"), dioramaHtml, "utf-8");
 
 // 4. Copy 4-View Look-Dev & A/B AA Studio into /studio/ with persistent global nav!
 let studioHtml = readFileSync(resolve(ROOT, "skills/aa-sprite-stacking/scripts/viewer.html"), "utf-8");
@@ -528,7 +504,6 @@ ${docMeta}
       <div class="footer-links">
         <a href="/play/">Play Demo</a>
         <a href="/normandy/">Normandy AA</a>
-        <a href="/diorama/">Diorama AA</a>
         <a href="/studio/">4-View Studio</a>
         <a href="/llms-full.txt">llms-full.txt</a>
       </div>
