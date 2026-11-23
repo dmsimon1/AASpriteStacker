@@ -22,13 +22,13 @@ function buildVoxelAsset(
   l: number,
   h: number,
   voxelScale: number,
-  fill: (put: (x: number, y: number, z: number, rgb: RGB, emissive?: boolean) => void) => void,
+  fill: (put: (x: number, y: number, z: number, rgb: RGB, emissive?: boolean | number) => void) => void,
   sockets: Record<string, SocketDef> = {},
   pivot?: [number, number, number],
 ): VolumeAsset {
   const rgba = new Uint8Array(w * l * h * 4);
   const emis = new Uint8Array(w * l * h);
-  const put = (x: number, y: number, z: number, rgb: RGB, emissive = false) => {
+  const put = (x: number, y: number, z: number, rgb: RGB, emissive: boolean | number = false) => {
     const ix = Math.round(x);
     const iy = Math.round(y);
     const iz = Math.round(z);
@@ -39,7 +39,7 @@ function buildVoxelAsset(
     rgba[p + 1] = rgb[1];
     rgba[p + 2] = rgb[2];
     rgba[p + 3] = 255;
-    emis[idx] = emissive ? 255 : 0;
+    emis[idx] = typeof emissive === "number" ? Math.max(0, Math.min(255, Math.round(emissive))) : (emissive ? 255 : 0);
   };
   fill(put);
   return createVolumeAsset({
@@ -526,10 +526,12 @@ export function createTowerAsset(
     : [76, 96, 130];
   const lobbyBase: RGB = [34, 40, 56];
   const roofCol: RGB = [48, 56, 74];
-  const winWarm: RGB = [255, 226, 138];
-  const winAmber: RGB = [255, 178, 82];
-  const winCyan: RGB = [118, 232, 255];
-  const winOff: RGB = [18, 25, 42];
+  const winWarm: RGB = [242, 198, 114];
+  const winAmber: RGB = [228, 162, 82];
+  const winDim: RGB = [152, 118, 76];
+  const winCyan: RGB = [118, 194, 224];
+  const winOff: RGB = [16, 22, 38];
+  const winGlassReflect: RGB = [28, 38, 62];
   const neonPink: RGB = [255, 68, 178];
   const neonCyan: RGB = [64, 240, 255];
   const neonGold: RGB = [255, 214, 78];
@@ -565,34 +567,46 @@ export function createTowerAsset(
                 put(x, y, z, wallTrim);
                 continue;
               }
-              // Ground-floor glowing storefront arcade & entrance doors!
+              // Ground-floor glowing storefront arcade & entrance doors (cozy warm glow, zero blowout!)
               if (isGround && z < 3 * m) {
                 const coord = (x === x0 || x === x1) ? (y - y0) : (x - x0);
                 const isShopWin = z >= m && z < 3 * m - (m === 2 ? 1 : 0) && (coord % (3 * m)) >= m;
                 if (isShopWin) {
-                  put(x, y, z, style === "neon" ? neonCyan : winWarm, true);
+                  put(x, y, z, style === "neon" ? winCyan : winWarm, 132);
                 } else {
                   put(x, y, z, z === 0 ? lobbyBase : wallTrim);
                 }
                 continue;
               }
-              // Architectural pilasters & recessed window bays
+              // Architectural pilasters & crisp recessed office/apartment window suites!
               const uCoord = (x === x0 || x === x1) ? (y - y0) : (x - x0);
               const bayStride = 2 * m;
-              const inBay = (uCoord % bayStride) >= (m === 2 ? 1 : 1) && uCoord > m && uCoord < ((x === x0 || x === x1) ? (y1 - y0 - m) : (x1 - x0 - m));
+              const bayPhase = uCoord % bayStride;
+              // Leave crisp 1-voxel stone/steel mullion between every window pane in HD!
+              const inBay = (m === 2 ? (bayPhase === 1 || bayPhase === 2) : (bayPhase === 1)) &&
+                uCoord > m && uCoord < ((x === x0 || x === x1) ? (y1 - y0 - m) : (x1 - x0 - m));
               if (isFloorBand || !inBay) {
                 const sill = style === "brick" && relZ % floorStep === 0;
                 put(x, y, z, sill ? wallTrim : isFloorBand ? wallTrim : wallBase);
               } else {
-                const r = hash3(Math.floor(x / m), Math.floor(y / m), Math.floor(z / floorStep), seed);
-                const litThresh = style === "glass" ? 128 : 142;
-                if (r > litThresh) {
-                  const col = r > 228 ? winCyan : r > 184 ? winWarm : winAmber;
-                  // In HD, leave a subtle 1-voxel dark window blind at the top of some windows!
-                  const blind = m === 2 && (relZ % floorStep === floorStep - 1) && (r & 1) === 0;
-                  put(x, y, z, blind ? winOff : col, !blind);
+                const floorIdx = Math.floor(z / floorStep);
+                const suiteIdx = Math.floor(uCoord / (4 * m)); // cluster adjacent panes into realistic rooms/suites!
+                const floorRoll = hash3(floorIdx, seed, 3, seed);
+                const suiteRoll = hash3(suiteIdx, floorIdx, (x === x0 || x === x1) ? 1 : 2, seed);
+                const paneRoll = hash3(Math.floor(uCoord / bayStride), floorIdx, 9, seed);
+                // Some entire floors dark (unoccupied at midnight), lit suites have warm cohesive room hues!
+                const floorActive = floorRoll > 66;
+                const litThresh = style === "glass" ? 168 : 176;
+                if (floorActive && suiteRoll > litThresh && paneRoll > 48) {
+                  const col = suiteRoll > 236 ? winCyan : suiteRoll > 212 ? winWarm : suiteRoll > 190 ? winAmber : winDim;
+                  // Top voxel of each HD window pane slightly shaded like interior ceiling / venetian blind!
+                  const isTopOfPane = m === 2 && (relZ % floorStep === floorStep - 1);
+                  const isUpperLit = isTopOfPane && (suiteRoll & 1) === 0;
+                  const emisVal = isUpperLit ? 68 : suiteRoll > 212 ? 128 : 108;
+                  put(x, y, z, isUpperLit ? winDim : col, emisVal);
                 } else {
-                  put(x, y, z, winOff);
+                  const subtleSkyRef = ((floorIdx + suiteIdx) % 7 === 0);
+                  put(x, y, z, subtleSkyRef ? winGlassReflect : winOff);
                 }
               }
             }
@@ -753,12 +767,17 @@ export function createHelipadTowerAsset(detail: DetailLevel): VolumeAsset {
             continue;
           }
           const cornerPier = (x < 2 * m || x >= w - 2 * m) && (y < 2 * m || y >= l - 2 * m);
-          const band = z % (3 * m) < m;
-          if (cornerPier || band) {
+          const band = z % (4 * m) < m;
+          const mullion = ((x === 0 || x === w - 1) ? y : x) % (2 * m) === 0;
+          if (cornerPier || band || mullion) {
             put(x, y, z, band ? TRIM : WALL);
           } else {
-            const lit = ((Math.floor(x / m) + Math.floor(y / m) + Math.floor(z / m) * 3) % 5) < 2;
-            put(x, y, z, lit ? [122, 224, 255] : [20, 30, 52], lit);
+            // Sleek dark smoked obsidian glass with subtle occasional late-night ops floor glow
+            const fl = Math.floor(z / (4 * m));
+            const st = Math.floor(((x === 0 || x === w - 1) ? y : x) / (5 * m));
+            const r = hash3(st, fl, (x === 0 || x === w - 1) ? 1 : 2, 99);
+            const lit = r > 196 && (z % (4 * m)) >= m + (m === 2 ? 1 : 0);
+            put(x, y, z, lit ? [116, 198, 232] : [18, 26, 46], lit ? 112 : 0);
           }
         }
       }

@@ -213,11 +213,6 @@ vec3 shadeVoxel(vec3 baseLin, vec3 worldN, float ao, float emisFlag, float selfS
   float nightW = max(0.0, (uTimeOfDay - 0.48) / 0.52);
   bool arcade = (uStyle == 0 || uStyle == 3);
 
-  if (emisFlag > 0.5) {
-    float boost = 1.0 + (0.45 + nightW * 0.9) * emisBoost;
-    return baseLin * boost + vec3(0.15, 0.09, 0.02) * emisBoost;
-  }
-
   vec3 shMul = arcade
     ? mix(mix(vec3(0.50, 0.60, 0.84), vec3(0.44, 0.40, 0.68), sunsetW), vec3(0.18, 0.24, 0.44), nightW)
     : mix(mix(vec3(0.62, 0.69, 0.84), vec3(0.52, 0.48, 0.70), sunsetW), vec3(0.20, 0.25, 0.42), nightW);
@@ -248,7 +243,19 @@ vec3 shadeVoxel(vec3 baseLin, vec3 worldN, float ao, float emisFlag, float selfS
   vec3 skyBounce = mix(vec3(1.03, 0.96, 0.88), vec3(0.96, 1.01, 1.06), hemi);
   float bounceBack = max(0.0, -ndotl) * (1.0 - nightW * 0.7) * 0.10;
   tint = tint * mix(vec3(1.0), skyBounce, 0.35) + vec3(0.14, 0.10, 0.06) * bounceBack;
-  return baseLin * srgbToLin(clamp(tint, 0.0, 2.2)) * ao;
+  vec3 shadedLin = baseLin * srgbToLin(clamp(tint, 0.0, 2.2)) * ao;
+
+  if (emisFlag > 0.01) {
+    // Graded continuous emissive:
+    //  0.25..0.55 -> rich cozy interior window & shopfront glow without clipping mullions to white
+    //  0.80..1.00 -> bright sparkling beacons, fairy lights, neon signs & afterburners
+    float selfLit = smoothstep(0.02, 0.45, emisFlag);
+    float hot = max(0.0, (emisFlag - 0.55) / 0.45);
+    float boost = mix(0.92, 1.0 + (0.42 + nightW * 0.85) * emisBoost, hot);
+    vec3 glowLin = baseLin * boost + vec3(0.10, 0.06, 0.015) * emisBoost * hot;
+    return mix(shadedLin, glowLin, selfLit);
+  }
+  return shadedLin;
 }
 
 bool traceLocalShadow(vec3 ro, vec3 rd) {
@@ -570,7 +577,8 @@ void main() {
   }
 
   outColor = vec4(finalSrgb, cov);
-  outAux = vec4(outlineOn ? objIdNorm : 0.0, avgEm, isLegacy ? 1.0 : 0.0, cov);
+  float bloomSignal = clamp((avgEm - 0.34) * 1.52, 0.0, 1.0);
+  outAux = vec4(outlineOn ? objIdNorm : 0.0, bloomSignal, isLegacy ? 1.0 : 0.0, cov);
 }`;
 
 export const RIBBON_VS = `#version 300 es
