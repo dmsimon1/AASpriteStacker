@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Airwolf Midnight Pixel City (28-Slice 6-DOF AA) | AASpriteStacker</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #070d1c; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: grab; touch-action: none; }
+  canvas:active { cursor: grabbing; }
+  #wait {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #e2e8f0; background: #070d1c; z-index: 20;
+    font: 600 13px/1 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; letter-spacing: 0.08em;
+  }
+  body.ready #wait { display: none; }
+  body.nohud #hud, body.nohud #splitBar, body.nohud #splitLabels { display: none !important; }
+  #hud { font: 12px/1.42 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; color: #e2e8f0; pointer-events: none; }
+  #panel {
+    position: fixed; left: 14px; top: 14px; padding: 10px 14px;
+    background: rgba(7, 13, 28, 0.74); border: 1px solid rgba(56, 189, 248, 0.24);
+    border-radius: 10px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    max-width: 490px; z-index: 6;
+  }
+  #panel h1 {
+    margin: 0 0 4px; font-size: 13px; font-weight: 800; letter-spacing: 0.09em;
+    text-transform: uppercase; color: #38bdf8;
+  }
+  #panel h1 span {
+    color: rgba(226, 232, 240, 0.72); font-weight: 500; letter-spacing: 0.02em;
+    text-transform: none; font-size: 11.5px; margin-left: 6px;
+  }
+  #stats { margin: 0; font: inherit; white-space: pre; color: rgba(241, 245, 249, 0.92); }
+  #controls {
+    position: fixed; right: 14px; top: 14px; display: flex; flex-direction: column;
+    gap: 6px; align-items: flex-end; pointer-events: auto; z-index: 7;
+  }
+  .row {
+    display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; padding: 5px 6px;
+    background: rgba(7, 13, 28, 0.76); border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 9px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  }
+  .row button {
+    font: 700 11px/1.2 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+    color: #e2e8f0; background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.26); border-radius: 6px;
+    padding: 5px 8px; cursor: pointer; transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .row button:hover { background: rgba(56, 189, 248, 0.22); border-color: rgba(56, 189, 248, 0.65); }
+  .row button[aria-pressed="true"] {
+    background: #38bdf8; color: #04111f; border-color: #7dd3fc;
+  }
+  .row button.turbo[aria-pressed="true"] {
+    background: #fb923c; color: #160902; border-color: #fed7aa;
+  }
+  .row button.explode[aria-pressed="true"] {
+    background: #facc15; color: #181102; border-color: #fef08a;
+  }
+  #splitBar {
+    position: fixed; top: 0; bottom: 0; left: 50%; width: 16px; margin-left: -8px;
+    cursor: ew-resize; z-index: 9; display: none; pointer-events: auto;
+  }
+  #splitBar::before {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
+    margin-left: -1px; background: rgba(56, 189, 248, 0.85);
+  }
+  #splitBar::after {
+    content: "A | B"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    padding: 4px 8px; border-radius: 999px; background: #38bdf8; color: #04111f;
+    font: 800 11px/1 ui-monospace, monospace; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.55); white-space: nowrap;
+  }
+  #splitLabels {
+    position: fixed; left: 16px; right: 16px; bottom: 56px; display: none;
+    justify-content: space-between; pointer-events: none; z-index: 8;
+  }
+  #splitLabels span {
+    padding: 4px 10px; border-radius: 7px; background: rgba(7, 13, 28, 0.84);
+    border: 1px solid rgba(56, 189, 248, 0.45); color: #7dd3fc;
+    font: 700 11px/1.2 ui-monospace, monospace;
+  }
+  #keys {
+    position: fixed; left: 12px; right: 12px; bottom: 10px; display: flex; flex-wrap: nowrap;
+    gap: 4px; font-size: 10px; z-index: 6; overflow: hidden;
+  }
+  #keys span {
+    padding: 2.5px 6px 2.5px 4px; background: rgba(7, 13, 28, 0.74);
+    border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 6px;
+    color: rgba(226, 232, 240, 0.86); white-space: nowrap;
+  }
+  #keys b {
+    display: inline-block; min-width: 14px; margin-right: 5px; padding: 0 4px;
+    text-align: center; border-radius: 4px; background: rgba(56, 189, 248, 0.22);
+    color: #7dd3fc; font-weight: 700;
+  }
+  @media (max-width: 780px) {
+    #panel { max-width: calc(100vw - 28px); font-size: 10.5px; }
+    #controls { top: auto; bottom: 12px; right: 10px; left: 10px; align-items: center; }
+    #keys { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="wait">initializing Airwolf 28-slice WebGL2 volume...</div>
+<div id="splitBar" title="Drag to compare Classic 1x Nearest vs AASpriteStacker 8x RGSS AA"></div>
+<div id="splitLabels">
+  <span>LEFT: Classic 1x Nearest (No AA)</span>
+  <span id="splitRightLabel">RIGHT: AASpriteStacker (8x RGSS AA + 1-OBB 3D Volume)</span>
+</div>
+<div id="hud">
+  <div id="panel">
+    <h1>AIRWOLF MIDNIGHT CITY <span>28-Slice 6-DOF + Volumetric Searchlight</span></h1>
+    <pre id="stats"></pre>
+  </div>
+  <div id="controls">
+    <div class="row">
+      <button id="btnCamIso" aria-pressed="true" type="button">2.5D Iso</button>
+      <button id="btnCamChase" aria-pressed="false" type="button">Chase 6-DOF</button>
+      <button id="btnCamOrbit" aria-pressed="false" type="button">Bay Orbit</button>
+      <button id="btnExplode" class="explode" aria-pressed="false" type="button">Exploded 28-Slice (X)</button>
+    </div>
+    <div class="row">
+      <button id="btnAutopilot" aria-pressed="true" type="button">Autopilot (P)</button>
+      <button id="btnTurbo" class="turbo" aria-pressed="false" type="button">Turbo (Shift)</button>
+      <button id="btnSpot" aria-pressed="true" type="button">Searchlight (M)</button>
+      <button id="btnPad" aria-pressed="false" type="button">Land H Pad (L)</button>
+    </div>
+    <div class="row">
+      <button id="btnTod_night" aria-pressed="true" type="button">Midnight</button>
+      <button id="btnTod_sunset" aria-pressed="false" type="button">Sunset</button>
+      <button id="btnTod_day" aria-pressed="false" type="button">Day</button>
+      <button id="btnSplit" aria-pressed="false" type="button">A/B Split (E)</button>
+    </div>
+    <div class="row">
+      <button id="btnQual_eco" aria-pressed="false" type="button">Eco 2x</button>
+      <button id="btnQual_balanced" aria-pressed="false" type="button">Bal 4x</button>
+      <button id="btnQual_ultra" aria-pressed="true" type="button">Ultra 8x</button>
+    </div>
+  </div>
+  <div id="keys">
+    <span><b>WASD</b>Fly 6-DOF</span>
+    <span><b>Space / C</b>Climb / Descend</span>
+    <span><b>Shift</b>Mach Turbo</span>
+    <span><b>X</b>Exploded 28-Slice</span>
+    <span><b>V</b>Camera</span>
+    <span><b>M</b>Searchlight</span>
+    <span><b>L</b>Land on H Pad</span>
+    <span><b>E</b>A/B Split</span>
+    <span><b>N</b>Time</span>
+    <span><b>Drag / Wheel</b>Orbit &amp; Zoom</span>
+    <span><b>H</b>HUD</span>
+  </div>
+</div>
+<script type="module" src="./bundle.js"></script>
+</body>
+</html>

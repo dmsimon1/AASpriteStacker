@@ -48,3 +48,19 @@ await build({
 });
 
 console.log("Bundled examples/minimal-2d/bundle.js");
+
+const AIRWOLF_DIR = resolve(ROOT, "examples/airwolf-city");
+await build({
+  entryPoints: [resolve(AIRWOLF_DIR, "src/main.ts")],
+  outfile: resolve(AIRWOLF_DIR, "bundle.js"),
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  minify: true,
+  sourcemap: true,
+  alias: {
+    "@aastack/core": resolve(ROOT, "packages/core/dist/index.js"),
+  },
+});
+
+console.log("Bundled examples/airwolf-city/bundle.js");

@@ -22,6 +22,7 @@ rmSync(DIST, { recursive: true, force: true });
 mkdirSync(resolve(DIST, "assets"), { recursive: true });
 mkdirSync(resolve(DIST, "iso"), { recursive: true });
 mkdirSync(resolve(DIST, "play"), { recursive: true });
+mkdirSync(resolve(DIST, "heli"), { recursive: true });
 mkdirSync(resolve(DIST, "normandy"), { recursive: true });
 mkdirSync(resolve(DIST, "studio"), { recursive: true });
 mkdirSync(resolve(DIST, "docs"), { recursive: true });
@@ -128,6 +129,7 @@ function renderGlobalNav(active, fullbleed = false) {
       <a class="aa-glink" href="/primer/"${cur("primer")}>Primer</a>
       <a class="aa-glink" href="/iso/"${cur("iso")}>2.5D Iso</a>
       <a class="aa-glink" href="/play/"${cur("play")}>6-DOF Demo</a>
+      <a class="aa-glink" href="/heli/"${cur("heli")}>Airwolf</a>
       <a class="aa-glink aa-ghide-sm" href="/normandy/"${cur("normandy")}>Normandy</a>
       <a class="aa-glink" href="/studio/"${cur("studio")}>Studio</a>
       <a class="aa-glink" href="/docs/"${cur("docs")}>Docs</a>
@@ -253,6 +255,41 @@ await build({
   bundle: true,
   splitting: true,
   chunkNames: "dev-bridge-[name]-[hash]",
+  format: "esm",
+  target: "es2022",
+  minify: true,
+  alias: ALIASES,
+});
+
+// 3a. Bundle playable Airwolf Midnight Pixel City (28-slice 6-DOF helicopter + volumetric searchlight) into /heli/
+let heliHtml = readFileSync(resolve(ROOT, "examples/airwolf-city/index.html"), "utf-8");
+const heliLayoutPatch = `${GLOBAL_NAV_CSS}
+<style>
+  body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+  body.nohud .aa-gnav { display: none !important; }
+  canvas { flex: 1 1 auto; width: 100%; height: auto !important; min-height: 0; }
+  #panel, #controls { top: 68px; }
+  #splitBar { top: 56px; }
+</style>`;
+const heliMeta = renderSocialMeta({
+  title: "Airwolf Midnight Pixel City (28-Slice 6-DOF AA) | AASpriteStacker",
+  description: "Playable 28-layer sprite-stacked Airwolf helicopter flying over a midnight pixel city and coastal lighthouse with 6-DOF physics, Mach turbo boost, volumetric nose searchlight, and 1-draw-call Exploded 28-Slice assembly.",
+  url: "https://aasprite.com/heli/",
+  image: "https://aasprite.com/assets/og-heli.jpg",
+  width: 1200,
+  height: 630,
+  alt: "Airwolf 28-slice anti-aliased helicopter sweeping a volumetric searchlight across a midnight pixel city and coastal lighthouse",
+});
+heliHtml = heliHtml
+  .replace("</title>", `</title>\n${heliMeta}`)
+  .replace("</head>", `${FAVICON_LINK}\n${heliLayoutPatch}\n</head>`)
+  .replace("<body>", `<body>\n${renderGlobalNav("heli", true)}`);
+writeFileSync(resolve(DIST, "heli/index.html"), heliHtml, "utf-8");
+
+await build({
+  entryPoints: [resolve(ROOT, "examples/airwolf-city/src/main.ts")],
+  outfile: resolve(DIST, "heli/bundle.js"),
+  bundle: true,
   format: "esm",
   target: "es2022",
   minify: true,
@@ -503,6 +540,7 @@ ${docMeta}
       <div><strong>AASpriteStacker</strong> · MIT License · <a href="/">aasprite.com</a></div>
       <div class="footer-links">
         <a href="/play/">Play Demo</a>
+        <a href="/heli/">Airwolf City</a>
         <a href="/normandy/">Normandy AA</a>
         <a href="/studio/">4-View Studio</a>
         <a href="/llms-full.txt">llms-full.txt</a>

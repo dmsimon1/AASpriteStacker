@@ -12,5 +12,7 @@ examples/flight-6dof/dev-bridge*.js
 examples/flight-6dof/dev-bridge*.js.map
 examples/minimal-2d/bundle.js
 examples/minimal-2d/bundle.js.map
+examples/airwolf-city/bundle.js
+examples/airwolf-city/bundle.js.map
 site/dist/
 .cloudflare/
