@@ -351,7 +351,7 @@ bool traceVoxelDdaHit(
   else faceN = vec3(0.0, 0.0, -float(stepDir.z));
 
   float tCur = 0.0;
-  for (int i = 0; i < 256; i++) {
+  for (int i = 0; i < 384; i++) {
     vec4 tex = texelFetch(uAlbedoTex, cell, 0);
     if (tex.a >= 0.5) {
       outCell = cell;

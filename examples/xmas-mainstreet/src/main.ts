@@ -1,9 +1,11 @@
 /**
- * Main Street Christmas — Ultra-Detail Winter Village Diorama (@aastack/core).
- * Showcases ultra-high-detail procedural voxel architecture, graded continuous emissive lighting,
- * overhead catenary festoon light strands, 6-DOF Santa's Sleigh flight, gliding Holiday Trolley,
- * reflective Frozen Ice Skating Rink with spinning skaters, drifting 3D snowflakes, and live
- * Detail: Classic 1x / Ultra HD 2x + A/B Split comparison.
+ * Main Street Christmas v2 — Micro-Voxel HD-2D Winter Village Diorama (@aastack/core).
+ * Combines 18-neighbor baked cavity AO, HD-2D pbr-lite velvety shading, 8 bespoke historic
+ * buildings (Clocktower Town Hall, Turret Toy Emporium, Starlight Art Deco Cinema, Jetted
+ * Tudor Bakery, Dutch Stepped-Gable Bookshop, Veranda Inn, Victorian Bandstand Gazebo, and
+ * Arched Granite Creek Bridge), 116-slice Giant Christmas Tree, 1900s Heritage Trolley,
+ * Victorian Horse-Drawn Sleigh Carriage, Fairy-Lit Winter Birches, Crackling Ice-Rink Braziers,
+ * Storybook Villagers holding presents, and 6-DOF Santa's Sleigh!
  */
 
 import {
@@ -23,20 +25,33 @@ import {
   type VolumeAsset,
 } from "@aastack/core";
 import {
-  createClocktowerHallAsset,
-  createHolidayTrolleyAsset,
+  createDutchGableBookshop,
+  createGrandClocktowerHall,
+  createParkBandstandGazebo,
+  createStarlightCinema,
+  createStoneArchBridge,
+  createTudorBakeryCafe,
+  createTurretToyEmporium,
+  createVerandaNorthStarInn,
+} from "./buildings.js";
+import {
+  createDetailedSnowman,
+  createFairyBirchTree,
+  createFireBrazier,
+  createGiantChristmasTree,
+  createHeritageTrolley,
+  createHorseSleighCarriage,
   createLightProxyAsset,
-  createMarketStallAsset,
-  createSantaSleighAsset,
-  createSnowPineAsset,
-  createSnowmanAsset,
-  createTownSquareTreeAsset,
-  createVictorianLampAsset,
-  createVictorianShopAsset,
-  createWinterPersonAsset,
-  createWoodyWagonAsset,
-  type DetailLevel,
-} from "./assets.js";
+  createMarketStall,
+  createOrganicSnowConifer,
+  createSantaSleighAerial,
+  createSnowBench,
+  createStorybookVillager,
+  createVictorianTripleLamp,
+  createVintagePostbox,
+  createWoodyWagon,
+} from "./props.js";
+import type { DetailLevel } from "./voxel-kit.js";
 import { XMAS_GROUND_FS } from "./xmas-ground-shader.js";
 
 type CamMode = "wide" | "street" | "plaza" | "sleigh";
@@ -62,15 +77,16 @@ const renderer = new AASpriteRenderer(canvas, {
   preserveDrawingBuffer: true,
 });
 
+// Use HD-2D + pbr-lite velvety lighting + whisper-thin outline (0.26) so 18-neighbor cavity AO shines!
 const world = new SceneWorld({
   seed: 25,
-  style: "arcade-8bit",
+  style: "hd-2d",
   aaMode: "voxel-dda",
   samples: initQuality === "eco" ? 2 : initQuality === "balanced" ? 4 : 8,
   camera: {
     mode: "free",
-    pos: [34, 34, 54],
-    target: [-2, 6, -4],
+    pos: [32, 30, 56],
+    target: [-1, 6, -2],
     up: [0, 1, 0],
     fovDeg: 38,
     orthoSize: 32,
@@ -78,12 +94,12 @@ const world = new SceneWorld({
     far: 650,
   },
   lighting: {
-    sunAzimuthDeg: 32,
-    sunElevationDeg: 34,
-    timeOfDay: 0.78, // Magical Christmas Eve cobalt twilight!
-    fogDensity: 0.24,
-    shadeStyle: "toon-aa",
-    outlineWidth: 0.56,
+    sunAzimuthDeg: 34,
+    sunElevationDeg: 32,
+    timeOfDay: 0.80,
+    fogDensity: 0.22,
+    shadeStyle: "pbr-lite",
+    outlineWidth: 0.24,
     selfShadow: true,
   },
   terrain: {
@@ -102,7 +118,6 @@ const world = new SceneWorld({
   },
 });
 
-// Tiny crisp 1-voxel glowing snowflake asset (1 instanced draw call for 72 drifting flakes!)
 function createSnowflakeAsset(): VolumeAsset {
   return createVolumeAsset({
     id: "snow_flake",
@@ -110,7 +125,7 @@ function createSnowflakeAsset(): VolumeAsset {
     w: 2,
     l: 2,
     h: 2,
-    voxelScale: 0.14,
+    voxelScale: 0.13,
     pivot: [1, 1, 1],
     rgba: new Uint8Array([
       244, 248, 255, 255, 0, 0, 0, 0,
@@ -118,14 +133,14 @@ function createSnowflakeAsset(): VolumeAsset {
       0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0,
     ]),
-    explicitEmissive: new Uint8Array([155, 0, 0, 0, 0, 0, 0, 0]),
+    explicitEmissive: new Uint8Array([145, 0, 0, 0, 0, 0, 0, 0]),
     computeSdf: false,
-    provenance: { kind: "blueprint", source: "xmas-mainstreet" },
+    provenance: { kind: "blueprint", source: "xmas-mainstreet-v2" },
   });
 }
 
 // ---------------------------------------------------------------------------
-// 1. Dual-Resolution Asset Cache (Classic 1x <-> Ultra HD 2x live hot-swap!)
+// 1. Dual-Resolution Micro-Voxel Asset Pack (Classic 1x <-> Ultra HD 2x!)
 // ---------------------------------------------------------------------------
 const assetPacks: Partial<Record<DetailLevel, VolumeAsset[]>> = {};
 world.registerAsset(createLightProxyAsset());
@@ -133,26 +148,36 @@ world.registerAsset(createSnowflakeAsset());
 
 function buildAssetPack(detail: DetailLevel): VolumeAsset[] {
   return [
-    createTownSquareTreeAsset(detail),
-    createClocktowerHallAsset(detail),
-    createVictorianShopAsset("shop_toys", "toys", 11, detail),
-    createVictorianShopAsset("shop_bakery", "bakery", 23, detail),
-    createVictorianShopAsset("shop_books", "books", 37, detail),
-    createVictorianShopAsset("shop_cinema", "cinema", 47, detail),
-    createVictorianShopAsset("shop_jeweler", "jeweler", 59, detail),
-    createVictorianShopAsset("shop_tavern", "tavern", 71, detail),
-    createMarketStallAsset("stall_red", [188, 38, 46], detail),
-    createMarketStallAsset("stall_green", [36, 108, 66], detail),
-    createHolidayTrolleyAsset(detail),
-    createWoodyWagonAsset("woody_green", [34, 92, 62], detail),
-    createWoodyWagonAsset("woody_red", [176, 36, 44], detail),
-    createSantaSleighAsset(detail),
-    createVictorianLampAsset(detail),
-    createSnowPineAsset(detail),
-    createSnowmanAsset(detail),
-    createWinterPersonAsset("skater_red", [198, 42, 52], [244, 214, 118], detail),
-    createWinterPersonAsset("skater_blue", [44, 98, 178], [226, 48, 56], detail),
-    createWinterPersonAsset("skater_green", [42, 128, 76], [240, 236, 224], detail),
+    // 8 Bespoke Architectural Landmarks
+    createGrandClocktowerHall(detail),
+    createTurretToyEmporium(detail),
+    createStarlightCinema(detail),
+    createTudorBakeryCafe(detail),
+    createDutchGableBookshop(detail),
+    createVerandaNorthStarInn(detail),
+    createParkBandstandGazebo(detail),
+    createStoneArchBridge(detail),
+    // Hero Tree, Heritage Vehicles & Aerial Sleigh
+    createGiantChristmasTree(detail),
+    createHeritageTrolley(detail),
+    createHorseSleighCarriage(detail),
+    createWoodyWagon("woody_green", [30, 80, 54], detail),
+    createSantaSleighAerial(detail),
+    // Market Chalets, Storybook Villagers & Rich Street Clutter
+    createMarketStall("stall_red", [168, 36, 44], detail),
+    createMarketStall("stall_green", [32, 92, 58], detail),
+    createVictorianTripleLamp(detail),
+    createFairyBirchTree(detail),
+    createOrganicSnowConifer("xmas_spruce_tall", true, detail),
+    createOrganicSnowConifer("xmas_fir_broad", false, detail),
+    createDetailedSnowman(detail),
+    createSnowBench(detail),
+    createFireBrazier(detail),
+    createVintagePostbox(detail),
+    createStorybookVillager("villager_red", [164, 38, 46], [234, 198, 102], "gift", detail),
+    createStorybookVillager("villager_navy", [38, 66, 118], [186, 42, 48], "cocoa", detail),
+    createStorybookVillager("villager_green", [34, 92, 58], [234, 224, 206], "skate", detail),
+    createStorybookVillager("villager_plum", [112, 46, 86], [232, 192, 92], "skate", detail),
   ];
 }
 
@@ -162,15 +187,15 @@ function applyDetailPack(detail: DetailLevel): void {
     assetPacks[detail] = buildAssetPack(detail);
   }
   for (const a of assetPacks[detail]!) world.registerAsset(a);
-  world.doc.lighting.outlineWidth = detail === "ultra" ? 0.56 : 0.78;
+  world.doc.lighting.outlineWidth = detail === "ultra" ? 0.24 : 0.42;
 }
 
 // ---------------------------------------------------------------------------
-// 2. Populate Main Street Christmas Village
+// 2. Populate Micro-Voxel Main Street Christmas Village
 // ---------------------------------------------------------------------------
 const initialEntities: EntityState[] = [];
 
-// Shadow-caster slot 0 (ALWAYS present): Moving Holiday Trolley Headlight Pool!
+// Shadow-caster slot 0 (ALWAYS present): Moving Heritage Trolley Headlight Pool
 initialEntities.push({
   id: "trolley_headlight_proxy",
   assetId: "light_proxy",
@@ -183,7 +208,7 @@ initialEntities.push({
   tag: "proxy",
 });
 
-// Shadow-caster slot 1 (ALWAYS present): Santa's Sleigh Soft Aerial Shadow!
+// Shadow-caster slot 1 (ALWAYS present): Santa's Sleigh Soft Aerial Shadow
 initialEntities.push({
   id: "sleigh_shadow_proxy",
   assetId: "light_proxy",
@@ -196,11 +221,11 @@ initialEntities.push({
   tag: "proxy",
 });
 
-// Hero Landmark 1: Soaring Grand Clocktower Town Hall anchoring North Main Street (faces South +Z!)
+// Hero Landmark 1: Grand Victorian Clocktower & Town Hall anchoring North Main Street!
 initialEntities.push({
   id: "town_hall",
   assetId: "xmas_clocktower",
-  pos: [0, 0, -35.5],
+  pos: [0, 0, -36.5],
   rot: quatFromYawPitchRoll(Math.PI, 0, 0),
   scale: 1.0,
   aaPriority: "hero",
@@ -209,7 +234,7 @@ initialEntities.push({
   tag: "landmark",
 });
 
-// Hero Landmark 2: Giant Decorated Town Square Christmas Tree dead center of the Plaza!
+// Hero Landmark 2: 116-Slice Giant Town Square Christmas Tree!
 initialEntities.push({
   id: "giant_tree",
   assetId: "xmas_giant_tree",
@@ -222,12 +247,38 @@ initialEntities.push({
   tag: "landmark",
 });
 
-// 4 Cozy Wooden Christmas Market Stalls framing the Giant Christmas Tree in Town Square
+// Hero Landmark 3: Victorian Park Bandstand Gazebo beside the Frozen Ice Skating Rink!
+initialEntities.push({
+  id: "park_gazebo",
+  assetId: "xmas_gazebo",
+  pos: [-22.0, 0, -35.5],
+  rot: quatFromYawPitchRoll(Math.PI * 0.78, 0, 0),
+  scale: 1.0,
+  aaPriority: "hero",
+  outline: true,
+  emissiveBoost: 1.4,
+  tag: "landmark",
+});
+
+// Hero Landmark 4: Arched Granite Footbridge spanning our winding frozen winter creek at South Main St (Z = 49)!
+initialEntities.push({
+  id: "creek_bridge",
+  assetId: "xmas_bridge",
+  pos: [0, 0, 49.0],
+  rot: quatFromYawPitchRoll(Math.PI / 2, 0, 0),
+  scale: 1.25,
+  aaPriority: "hero",
+  outline: true,
+  emissiveBoost: 1.35,
+  tag: "landmark",
+});
+
+// 4 Timber Christmas Market Chalets framing the Giant Christmas Tree in Town Square
 const STALLS: Array<[string, string, number, number, number]> = [
-  ["stall_ne", "stall_red", 9.6, -24.5, Math.PI * 0.72],
-  ["stall_se", "stall_green", 9.6, -13.5, Math.PI * 0.28],
-  ["stall_nw", "stall_green", -8.2, -26.0, -Math.PI * 0.75],
-  ["stall_sw", "stall_red", -8.2, -12.0, -Math.PI * 0.25],
+  ["stall_ne", "stall_red", 9.8, -24.5, Math.PI * 0.72],
+  ["stall_se", "stall_green", 9.8, -13.5, Math.PI * 0.28],
+  ["stall_nw", "stall_green", -8.4, -26.2, -Math.PI * 0.75],
+  ["stall_sw", "stall_red", -8.4, -11.8, -Math.PI * 0.25],
 ];
 for (const [id, assetId, sx, sz, yaw] of STALLS) {
   initialEntities.push({
@@ -243,27 +294,24 @@ for (const [id, assetId, sx, sz, yaw] of STALLS) {
   });
 }
 
-// 10 Handcrafted Victorian Shopfronts lining BOTH sides of Main Street!
-// West row (X = -15.6) faces EAST (+X -> yaw = -PI/2); East row (X = +15.6) faces WEST (-X -> yaw = +PI/2)!
-const WEST_SHOPS: Array<[string, string, number]> = [
-  ["w_toys", "shop_toys", 2],
-  ["w_bakery", "shop_bakery", 12],
-  ["w_books", "shop_books", 22],
-  ["w_jeweler", "shop_jeweler", 32],
-  ["w_tavern", "shop_tavern", 42],
+// 8 Bespoke Main Street Historic Buildings (varied silhouettes, roof angles, turrets, Dutch gables & marquees!)
+const WEST_ROW: Array<[string, string, number]> = [
+  ["w_toys", "shop_toys", 2.0],         // Corner Turret Toy Emporium!
+  ["w_bakery", "shop_bakery", 13.5],    // Jetted Tudor Alpine Bakery!
+  ["w_books", "shop_books", 25.0],      // Dutch Stepped-Gable Bookshop + Iron Balcony!
+  ["w_inn_sw", "shop_inn", 36.8],       // Wrap-Around Veranda Corner Lodge!
 ];
-const EAST_SHOPS: Array<[string, string, number]> = [
-  ["e_cinema", "shop_cinema", 2],
-  ["e_jeweler", "shop_jeweler", 12],
-  ["e_toys", "shop_toys", 22],
-  ["e_bakery", "shop_bakery", 32],
-  ["e_books", "shop_books", 42],
+const EAST_ROW: Array<[string, string, number]> = [
+  ["e_cinema", "shop_cinema", 2.0],     // Grand Starlight Art Deco Cinema!
+  ["e_books", "shop_books", 13.5],      // Dutch Stepped-Gable Emporium!
+  ["e_toys", "shop_toys", 25.0],        // Turret Confectionery & Toys!
+  ["e_bakery", "shop_bakery", 36.5],    // Timber Cocoa & Pastry House!
 ];
-for (const [id, assetId, z] of WEST_SHOPS) {
+for (const [id, assetId, z] of WEST_ROW) {
   initialEntities.push({
     id,
     assetId,
-    pos: [-15.6, 0, z],
+    pos: [-15.8, 0, z],
     rot: quatFromYawPitchRoll(-Math.PI / 2, 0, 0),
     scale: 1.0,
     aaPriority: "hero",
@@ -272,11 +320,11 @@ for (const [id, assetId, z] of WEST_SHOPS) {
     tag: "building",
   });
 }
-for (const [id, assetId, z] of EAST_SHOPS) {
+for (const [id, assetId, z] of EAST_ROW) {
   initialEntities.push({
     id,
     assetId,
-    pos: [15.6, 0, z],
+    pos: [15.8, 0, z],
     rot: quatFromYawPitchRoll(Math.PI / 2, 0, 0),
     scale: 1.0,
     aaPriority: "hero",
@@ -286,20 +334,20 @@ for (const [id, assetId, z] of EAST_SHOPS) {
   });
 }
 
-// Cozy North Star Inn framing the East Town Square wing (angled warmly toward Plaza & Main Street!)
+// Cozy North Star Veranda Inn framing the East Town Square wing (windows glowing on ALL 4 sides!)
 initialEntities.push({
   id: "east_plaza_inn",
-  assetId: "shop_tavern",
-  pos: [22.5, 0, -21.5],
-  rot: quatFromYawPitchRoll(Math.PI * 0.78, 0, 0),
-  scale: 1.12,
+  assetId: "shop_inn",
+  pos: [22.0, 0, -21.0],
+  rot: quatFromYawPitchRoll(Math.PI * 0.72, 0, 0),
+  scale: 1.06,
   aaPriority: "hero",
   outline: true,
   emissiveBoost: 1.25,
   tag: "building",
 });
 
-// Vintage Red & Forest-Green Holiday Trolley gliding along the center Main Street tracks!
+// Heritage 1900s Mahogany Holiday Trolley gliding along the center rails!
 initialEntities.push({
   id: "holiday_trolley",
   assetId: "xmas_trolley",
@@ -312,11 +360,11 @@ initialEntities.push({
   tag: "vehicle",
 });
 
-// 2 Vintage 1950s Woody Station Wagons with snowy Christmas trees tied to their roofs!
+// Victorian Horse-Drawn Christmas Sleigh Carriage trotting northbound along East lane!
 initialEntities.push({
-  id: "woody_northbound",
-  assetId: "woody_green",
-  pos: [3.9, 0, 28],
+  id: "horse_carriage",
+  assetId: "xmas_carriage",
+  pos: [4.1, 0, 26],
   rot: quatIdentity(),
   scale: 1.0,
   aaPriority: "hero",
@@ -324,10 +372,12 @@ initialEntities.push({
   emissiveBoost: 1.35,
   tag: "vehicle",
 });
+
+// 1950s Woody Station Wagon with snowy pine tree tied to the roof cruising southbound!
 initialEntities.push({
   id: "woody_southbound",
-  assetId: "woody_red",
-  pos: [-3.9, 0, 8],
+  assetId: "woody_green",
+  pos: [-4.1, 0, 8],
   rot: quatFromYawPitchRoll(Math.PI, 0, 0),
   scale: 1.0,
   aaPriority: "hero",
@@ -336,178 +386,168 @@ initialEntities.push({
   tag: "vehicle",
 });
 
-// Santa's 6-DOF Sleigh + Reindeer Team with Rudolph's glowing nose soaring overhead!
+// Baroque Santa's 6-DOF Sleigh + 5 Galloping Reindeer soaring overhead!
 initialEntities.push({
   id: "santa_sleigh",
   assetId: "santa_sleigh",
   pos: [12, 22, -6],
   rot: quatIdentity(),
-  scale: 0.92,
+  scale: 0.94,
   aaPriority: "hero",
   outline: true,
-  emissiveBoost: 1.55,
+  emissiveBoost: 1.5,
   tag: "player",
 });
 
-// Ornate Victorian Garland Streetlamps lining Main Street sidewalks & Town Square Ice Rink!
-const LAMP_POS: Array<[number, number]> = [
-  [-7.0, -4], [7.0, -4],
-  [-7.0, 8], [7.0, 8],
-  [-7.0, 20], [7.0, 20],
-  [-7.0, 32], [7.0, 32],
-  [-7.0, 44], [7.0, 44],
-  // Corner light poles around the Frozen Ice Skating Rink!
-  [-10.2, -11.2], [-26.8, -11.2],
-  [-10.2, -30.8], [-26.8, -30.8],
-  // Flanking Town Hall Portico
-  [-7.5, -31.0], [7.5, -31.0],
+// Ornate Victorian Twin-Globe Streetlamps lining Main Street, Plaza & Ice Rink!
+const LAMP_POS: Array<[number, number, number]> = [
+  [-7.1, -4, 0], [7.1, -4, 0],
+  [-7.1, 8, 0], [7.1, 8, 0],
+  [-7.1, 20, 0], [7.1, 20, 0],
+  [-7.1, 32, 0], [7.1, 32, 0],
+  [-7.1, 42, 0], [7.1, 42, 0],
+  [-10.2, -11.2, 0], [-26.8, -11.2, 0],
+  [-10.2, -30.8, 0], [-26.8, -30.8, 0],
+  [-7.8, -31.5, 0], [7.8, -31.5, 0],
 ];
-LAMP_POS.forEach(([lx, lz], i) => {
+LAMP_POS.forEach(([lx, lz, yaw], i) => {
   initialEntities.push({
     id: `lamp_${i}`,
     assetId: "xmas_lamp",
     pos: [lx, 0, lz],
-    rot: quatIdentity(),
+    rot: quatFromYawPitchRoll(yaw, 0, 0),
     scale: 1.0,
     aaPriority: "hero",
     outline: false,
-    emissiveBoost: 1.65,
+    emissiveBoost: 1.6,
     tag: "lamp",
   });
 });
 
-// Cheerful Snowmen cheering beside the Ice Rink & Town Hall!
+// Micro-Scale Street Dressing: Snow Benches, Crackling Ice-Rink Braziers, Vintage Red Postboxes & Snowmen!
+const BENCHES: Array<[number, number, number]> = [
+  [-9.8, -19.5, -Math.PI / 2],
+  [5.8, -12.0, Math.PI * 0.25],
+  [-5.8, -26.5, -Math.PI * 0.75],
+  [-9.5, 19.0, -Math.PI / 2],
+  [9.5, 19.0, Math.PI / 2],
+];
+BENCHES.forEach(([bx, bz, yaw], i) => {
+  initialEntities.push({ id: `bench_${i}`, assetId: "xmas_bench", pos: [bx, 0, bz], rot: quatFromYawPitchRoll(yaw, 0, 0), scale: 1.0, outline: true, tag: "prop" });
+});
+
+// 2 Glowing Crackling Firepit Braziers warming ice skaters beside the Frozen Rink!
+initialEntities.push(
+  { id: "brazier_1", assetId: "xmas_brazier", pos: [-10.4, 0, -14.5], rot: quatIdentity(), scale: 1.0, aaPriority: "hero", outline: false, emissiveBoost: 1.75, tag: "prop" },
+  { id: "brazier_2", assetId: "xmas_brazier", pos: [-10.4, 0, -27.5], rot: quatIdentity(), scale: 1.0, aaPriority: "hero", outline: false, emissiveBoost: 1.75, tag: "prop" },
+);
+
+// Vintage Red Pillar Postboxes on Main Street corners
+initialEntities.push(
+  { id: "postbox_w", assetId: "xmas_postbox", pos: [-8.2, 0, -1.5], rot: quatFromYawPitchRoll(-Math.PI / 2, 0, 0), scale: 1.0, outline: true, tag: "prop" },
+  { id: "postbox_e", assetId: "xmas_postbox", pos: [8.2, 0, 29.0], rot: quatFromYawPitchRoll(Math.PI / 2, 0, 0), scale: 1.0, outline: true, tag: "prop" },
+);
+
+// Detailed Classic Snowmen (twig arms, coal smile, plaid scarf, carrot nose & top hat!)
 const SNOWMEN: Array<[number, number, number]> = [
-  [-10.4, -18.5, -Math.PI * 0.5],
-  [9.2, -30.5, Math.PI * 0.85],
-  [-10.5, 48.0, -Math.PI * 0.3],
+  [-10.4, -22.8, -Math.PI * 0.55],
+  [9.4, -30.5, Math.PI * 0.82],
+  [-10.2, 43.2, -Math.PI * 0.25],
 ];
 SNOWMEN.forEach(([sx, sz, yaw], i) => {
+  initialEntities.push({ id: `snowman_${i}`, assetId: "xmas_snowman", pos: [sx, 0, sz], rot: quatFromYawPitchRoll(yaw, 0, 0), scale: 1.0, aaPriority: "hero", outline: true, tag: "prop" });
+});
+
+// Delicate Fairy-Lit White Winter Birch Trees framing Town Square & Creek Bridge!
+const BIRCHES: Array<[number, number, number]> = [
+  [-10.8, -36.5, 1.05],
+  [11.4, -36.0, 0.98],
+  [13.8, -9.8, 0.92],
+  [-9.5, 45.2, 1.0],
+  [9.5, 45.2, 0.95],
+];
+BIRCHES.forEach(([bx, bz, sc], i) => {
   initialEntities.push({
-    id: `snowman_${i}`,
-    assetId: "xmas_snowman",
-    pos: [sx, 0, sz],
-    rot: quatFromYawPitchRoll(yaw, 0, 0),
-    scale: 1.0,
-    outline: true,
-    tag: "prop",
+    id: `birch_${i}`,
+    assetId: "xmas_birch",
+    pos: [bx, 0, bz],
+    rot: quatFromYawPitchRoll(i * 1.4, 0, 0),
+    scale: sc,
+    aaPriority: "hero",
+    outline: false,
+    emissiveBoost: 1.65,
+    tag: "tree",
   });
 });
 
-// 5 Bundled-Up Ice Skaters gliding smooth figure-8 loops across the Frozen Ice Rink (-18.5, -21)!
-interface SkaterSpec {
-  id: string;
-  asset: string;
-  phase: number;
-  speed: number;
-  rx: number;
-  rz: number;
-}
+// 5 Storybook Ice Skaters gliding smooth loops across the Frozen Ice Rink (-18.5, -21)!
+interface SkaterSpec { id: string; asset: string; phase: number; speed: number; rx: number; rz: number; }
 const SKATERS: SkaterSpec[] = [
-  { id: "skater_0", asset: "skater_red", phase: 0.0, speed: 0.72, rx: 5.4, rz: 6.8 },
-  { id: "skater_1", asset: "skater_blue", phase: 1.6, speed: 0.65, rx: 4.2, rz: 5.5 },
-  { id: "skater_2", asset: "skater_green", phase: 3.1, speed: 0.82, rx: 5.8, rz: 6.2 },
-  { id: "skater_3", asset: "skater_red", phase: 4.5, speed: -0.68, rx: 3.6, rz: 4.6 },
-  { id: "skater_4", asset: "skater_blue", phase: 5.4, speed: 0.58, rx: 5.0, rz: 7.2 },
+  { id: "skater_0", asset: "villager_green", phase: 0.0, speed: 0.72, rx: 5.2, rz: 6.4 },
+  { id: "skater_1", asset: "villager_plum", phase: 1.5, speed: 0.64, rx: 4.0, rz: 5.2 },
+  { id: "skater_2", asset: "villager_navy", phase: 3.0, speed: 0.80, rx: 5.5, rz: 6.0 },
+  { id: "skater_3", asset: "villager_green", phase: 4.5, speed: -0.68, rx: 3.4, rz: 4.4 },
+  { id: "skater_4", asset: "villager_plum", phase: 5.5, speed: 0.56, rx: 4.8, rz: 6.8 },
 ];
 for (const sk of SKATERS) {
-  initialEntities.push({
-    id: sk.id,
-    assetId: sk.asset,
-    pos: [-18.5, 0, -21],
-    rot: quatIdentity(),
-    scale: 1.0,
-    outline: true,
-    tag: "skater",
-  });
+  initialEntities.push({ id: sk.id, assetId: sk.asset, pos: [-18.5, 0, -21], rot: quatIdentity(), scale: 1.0, aaPriority: "hero", outline: true, tag: "skater" });
 }
 
-// Cozy Main Street Sidewalk Shoppers strolling by the glowing display windows!
+// Storybook Main Street Shoppers carrying wrapped gifts & hot cocoa along the snowy sidewalks!
 const SHOPPERS: Array<[string, string, number, number, number]> = [
-  ["shopper_0", "skater_red", -9.4, 3.5, -Math.PI * 0.4],
-  ["shopper_1", "skater_blue", -8.8, 14.5, 0.2],
-  ["shopper_2", "skater_green", 9.2, 4.2, Math.PI * 0.45],
-  ["shopper_3", "skater_red", 8.6, 17.0, Math.PI],
-  ["shopper_4", "skater_blue", -9.0, 26.5, -0.3],
-  ["shopper_5", "skater_green", 9.0, 29.0, Math.PI * 0.8],
-  ["shopper_6", "skater_red", 4.5, -13.5, 0.4],
-  ["shopper_7", "skater_blue", -4.2, -13.8, -0.5],
+  ["shopper_0", "villager_red", -9.6, 3.2, -Math.PI * 0.45],
+  ["shopper_1", "villager_navy", -8.8, 14.2, 0.25],
+  ["shopper_2", "villager_red", 9.4, 4.0, Math.PI * 0.45],
+  ["shopper_3", "villager_plum", 8.8, 17.5, Math.PI],
+  ["shopper_4", "villager_navy", -9.2, 26.8, -0.2],
+  ["shopper_5", "villager_red", 9.0, 31.0, Math.PI * 0.8],
+  ["shopper_6", "villager_navy", 4.6, -13.5, 0.4],
+  ["shopper_7", "villager_red", -4.4, -13.8, -0.4],
+  ["shopper_8", "villager_plum", -12.0, -14.2, 0.2], // warming hands by the rink fire brazier!
+  ["shopper_9", "villager_navy", -11.8, -27.2, -0.5],
 ];
 for (const [id, assetId, px, pz, yaw] of SHOPPERS) {
-  initialEntities.push({
-    id,
-    assetId,
-    pos: [px, 0, pz],
-    rot: quatFromYawPitchRoll(yaw, 0, 0),
-    scale: 1.0,
-    outline: true,
-    tag: "shopper",
-  });
+  initialEntities.push({ id, assetId, pos: [px, 0, pz], rot: quatFromYawPitchRoll(yaw, 0, 0), scale: 1.0, aaPriority: "hero", outline: true, tag: "shopper" });
 }
 
-// Enchanted Snow-Laden Perimeter Evergreen Forest framing the cozy village valley!
-const PINES: Array<[number, number, number]> = [
-  // Behind Clocktower Town Hall (North hills)
-  [-24, -44, 1.25], [-16, -47, 1.35], [-8, -48, 1.15], [8, -48, 1.2], [16, -47, 1.4], [25, -44, 1.2],
-  [-32, -38, 1.3], [-34, -28, 1.15], [-34, -18, 1.25], [-33, -8, 1.1],
-  // West behind shopfronts
-  [-27, 4, 1.2], [-28, 16, 1.35], [-27, 28, 1.15], [-28, 40, 1.3], [-22, 50, 1.1],
-  // East behind shopfronts & North Star Inn
-  [33, -34, 1.25], [34, -22, 1.35], [33, -10, 1.15],
-  [27, 4, 1.25], [28, 16, 1.18], [27, 28, 1.32], [28, 40, 1.22], [22, 50, 1.15],
-  // Accent snowy pines inside Town Square corners
-  [-12, -37, 0.92], [13, -37, 0.95], [16, -10, 0.88],
+// Dense Multi-Species Snow-Laden Alpine Forest wrapping cozily around the village & winter creek!
+const FOREST: Array<[number, number, number, boolean]> = [
+  [-32, -46, 1.32, true], [-24, -48, 1.20, false], [-15, -49, 1.38, true], [-7, -50, 1.15, false],
+  [8, -50, 1.28, true], [16, -48, 1.42, true], [25, -46, 1.24, false], [33, -43, 1.35, true],
+  [-36, -38, 1.28, false], [-35, -28, 1.38, true], [-35, -18, 1.22, false], [-34, -8, 1.30, true],
+  [-29, 4, 1.24, false], [-31, 15, 1.40, true], [-29, 27, 1.22, false], [-31, 38, 1.35, true],
+  [-24, 58, 1.28, true], [-14, 59, 1.15, false], [15, 58, 1.26, true], [25, 57, 1.34, false],
+  [35, -34, 1.32, true], [36, -22, 1.25, false], [35, -10, 1.38, true],
+  [29, 4, 1.22, false], [31, 16, 1.36, true], [29, 28, 1.24, false], [31, 39, 1.32, true],
+  [-42, -32, 1.45, true], [-43, -12, 1.30, false], [-41, 12, 1.42, true], [43, -16, 1.40, true], [42, 14, 1.35, false],
 ];
-PINES.forEach(([px, pz, sc], i) => {
+FOREST.forEach(([px, pz, sc, tall], i) => {
   initialEntities.push({
-    id: `pine_${i}`,
-    assetId: "xmas_pine",
+    id: `conifer_${i}`,
+    assetId: tall ? "xmas_spruce_tall" : "xmas_fir_broad",
     pos: [px, 0, pz],
-    rot: quatFromYawPitchRoll(i * 1.37, 0, 0),
+    rot: quatFromYawPitchRoll(i * 1.47, 0, 0),
     scale: sc,
     outline: true,
     tag: "tree",
   });
 });
 
-// 72 Gentle Drifting 3D Snowflakes (1 single WebGL2 instanced draw call!)
-interface SnowflakeParticle {
-  id: string;
-  x0: number;
-  z0: number;
-  y: number;
-  speed: number;
-  phase: number;
-}
+// 80 Gentle Drifting 3D Snowflakes (1 single WebGL2 instanced draw call!)
+interface SnowflakeParticle { id: string; x0: number; z0: number; y: number; speed: number; phase: number; }
 const SNOWFLAKES: SnowflakeParticle[] = [];
-for (let i = 0; i < 72; i++) {
-  const rx = ((i * 73.13) % 1) * 72 - 36;
-  const rz = ((i * 41.79) % 1) * 96 - 44;
+for (let i = 0; i < 80; i++) {
+  const rx = ((i * 73.13) % 1) * 76 - 38;
+  const rz = ((i * 41.79) % 1) * 102 - 44;
   const ry = ((i * 19.37) % 1) * 28 + 1.5;
-  SNOWFLAKES.push({
-    id: `flake_${i}`,
-    x0: rx,
-    z0: rz,
-    y: ry,
-    speed: 2.0 + (i % 5) * 0.45,
-    phase: i * 0.85,
-  });
-  initialEntities.push({
-    id: `flake_${i}`,
-    assetId: "snow_flake",
-    pos: [rx, ry, rz],
-    rot: quatIdentity(),
-    scale: 1.0,
-    outline: false,
-    emissiveBoost: 1.0,
-    tag: "snow",
-  });
+  SNOWFLAKES.push({ id: `flake_${i}`, x0: rx, z0: rz, y: ry, speed: 1.9 + (i % 5) * 0.42, phase: i * 0.85 });
+  initialEntities.push({ id: `flake_${i}`, assetId: "snow_flake", pos: [rx, ry, rz], rot: quatIdentity(), scale: 1.0, outline: false, emissiveBoost: 1.0, tag: "snow" });
 }
 
 world.doc.entities = initialEntities;
 
 // ---------------------------------------------------------------------------
-// 3. Simulation State, Overhead Catenary Festoon String Lights & Camera Rig
+// 3. Simulation State, Overhead Festoon Lights & Camera Rig
 // ---------------------------------------------------------------------------
 const state = {
   detail: initDetail as DetailLevel,
@@ -526,16 +566,15 @@ const state = {
   splitEnabled: params.get("split") === "1",
   splitX: clamp(Number(params.get("splitX") ?? 0.5) || 0.5, 0.08, 0.92),
   simTime: Number(params.get("t") ?? 4.5) || 4.5,
-  orbitYawOffset: 0.42,
-  orbitPitchOffset: 0.44,
-  zoomDist: 64,
-  camPosSmooth: [28, 30, 50] as Vec3,
-  camTargetSmooth: [-2, 6, -6] as Vec3,
+  orbitYawOffset: 0.44,
+  orbitPitchOffset: 0.42,
+  zoomDist: 68,
+  camPosSmooth: [30, 30, 56] as Vec3,
+  camTargetSmooth: [-1, 6, -1] as Vec3,
   camUpSmooth: [0, 1, 0] as Vec3,
 
-  // Santa's Sleigh 6-DOF kinematics
   sleighManual: false,
-  sleighPos: [10, 21, -8] as Vec3,
+  sleighPos: [10, 22, -8] as Vec3,
   sleighVel: [0, 0, 0] as Vec3,
   sleighYaw: 0.4,
   sleighPitch: -0.06,
@@ -553,20 +592,20 @@ let lastPtrY = 0;
 function applyTod(preset: TodPreset): void {
   state.tod = preset;
   if (preset === "eve") {
-    world.doc.lighting.timeOfDay = 0.78;
-    world.doc.lighting.sunAzimuthDeg = 32;
-    world.doc.lighting.sunElevationDeg = 34;
-    world.doc.lighting.fogDensity = 0.24;
+    world.doc.lighting.timeOfDay = 0.80;
+    world.doc.lighting.sunAzimuthDeg = 34;
+    world.doc.lighting.sunElevationDeg = 32;
+    world.doc.lighting.fogDensity = 0.22;
   } else if (preset === "midnight") {
     world.doc.lighting.timeOfDay = 0.96;
     world.doc.lighting.sunAzimuthDeg = 28;
     world.doc.lighting.sunElevationDeg = 38;
-    world.doc.lighting.fogDensity = 0.28;
+    world.doc.lighting.fogDensity = 0.26;
   } else {
     world.doc.lighting.timeOfDay = 0.06;
     world.doc.lighting.sunAzimuthDeg = 42;
     world.doc.lighting.sunElevationDeg = 52;
-    world.doc.lighting.fogDensity = 0.16;
+    world.doc.lighting.fogDensity = 0.14;
   }
 }
 
@@ -590,7 +629,7 @@ function applySplit(): void {
   if (splitLabels) splitLabels.style.display = state.splitEnabled ? "flex" : "none";
   if (rightLbl) {
     const s = state.quality === "eco" ? "2x" : state.quality === "balanced" ? "4x" : "8x";
-    const d = state.detail === "ultra" ? "Ultra HD 2x" : "Classic 1x";
+    const d = state.detail === "ultra" ? "Micro-Voxel Ultra HD" : "Classic 1x";
     rightLbl.textContent = `RIGHT: AASpriteStacker (${s} RGSS AA + ${d})`;
   }
 }
@@ -600,13 +639,8 @@ function makeCatenaryRibbon(id: string, p0: Vec3, p1: Vec3, sag: number, color: 
   const segs = 10;
   for (let i = 0; i <= segs; i++) {
     const u = i / segs;
-    const drop = Math.sin(u * Math.PI) * sag;
     pts.push({
-      pos: [
-        lerp(p0[0], p1[0], u),
-        lerp(p0[1], p1[1], u) - drop,
-        lerp(p0[2], p1[2], u),
-      ],
+      pos: [lerp(p0[0], p1[0], u), lerp(p0[1], p1[1], u) - Math.sin(u * Math.PI) * sag, lerp(p0[2], p1[2], u)],
       age: 0.12,
       width,
     });
@@ -619,8 +653,7 @@ function sampleSleighAutopilot(t: number): { pos: Vec3; vel: Vec3; yaw: number; 
   const a = t * w;
   const xAt = (s: number) => Math.sin(s) * 26.0;
   const zAt = (s: number) => -4.0 + Math.cos(s) * 38.0;
-  const yAt = (s: number) => 20.5 + Math.sin(s * 2.0) * 3.2;
-
+  const yAt = (s: number) => 22.0 + Math.sin(s * 2.0) * 3.0;
   const eps = 0.04;
   const x = xAt(a), y = yAt(a), z = zAt(a);
   const xn = xAt(a + eps), yn = yAt(a + eps), zn = zAt(a + eps);
@@ -640,31 +673,28 @@ function stepSimulation(dt: number): void {
   state.simTime += safeDt;
   world.stepClock(safeDt);
 
-  // 1. Glide Vintage Red Holiday Trolley back and forth down Main Street rails!
+  // 1. Glide Heritage 1900s Holiday Trolley smoothly down center rails!
   const trolley = world.getEntity("holiday_trolley")!;
   const trCycle = Math.sin(state.simTime * 0.18 - 1.15);
   const trVel = Math.cos(state.simTime * 0.18 - 1.15);
-  const trZ = 15.0 + trCycle * 22.0; // glides cleanly between Z = -7 (Town Square) and Z = +37 (South Main St)
+  const trZ = 15.0 + trCycle * 20.0;
   const trHeadingSouth = trVel > 0;
   trolley.pos = [0, 0, trZ];
   trolley.rot = quatFromYawPitchRoll(trHeadingSouth ? Math.PI : 0, 0, 0);
+  world.getEntity("trolley_headlight_proxy")!.pos = [0, 0.2, trZ + (trHeadingSouth ? 8.2 : -8.2)];
 
-  // Project live Trolley golden headlight pool ahead along the snowy rails!
-  const hlProxy = world.getEntity("trolley_headlight_proxy")!;
-  hlProxy.pos = [0, 0.2, trZ + (trHeadingSouth ? 7.8 : -7.8)];
-
-  // 2. Cruise the 2 Vintage Woody Station Wagons along the Main Street lanes!
-  const wNorth = world.getEntity("woody_northbound")!;
-  let zn = wNorth.pos[2] - safeDt * 6.8;
-  if (zn < -8) zn = 50;
-  wNorth.pos[2] = zn;
+  // 2. Trot Victorian Horse-Drawn Sleigh Carriage northbound & cruise 1950s Woody Wagon southbound!
+  const carriage = world.getEntity("horse_carriage")!;
+  let zc = carriage.pos[2] - safeDt * 4.4;
+  if (zc < -8) zc = 42;
+  carriage.pos[2] = zc;
 
   const wSouth = world.getEntity("woody_southbound")!;
-  let zs = wSouth.pos[2] + safeDt * 6.2;
-  if (zs > 50) zs = -8;
+  let zs = wSouth.pos[2] + safeDt * 5.8;
+  if (zs > 42) zs = -8;
   wSouth.pos[2] = zs;
 
-  // 3. Glide 5 Bundled-Up Ice Skaters smoothly in figure-8 & oval loops on the Frozen Ice Rink (-18.5, -21)!
+  // 3. Glide 5 Storybook Ice Skaters on the Frozen Rink (-18.5, -21)
   for (const sk of SKATERS) {
     const ent = world.getEntity(sk.id);
     if (!ent) continue;
@@ -678,9 +708,9 @@ function stepSimulation(dt: number): void {
     ent.rot = quatFromYawPitchRoll(Math.atan2(-vx, -vz), 0, clamp(sk.speed * 0.14, -0.18, 0.18));
   }
 
-  // 4. Animate Gentle Drifting 3D Snowflakes!
+  // 4. Drifting 3D Snowflakes
   const showSnow = state.snowMode !== "off";
-  const snowCount = state.snowMode === "heavy" ? SNOWFLAKES.length : 44;
+  const snowCount = state.snowMode === "heavy" ? SNOWFLAKES.length : 48;
   for (let i = 0; i < SNOWFLAKES.length; i++) {
     const f = SNOWFLAKES[i];
     const ent = world.getEntity(f.id)!;
@@ -694,7 +724,7 @@ function stepSimulation(dt: number): void {
     ent.pos[2] = f.z0 + Math.cos(state.simTime * 0.65 + f.phase) * 1.4;
   }
 
-  // 5. Santa's 6-DOF Sleigh + Reindeer Team!
+  // 5. Santa's 6-DOF Sleigh + Galloping Reindeer
   if (state.sleighManual && state.camMode === "sleigh") {
     const fwdIn = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
     const yawIn = (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) - (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0);
@@ -704,7 +734,7 @@ function stepSimulation(dt: number): void {
     const spd = 16.0 + fwdIn * 10.0;
     state.sleighVel = [fx * spd, climbIn * 12.0, fz * spd];
     state.sleighPos[0] = clamp(state.sleighPos[0] + state.sleighVel[0] * safeDt, -54, 54);
-    state.sleighPos[1] = clamp(state.sleighPos[1] + state.sleighVel[1] * safeDt, 11.5, 42);
+    state.sleighPos[1] = clamp(state.sleighPos[1] + state.sleighVel[1] * safeDt, 12.0, 42);
     state.sleighPos[2] = clamp(state.sleighPos[2] + state.sleighVel[2] * safeDt, -56, 56);
     state.sleighPitch = lerp(state.sleighPitch, climbIn * 0.22 - 0.04, 1 - Math.exp(-safeDt * 5));
     state.sleighRoll = lerp(state.sleighRoll, -yawIn * 0.42, 1 - Math.exp(-safeDt * 5));
@@ -722,30 +752,42 @@ function stepSimulation(dt: number): void {
     state.sleighPitch = lerp(state.sleighPitch, clamp(ap.vel[1] * 0.035, -0.2, 0.2), k);
     state.sleighRoll = lerp(state.sleighRoll, ap.bank, k);
   }
-
   const sleigh = world.getEntity("santa_sleigh")!;
   sleigh.pos = [...state.sleighPos];
   sleigh.rot = quatFromYawPitchRoll(state.sleighYaw, state.sleighPitch, state.sleighRoll);
   world.getEntity("sleigh_shadow_proxy")!.pos = [...state.sleighPos];
 
-  // 6. Overhead Festive Catenary String Lights + Santa's Golden Stardust Contrails!
+  // 6. Delicate Overhead Festoon Lights + Chimney Fireplace Smoke Ribbons + Sleigh Stardust!
   const ribbons: RibbonState[] = [];
-  const eveGlow = state.tod === "morning" ? 0.35 : 0.88;
-
-  // Delicate warm golden festoon Christmas light strands crisscrossed high above snowy Main Street!
-  const strandAlpha = state.tod === "morning" ? 0.24 : 0.58;
-  for (const z of [2, 12, 22, 32, 42]) {
-    ribbons.push(
-      makeCatenaryRibbon(`festoon_${z}`, [-12.6, 6.8, z], [12.6, 6.8, z], 1.1, [255, 224, 134], 0.09, strandAlpha),
-    );
+  const strandAlpha = state.tod === "morning" ? 0.22 : 0.56;
+  for (const z of [2, 13.5, 25, 36.5]) {
+    ribbons.push(makeCatenaryRibbon(`festoon_${z}`, [-12.6, 7.2, z], [12.6, 7.2, z], 1.15, [255, 224, 134], 0.08, strandAlpha));
   }
-  // Delicate festive string lights crisscrossing overhead across the Frozen Town Ice Skating Rink!
   ribbons.push(
-    makeCatenaryRibbon("rink_str_a", [-10.2, 4.4, -11.2], [-26.8, 4.4, -30.8], 1.0, [255, 224, 138], 0.08, strandAlpha),
-    makeCatenaryRibbon("rink_str_b", [-26.8, 4.4, -11.2], [-10.2, 4.4, -30.8], 1.0, [255, 224, 138], 0.08, strandAlpha),
+    makeCatenaryRibbon("rink_str_a", [-10.2, 4.1, -11.2], [-26.8, 4.1, -30.8], 0.95, [255, 224, 138], 0.075, strandAlpha),
+    makeCatenaryRibbon("rink_str_b", [-26.8, 4.1, -11.2], [-10.2, 4.1, -30.8], 0.95, [255, 224, 138], 0.075, strandAlpha),
   );
 
-  // Twin sparkling golden stardust trails behind Santa's Sleigh runners!
+  // Soft curling warm chimney smoke wisps rising from the Tudor Bakery & Veranda Inn!
+  const addSmoke = (id: string, base: Vec3, phase: number) => {
+    const pts: RibbonPoint[] = [];
+    for (let i = 0; i <= 7; i++) {
+      const u = i / 7;
+      pts.push({
+        pos: [
+          base[0] + Math.sin(state.simTime * 0.9 + phase + u * 3.0) * 0.9 * u + u * 1.4,
+          base[1] + u * 5.2,
+          base[2] + Math.cos(state.simTime * 0.7 + phase + u * 2.5) * 0.6 * u,
+        ],
+        age: 0.1 + u * 0.85,
+        width: 0.45 + u * 1.4,
+      });
+    }
+    ribbons.push({ id, points: pts, color: [194, 206, 228], alpha: 0.24, emissive: false });
+  };
+  addSmoke("smoke_bakery", [-15.8, 12.1, 18.0], 0.0);
+  addSmoke("smoke_inn", [25.5, 12.8, -21.0], 2.1);
+
   const rL = world.getSocketWorldPos("santa_sleigh", "runnerL");
   const rR = world.getSocketWorldPos("santa_sleigh", "runnerR");
   for (const tr of [stardustL, stardustR]) {
@@ -758,14 +800,14 @@ function stepSimulation(dt: number): void {
     if (stardustL.length > 0 && Math.hypot(rL[0] - stardustL[0].pos[0], rL[2] - stardustL[0].pos[2]) > 7.0) {
       stardustL.length = 0; stardustR.length = 0;
     }
-    stardustL.unshift({ pos: [...rL], age: 0.01, width: 0.42 });
-    stardustR.unshift({ pos: [...rR], age: 0.01, width: 0.42 });
+    stardustL.unshift({ pos: [...rL], age: 0.01, width: 0.36 });
+    stardustR.unshift({ pos: [...rR], age: 0.01, width: 0.36 });
     if (stardustL.length > 26) stardustL.length = 26;
     if (stardustR.length > 26) stardustR.length = 26;
   }
   if (stardustL.length >= 2) {
-    ribbons.push({ id: "sleigh_dust_l", points: stardustL, color: [255, 224, 118], alpha: 0.62, emissive: true });
-    ribbons.push({ id: "sleigh_dust_r", points: stardustR, color: [255, 224, 118], alpha: 0.62, emissive: true });
+    ribbons.push({ id: "sleigh_dust_l", points: stardustL, color: [255, 224, 118], alpha: 0.56, emissive: true });
+    ribbons.push({ id: "sleigh_dust_r", points: stardustR, color: [255, 224, 118], alpha: 0.56, emissive: true });
   }
   world.doc.ribbons = ribbons;
 
@@ -780,17 +822,14 @@ function updateCamera(dt: number, snap = false): void {
   let wantFov = 38;
 
   if (state.camMode === "street") {
-    // Cozy Main Street postcard perspective looking north past the Vintage Trolley, Starlight Cinema,
-    // Toy Emporium & overhead festoon lights straight toward the Giant Christmas Tree & Grand Clocktower!
-    wantPos = [3.6 + Math.sin(state.orbitYawOffset) * 2.5, 4.6, 31.5];
-    wantTarget = [-0.5, 5.8, -20.0];
+    wantPos = [3.2 + Math.sin(state.orbitYawOffset) * 2.5, 4.4, 30.5];
+    wantTarget = [-0.4, 5.8, -20.0];
     wantFov = 42;
   } else if (state.camMode === "plaza") {
-    // Intimate close-up of the Giant Decorated Christmas Tree, Market Stalls, Presents, Ice Skaters & Clocktower!
     const a = state.orbitYawOffset;
     const dist = clamp(state.zoomDist * 0.56, 22, 48);
     const elev = clamp(state.orbitPitchOffset * 0.72, 0.22, 0.78);
-    wantTarget = [-4.5, 5.2, -20.5];
+    wantTarget = [-5.0, 5.6, -21.5];
     wantPos = [
       wantTarget[0] + Math.sin(a) * Math.cos(elev) * dist,
       wantTarget[1] + Math.sin(elev) * dist,
@@ -798,9 +837,7 @@ function updateCamera(dt: number, snap = false): void {
     ];
     wantFov = 38;
   } else if (state.camMode === "sleigh") {
-    // Dramatic 6-DOF Chase Cam right behind Santa's Sleigh soaring over the snowy Main Street rooftops!
-    const fx = -Math.sin(state.sleighYaw);
-    const fz = -Math.cos(state.sleighYaw);
+    const fx = -Math.sin(state.sleighYaw), fz = -Math.cos(state.sleighYaw);
     wantPos = [state.sleighPos[0] - fx * 15.5, state.sleighPos[1] + 5.2, state.sleighPos[2] - fz * 15.5];
     wantTarget = [state.sleighPos[0] + fx * 14.0, state.sleighPos[1] - 3.2, state.sleighPos[2] + fz * 14.0];
     const bankCam = state.sleighRoll * 0.26;
@@ -808,11 +845,10 @@ function updateCamera(dt: number, snap = false): void {
     wantUp = vec3Norm([rx * Math.sin(bankCam), Math.cos(bankCam), rz * Math.sin(bankCam)]);
     wantFov = 48;
   } else {
-    // Sweeping Wide Miniature Diorama Establishing Shot framing ALL of Main Street, Town Square, Ice Rink & Clocktower!
-    const dist = clamp(state.zoomDist, 28, 118);
-    const elev = clamp(state.orbitPitchOffset, 0.22, 1.10);
+    const dist = clamp(state.zoomDist, 28, 122);
+    const elev = clamp(state.orbitPitchOffset, 0.20, 1.10);
     const az = state.orbitYawOffset;
-    wantTarget = [-1.5, 6.2, -3.5];
+    wantTarget = [-1.0, 6.0, 2.0];
     wantPos = [
       wantTarget[0] + Math.sin(az) * Math.cos(elev) * dist,
       Math.max(8, wantTarget[1] + Math.sin(elev) * dist),
@@ -837,10 +873,7 @@ function updateCamera(dt: number, snap = false): void {
 // 4. HUD, Interactive Controls & Deterministic API Hook
 // ---------------------------------------------------------------------------
 function syncUiButtons(): void {
-  const setP = (id: string, v: boolean) => {
-    const el = document.getElementById(id);
-    if (el) el.setAttribute("aria-pressed", v ? "true" : "false");
-  };
+  const setP = (id: string, v: boolean) => { const el = document.getElementById(id); if (el) el.setAttribute("aria-pressed", v ? "true" : "false"); };
   setP("btnCamWide", state.camMode === "wide");
   setP("btnCamStreet", state.camMode === "street");
   setP("btnCamPlaza", state.camMode === "plaza");
@@ -854,7 +887,6 @@ function syncUiButtons(): void {
   setP("btnQual_eco", state.quality === "eco");
   setP("btnQual_balanced", state.quality === "balanced");
   setP("btnQual_ultra", state.quality === "ultra");
-
   const snowBtn = document.getElementById("btnSnow");
   if (snowBtn) {
     snowBtn.textContent = state.snowMode === "heavy" ? "Snow: Heavy" : state.snowMode === "gentle" ? "Snow: Gentle" : "Snow: Off";
@@ -866,34 +898,27 @@ function updateStatsHud(): void {
   const statsEl = document.getElementById("stats");
   if (!statsEl) return;
   const s = renderer.getStats();
-  const detLabel = state.detail === "ultra" ? "Ultra HD 2x (up to 92-slice landmarks)" : "Classic 1x";
+  const detLabel = state.detail === "ultra" ? "Micro-Voxel Ultra HD (132-slice + 18-nbr AO)" : "Classic 1x";
   const viewLabel =
     state.camMode === "street" ? "MAIN STREET POSTCARD"
-    : state.camMode === "plaza" ? "TOWN SQUARE TREE & ICE RINK"
+    : state.camMode === "plaza" ? "TOWN SQUARE TREE, RINK & GAZEBO"
     : state.camMode === "sleigh" ? (state.sleighManual ? "SANTA SLEIGH MANUAL 6-DOF" : "SANTA SLEIGH AUTOPILOT")
-    : "WIDE WINTER DIORAMA";
+    : "WIDE WINTER VILLAGE DIORAMA";
   statsEl.textContent =
     `VIEW    ${viewLabel}  |  ${detLabel}\n` +
     `ENGINE  ${s.fps.toFixed(0).padStart(2, " ")} FPS  |  ${s.drawCalls} draws (${s.visibleEntities}/${s.totalEntities} ents)  |  ${s.activeSamples}x RGSS AA`;
 }
 
-document.getElementById("btnCamWide")?.addEventListener("click", () => { state.camMode = "wide"; state.orbitYawOffset = 0.42; state.orbitPitchOffset = 0.44; state.zoomDist = 64; syncUiButtons(); });
+document.getElementById("btnCamWide")?.addEventListener("click", () => { state.camMode = "wide"; state.orbitYawOffset = 0.44; state.orbitPitchOffset = 0.42; state.zoomDist = 68; syncUiButtons(); });
 document.getElementById("btnCamStreet")?.addEventListener("click", () => { state.camMode = "street"; state.orbitYawOffset = 0.0; syncUiButtons(); });
-document.getElementById("btnCamPlaza")?.addEventListener("click", () => { state.camMode = "plaza"; state.orbitYawOffset = 0.52; state.orbitPitchOffset = 0.42; state.zoomDist = 52; syncUiButtons(); });
+document.getElementById("btnCamPlaza")?.addEventListener("click", () => { state.camMode = "plaza"; state.orbitYawOffset = 0.52; state.orbitPitchOffset = 0.40; state.zoomDist = 52; syncUiButtons(); });
 document.getElementById("btnCamSleigh")?.addEventListener("click", () => { state.camMode = "sleigh"; syncUiButtons(); });
 document.getElementById("btnDetail_classic")?.addEventListener("click", () => { applyDetailPack("classic"); applySplit(); syncUiButtons(); });
 document.getElementById("btnDetail_ultra")?.addEventListener("click", () => { applyDetailPack("ultra"); applySplit(); syncUiButtons(); });
 document.getElementById("btnSplit")?.addEventListener("click", () => { state.splitEnabled = !state.splitEnabled; applySplit(); syncUiButtons(); });
-document.getElementById("btnSnow")?.addEventListener("click", () => {
-  state.snowMode = state.snowMode === "gentle" ? "heavy" : state.snowMode === "heavy" ? "off" : "gentle";
-  syncUiButtons();
-});
-for (const t of ["eve", "midnight", "morning"] as TodPreset[]) {
-  document.getElementById(`btnTod_${t}`)?.addEventListener("click", () => { applyTod(t); syncUiButtons(); });
-}
-for (const q of ["eco", "balanced", "ultra"] as AAQuality[]) {
-  document.getElementById(`btnQual_${q}`)?.addEventListener("click", () => { applyQuality(q); applySplit(); syncUiButtons(); });
-}
+document.getElementById("btnSnow")?.addEventListener("click", () => { state.snowMode = state.snowMode === "gentle" ? "heavy" : state.snowMode === "heavy" ? "off" : "gentle"; syncUiButtons(); });
+for (const t of ["eve", "midnight", "morning"] as TodPreset[]) document.getElementById(`btnTod_${t}`)?.addEventListener("click", () => { applyTod(t); syncUiButtons(); });
+for (const q of ["eco", "balanced", "ultra"] as AAQuality[]) document.getElementById(`btnQual_${q}`)?.addEventListener("click", () => { applyQuality(q); applySplit(); syncUiButtons(); });
 
 window.addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -903,10 +928,8 @@ window.addEventListener("keydown", (e) => {
     if (e.code === "Space") e.preventDefault();
   }
   if (e.code === "KeyG") { applyDetailPack(state.detail === "ultra" ? "classic" : "ultra"); applySplit(); syncUiButtons(); }
-  else if (e.code === "KeyV") {
-    state.camMode = state.camMode === "wide" ? "street" : state.camMode === "street" ? "plaza" : state.camMode === "plaza" ? "sleigh" : "wide";
-    syncUiButtons();
-  } else if (e.code === "KeyE") { state.splitEnabled = !state.splitEnabled; applySplit(); syncUiButtons(); }
+  else if (e.code === "KeyV") { state.camMode = state.camMode === "wide" ? "street" : state.camMode === "street" ? "plaza" : state.camMode === "plaza" ? "sleigh" : "wide"; syncUiButtons(); }
+  else if (e.code === "KeyE") { state.splitEnabled = !state.splitEnabled; applySplit(); syncUiButtons(); }
   else if (e.code === "KeyN") { applyTod(state.tod === "eve" ? "midnight" : state.tod === "midnight" ? "morning" : "eve"); syncUiButtons(); }
   else if (e.code === "KeyH" || e.code === "KeyU") { document.body.classList.toggle("nohud"); }
 });
@@ -915,11 +938,7 @@ window.addEventListener("keyup", (e) => { keys.delete(e.code); });
 const splitBar = document.getElementById("splitBar");
 splitBar?.addEventListener("pointerdown", (e) => { dragSplit = true; e.stopPropagation(); splitBar.setPointerCapture(e.pointerId); });
 window.addEventListener("pointermove", (e) => {
-  if (dragSplit) {
-    state.splitX = clamp(e.clientX / Math.max(1, window.innerWidth), 0.06, 0.94);
-    applySplit();
-    return;
-  }
+  if (dragSplit) { state.splitX = clamp(e.clientX / Math.max(1, window.innerWidth), 0.06, 0.94); applySplit(); return; }
   if (!dragOrbit) return;
   const dx = e.clientX - lastPtrX, dy = e.clientY - lastPtrY;
   lastPtrX = e.clientX; lastPtrY = e.clientY;
@@ -928,10 +947,7 @@ window.addEventListener("pointermove", (e) => {
 });
 window.addEventListener("pointerup", () => { dragSplit = false; dragOrbit = false; });
 canvas.addEventListener("pointerdown", (e) => { dragOrbit = true; lastPtrX = e.clientX; lastPtrY = e.clientY; });
-canvas.addEventListener("wheel", (e) => {
-  e.preventDefault();
-  state.zoomDist = clamp(state.zoomDist + e.deltaY * 0.045, 24, 118);
-}, { passive: false });
+canvas.addEventListener("wheel", (e) => { e.preventDefault(); state.zoomDist = clamp(state.zoomDist + e.deltaY * 0.045, 24, 122); }, { passive: false });
 
 applyDetailPack(state.detail);
 applyTod(state.tod);
@@ -981,8 +997,8 @@ window.xmasDemo = {
     if (opts.detail !== undefined && opts.detail !== state.detail) applyDetailPack(opts.detail);
     if (opts.camMode !== undefined) {
       state.camMode = opts.camMode;
-      if (opts.camMode === "wide") { state.orbitYawOffset = 0.42; state.orbitPitchOffset = 0.44; state.zoomDist = 64; }
-      else if (opts.camMode === "plaza") { state.orbitYawOffset = 0.52; state.orbitPitchOffset = 0.40; state.zoomDist = 50; }
+      if (opts.camMode === "wide") { state.orbitYawOffset = 0.44; state.orbitPitchOffset = 0.42; state.zoomDist = 68; }
+      else if (opts.camMode === "plaza") { state.orbitYawOffset = 0.52; state.orbitPitchOffset = 0.40; state.zoomDist = 52; }
       else if (opts.camMode === "street") { state.orbitYawOffset = 0.0; }
     }
     if (opts.tod !== undefined) applyTod(opts.tod);
@@ -1009,11 +1025,7 @@ window.xmasDemo = {
     syncUiButtons();
     updateStatsHud();
   },
-  step(dt) {
-    stepSimulation(dt);
-    renderer.render(world);
-    updateStatsHud();
-  },
+  step(dt) { stepSimulation(dt); renderer.render(world); updateStatsHud(); },
   getStats: () => renderer.getStats(),
 };
 
@@ -1025,11 +1037,7 @@ function tick(ts: number): void {
   stepSimulation(dt);
   renderer.render(world);
   hudAcc += dt;
-  if (hudAcc >= 0.14) {
-    hudAcc = 0;
-    updateStatsHud();
-  }
+  if (hudAcc >= 0.14) { hudAcc = 0; updateStatsHud(); }
   requestAnimationFrame(tick);
 }
-
 if (!holdLoop) requestAnimationFrame(tick);
