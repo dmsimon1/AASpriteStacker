@@ -18,6 +18,39 @@ export type IsometricPreset = "dimetric-2to1" | "isometric" | "oblique-stack" | 
 export type QualityTier = "auto" | "mobile" | "desktop" | "eco" | "balanced" | "ultra";
 export type DebugOverlay = "none" | "normals" | "depth" | "object-id" | "overdraw";
 
+/**
+ * Per-voxel material class encoded in uEmisTex.g (0..255) for continuous SDF & voxel shading.
+ */
+export const MATERIAL_ID = {
+  matte: 0,
+  stone: 32,
+  wood: 64,
+  foliage: 96,
+  terracotta: 128,
+  metal: 160,
+  glass: 208,
+  bioFluid: 240,
+} as const;
+
+export type MaterialKind = keyof typeof MATERIAL_ID;
+
+export interface PointLightState {
+  /** World-space position [X right, Y up, Z south]. */
+  pos: Vec3;
+  /** Light attenuation radius in world units. */
+  radius: number;
+  /** RGB light color (0..255). */
+  color: RGB;
+  /** Intensity multiplier (default 1.0). */
+  intensity?: number;
+  /** Optional normalized spotlight direction in world space (omit for omnidirectional point light). */
+  dir?: Vec3;
+  /** Optional spotlight cone cosine cutoff (e.g. 0.82 = ~35 deg half-angle). */
+  spotCos?: number;
+  /** Optional spotlight soft edge feather (default 0.12). */
+  spotSoft?: number;
+}
+
 export interface OverdrawReport {
   writtenAvg: number;
   writtenMax: number;
@@ -37,7 +70,7 @@ export interface SocketDef {
 }
 
 export interface AssetProvenance {
-  kind: "blueprint" | "vox" | "slices" | "4view";
+  kind: "blueprint" | "geofield" | "vox" | "slices" | "4view";
   source?: string;
 }
 
@@ -63,8 +96,12 @@ export interface VolumeAsset {
   sdfU8: Uint8Array;
   /** Packed smooth SDF normals (RGB) + ambient occlusion (A). */
   normAo: Uint8Array;
-  /** Emissive mask (0 or 255). */
+  /** Graded continuous emissive mask (0..255). */
   emisU8: Uint8Array;
+  /** Optional per-voxel material class (0..255, see MATERIAL_ID) uploaded in uEmisTex.g (RG8). */
+  materialU8?: Uint8Array;
+  /** True when sdfF32 holds an exact analytic/procedural continuous SDF (not a binary voxel EDT). */
+  hasExactSdf?: boolean;
   /** Named semantic attachment sockets (e.g. thrusterL, wingtipR, cockpitCam). */
   sockets: Record<string, SocketDef>;
   provenance: AssetProvenance;
@@ -134,6 +171,12 @@ export interface LightingState {
   outlineWidth: number;
   /** Enable 3D self-shadowing on hero objects. */
   selfShadow: boolean;
+  /** Optional real-time 3D point and spot lights (up to 16) illuminating voxel & SDF surfaces. */
+  pointLights?: PointLightState[];
+  /** Optional procedural triplanar micro-relief strength (0..1, default 0 for legacy demos). */
+  microRelief?: number;
+  /** Optional continuous stylization dial (0 = smooth painterly SDF sculpt, 0.5 = stylized, 1 = stacked sprite). */
+  styleDial?: number;
 }
 
 export interface TerrainState {

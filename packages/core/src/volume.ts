@@ -210,6 +210,71 @@ export function hashBytesFNV1a(bytes: Uint8Array): string {
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 
+const _f32View = new Float32Array(1);
+const _u32View = new Uint32Array(_f32View.buffer);
+
+/**
+ * Fast, exact IEEE-754 float32 -> float16 encoder for WebGL2 R16F 3D SDF textures.
+ * Zero external dependencies; guarantees linear-filterable half-float precision across all WebGL2 GPUs.
+ */
+export function float32ToFloat16Array(src: Float32Array): Uint16Array {
+  const out = new Uint16Array(src.length);
+  for (let i = 0; i < src.length; i++) {
+    const val = src[i];
+    _f32View[0] = val;
+    const x = _u32View[0];
+    const sign = (x >>> 16) & 0x8000;
+    let exp = ((x >>> 23) & 0xff) - 127 + 15;
+    let mant = x & 0x007fffff;
+    if (exp <= 0) {
+      if (exp < -10) {
+        out[i] = sign;
+      } else {
+        mant = (mant | 0x00800000) >>> (1 - exp);
+        out[i] = sign | ((mant + 0x1000) >>> 13);
+      }
+    } else if (exp >= 31) {
+      out[i] = sign | 0x7bff; // clamp to max finite half (~65504) so SDF never emits Inf/NaN
+    } else {
+      out[i] = sign | (exp << 10) | ((mant + 0x1000) >>> 13);
+    }
+  }
+  return out;
+}
+
+/**
+ * Packs any VolumeAsset (including continuous-SDF AA-GeoField assets) into a standard
+ * lightweight 2D horizontal sprite-stack strip (width = W * H, height = L, z = 0..H-1 left-to-right).
+ */
+export function packHorizontalSliceStrip(asset: VolumeAsset): { width: number; height: number; rgba: Uint8Array } {
+  const { w, l, h, rgba } = asset;
+  const outW = w * h;
+  const outH = l;
+  const out = new Uint8Array(outW * outH * 4);
+  const area = w * l;
+  for (let z = 0; z < h; z++) {
+    const xOff = z * w;
+    for (let y = 0; y < l; y++) {
+      // Flip Y so slice top (+Y nose) aligns with image row 0 (matches loadHorizontalStripPixels)
+      const imgY = l - 1 - y;
+      const dstRow = (imgY * outW + xOff) * 4;
+      const srcRow = (z * area + y * w) * 4;
+      for (let x = 0; x < w; x++) {
+        const sp = srcRow + x * 4;
+        const dp = dstRow + x * 4;
+        const a = rgba[sp + 3];
+        if (a >= 128) {
+          out[dp] = rgba[sp];
+          out[dp + 1] = rgba[sp + 1];
+          out[dp + 2] = rgba[sp + 2];
+          out[dp + 3] = a;
+        }
+      }
+    }
+  }
+  return { width: outW, height: outH, rgba: out };
+}
+
 export interface CreateVolumeAssetOptions {
   id: string;
   name?: string;
@@ -225,6 +290,7 @@ export interface CreateVolumeAssetOptions {
   computeSdf?: boolean;
   explicitSdf?: Float32Array;
   explicitEmissive?: Uint8Array;
+  explicitMaterial?: Uint8Array;
   sockets?: Record<string, SocketDef>;
   provenance?: AssetProvenance;
 }
@@ -361,10 +427,19 @@ export function createVolumeAsset(opts: CreateVolumeAssetOptions): VolumeAsset {
     }
   }
 
+  const materialU8 = opts.explicitMaterial ? new Uint8Array(opts.explicitMaterial) : undefined;
+  let hash = hashBytesFNV1a(opts.rgba);
+  if (opts.explicitSdf) {
+    hash += "-" + hashBytesFNV1a(new Uint8Array(opts.explicitSdf.buffer, opts.explicitSdf.byteOffset, opts.explicitSdf.byteLength));
+  }
+  if (materialU8) {
+    hash += "-" + hashBytesFNV1a(materialU8);
+  }
+
   return {
     id: opts.id,
     name: opts.name ?? opts.id,
-    hash: hashBytesFNV1a(opts.rgba),
+    hash,
     w,
     l,
     h,
@@ -376,6 +451,8 @@ export function createVolumeAsset(opts: CreateVolumeAssetOptions): VolumeAsset {
     sdfU8,
     normAo,
     emisU8,
+    materialU8,
+    hasExactSdf: Boolean(opts.explicitSdf),
     sockets: opts.sockets ?? {},
     provenance: opts.provenance ?? { kind: "slices" },
   };

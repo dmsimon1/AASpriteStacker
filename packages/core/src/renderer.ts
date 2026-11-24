@@ -20,6 +20,7 @@ import {
   vec3Sub,
 } from "./math.js";
 import type { SceneWorld } from "./scene.js";
+import { float32ToFloat16Array } from "./volume.js";
 import {
   COMPOSITE_FS,
   ENTITY_OBB_FS,
@@ -80,6 +81,7 @@ interface GpuAssetTex {
   hash: string;
   albedo: WebGLTexture;
   sdf: WebGLTexture | null;
+  sdfIsFloat: boolean;
   norm: WebGLTexture;
   emis: WebGLTexture;
 }
@@ -232,6 +234,9 @@ export class AASpriteRenderer {
   private lastTick = 0;
   private lastTime = 0;
   private shadowBuf = new Float32Array(28 * 4);
+  private pointLightPosBuf = new Float32Array(16 * 4);
+  private pointLightColBuf = new Float32Array(16 * 4);
+  private pointLightDirBuf = new Float32Array(16 * 4);
 
   constructor(canvas: HTMLCanvasElement, opts: RendererOptions = {}) {
     this.canvas = canvas;
@@ -737,13 +742,53 @@ export class AASpriteRenderer {
     gl.bindVertexArray(this.cubeVao);
     gl.uniform2f(ep.u.uResolution, cw, ch);
     gl.uniform1f(ep.u.uSplitX, splitX);
+    gl.uniformMatrix4fv(ep.u.uInvViewProj, false, invViewProj);
+    gl.uniform3fv(ep.u.uCamPos, doc.camera.pos);
     gl.uniform1i(ep.u.uStyle, styleInt);
     gl.uniform1i(ep.u.uShadeStyle, shadeStyleToInt(doc.lighting.shadeStyle));
     gl.uniform3fv(ep.u.uSunDir, sunDir);
     gl.uniform1f(ep.u.uTimeOfDay, doc.lighting.timeOfDay);
     gl.uniform1f(ep.u.uFogDensity, isTransparent || isSolid ? 0.0 : doc.lighting.fogDensity);
+    gl.uniform1f(ep.u.uMicroRelief, doc.lighting.microRelief ?? 0.0);
+    gl.uniform1f(ep.u.uStyleDial, doc.lighting.styleDial ?? 0.0);
     gl.uniform1i(ep.u.uDebugOverlay, debugModeInt);
     gl.uniform1f(ep.u.uOverdrawUnit, overdrawUnit);
+
+    // Upload up to 16 live 3D point & spot lights directly to the entity fragment shader
+    const pLights = doc.lighting.pointLights;
+    const pCount = pLights ? Math.min(pLights.length, 16) : 0;
+    gl.uniform1i(ep.u.uPointLightCount, pCount);
+    if (pCount > 0 && pLights) {
+      for (let i = 0; i < pCount; i++) {
+        const l = pLights[i];
+        const b = i * 4;
+        const inten = l.intensity ?? 1.0;
+        this.pointLightPosBuf[b + 0] = l.pos[0];
+        this.pointLightPosBuf[b + 1] = l.pos[1];
+        this.pointLightPosBuf[b + 2] = l.pos[2];
+        this.pointLightPosBuf[b + 3] = Math.max(0.1, l.radius);
+        // Convert sRGB color to approximate linear intensity for accurate additive lighting
+        this.pointLightColBuf[b + 0] = Math.pow(l.color[0] / 255, 2.2) * inten;
+        this.pointLightColBuf[b + 1] = Math.pow(l.color[1] / 255, 2.2) * inten;
+        this.pointLightColBuf[b + 2] = Math.pow(l.color[2] / 255, 2.2) * inten;
+        this.pointLightColBuf[b + 3] = l.dir ? (l.spotCos ?? 0.80) : -1.0;
+        if (l.dir) {
+          const dLen = Math.hypot(l.dir[0], l.dir[1], l.dir[2]) || 1;
+          this.pointLightDirBuf[b + 0] = l.dir[0] / dLen;
+          this.pointLightDirBuf[b + 1] = l.dir[1] / dLen;
+          this.pointLightDirBuf[b + 2] = l.dir[2] / dLen;
+          this.pointLightDirBuf[b + 3] = l.spotSoft ?? 0.14;
+        } else {
+          this.pointLightDirBuf[b + 0] = 0;
+          this.pointLightDirBuf[b + 1] = -1;
+          this.pointLightDirBuf[b + 2] = 0;
+          this.pointLightDirBuf[b + 3] = 0.14;
+        }
+      }
+      gl.uniform4fv(ep.u.uPointLights, this.pointLightPosBuf);
+      gl.uniform4fv(ep.u.uPointLightCols, this.pointLightColBuf);
+      gl.uniform4fv(ep.u.uPointLightDirs, this.pointLightDirBuf);
+    }
 
     const maxSamples = debugModeInt >= 4
       ? 1
@@ -849,6 +894,7 @@ export class AASpriteRenderer {
 
       gl.uniform3f(ep.u.uVolSize, leadAsset.w, leadAsset.l, leadAsset.h);
       gl.uniform1f(ep.u.uSdfRange, leadAsset.sdfRange);
+      gl.uniform1f(ep.u.uSdfIsFloat, gpuTex.sdf && gpuTex.sdfIsFloat ? 1.0 : 0.0);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceVbo);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, ib.subarray(0, instCount * INSTANCE_FLOATS));
       gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, instCount);
@@ -928,13 +974,57 @@ export class AASpriteRenderer {
     return t;
   }
 
+  private make3DTexF16(
+    gl: WebGL2RenderingContext,
+    w: number,
+    l: number,
+    h: number,
+    data: Float32Array,
+  ): WebGLTexture {
+    const f16 = float32ToFloat16Array(data);
+    const t = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_3D, t);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.R16F, w, l, h, 0, gl.RED, gl.HALF_FLOAT, f16);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    return t;
+  }
+
+  private uploadSdfTex(gl: WebGL2RenderingContext, asset: VolumeAsset): { tex: WebGLTexture; isFloat: boolean } {
+    if (asset.hasExactSdf) {
+      return { tex: this.make3DTexF16(gl, asset.w, asset.l, asset.h, asset.sdfF32), isFloat: true };
+    }
+    return {
+      tex: this.make3DTex(gl, asset.w, asset.l, asset.h, gl.R8, gl.RED, asset.sdfU8, gl.LINEAR),
+      isFloat: false,
+    };
+  }
+
+  private uploadEmisMatTex(gl: WebGL2RenderingContext, asset: VolumeAsset): WebGLTexture {
+    if (asset.materialU8 && asset.materialU8.length === asset.emisU8.length) {
+      const n = asset.emisU8.length;
+      const rg = new Uint8Array(n * 2);
+      for (let i = 0; i < n; i++) {
+        rg[i * 2] = asset.emisU8[i];
+        rg[i * 2 + 1] = asset.materialU8[i];
+      }
+      return this.make3DTex(gl, asset.w, asset.l, asset.h, gl.RG8, gl.RG, rg, gl.NEAREST);
+    }
+    return this.make3DTex(gl, asset.w, asset.l, asset.h, gl.R8, gl.RED, asset.emisU8, gl.NEAREST);
+  }
+
   private ensureAssetGPU(asset: VolumeAsset, needSdf: boolean): GpuAssetTex {
     const gl = this.gl!;
     const existing = this.assetCache.get(asset.id);
     if (existing && existing.hash === asset.hash) {
       if (needSdf && !existing.sdf) {
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-        existing.sdf = this.make3DTex(gl, asset.w, asset.l, asset.h, gl.R8, gl.RED, asset.sdfU8, gl.LINEAR);
+        const up = this.uploadSdfTex(gl, asset);
+        existing.sdf = up.tex;
+        existing.sdfIsFloat = up.isFloat;
       }
       return existing;
     }
@@ -946,12 +1036,14 @@ export class AASpriteRenderer {
     }
 
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    const upSdf = needSdf ? this.uploadSdfTex(gl, asset) : null;
     const entry: GpuAssetTex = {
       hash: asset.hash,
       albedo: this.make3DTex(gl, asset.w, asset.l, asset.h, gl.RGBA8, gl.RGBA, asset.rgba, gl.LINEAR),
-      sdf: needSdf ? this.make3DTex(gl, asset.w, asset.l, asset.h, gl.R8, gl.RED, asset.sdfU8, gl.LINEAR) : null,
+      sdf: upSdf ? upSdf.tex : null,
+      sdfIsFloat: upSdf ? upSdf.isFloat : false,
       norm: this.make3DTex(gl, asset.w, asset.l, asset.h, gl.RGBA8, gl.RGBA, asset.normAo, gl.LINEAR),
-      emis: this.make3DTex(gl, asset.w, asset.l, asset.h, gl.R8, gl.RED, asset.emisU8, gl.NEAREST),
+      emis: this.uploadEmisMatTex(gl, asset),
     };
     this.assetCache.set(asset.id, entry);
     return entry;
