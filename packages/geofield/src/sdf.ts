@@ -175,8 +175,8 @@ export function sdLatheZ(px: number, py: number, pz: number, profile: ReadonlyAr
       const d2 = dx * dx + dy * dy;
       if (d2 < minD2) minD2 = d2;
     }
-    const condA = pz >= a[1];
-    const condB = pz < b[1];
+    const condA = a[1] > pz;
+    const condB = b[1] > pz;
     if (condA !== condB) {
       const xCross = a[0] + ((pz - a[1]) * ex) / (ey || 1e-8);
       if (rTest < xCross) windings ^= 1;

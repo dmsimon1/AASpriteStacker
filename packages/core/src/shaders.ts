@@ -415,28 +415,28 @@ void applyMaterialRelief(
     // Ashlar / Weathered Hand-Laid Masonry Stone
     rough = 0.86;
     if (strength > 0.01) {
-      vec3 sp = hp * 0.52;
+      vec3 sp = hp * 0.72;
       float rowZ = floor(sp.z);
       float stag = mod(rowZ, 2.0) * 0.5;
       float fx = fract(sp.x * 0.55 + stag);
       float fy = fract(sp.y * 0.55 + stag);
       float fz = fract(sp.z);
-      float mortarX = smoothstep(0.05, 0.13, fx) * smoothstep(0.05, 0.13, 1.0 - fx);
-      float mortarY = smoothstep(0.05, 0.13, fy) * smoothstep(0.05, 0.13, 1.0 - fy);
-      float mortarZ = smoothstep(0.07, 0.16, fz) * smoothstep(0.07, 0.16, 1.0 - fz);
+      float mortarX = smoothstep(0.04, 0.12, fx) * smoothstep(0.04, 0.12, 1.0 - fx);
+      float mortarY = smoothstep(0.04, 0.12, fy) * smoothstep(0.04, 0.12, 1.0 - fy);
+      float mortarZ = smoothstep(0.06, 0.15, fz) * smoothstep(0.06, 0.15, 1.0 - fz);
       float sideCourse = mix(mortarX, mortarY, step(an.y, an.x)) * mortarZ;
       float topPave = mortarX * mortarY;
       float mortar = mix(sideCourse, topPave, wTri.z);
       vec3 blkId = vec3(floor(sp.x * 0.55 + stag), floor(sp.y * 0.55 + stag), rowZ);
-      float blkVar = (hash31(blkId) - 0.5) * 0.14;
-      float speck = (vnoise3(hp * 1.45) - 0.5) * 0.09;
-      albedo *= (1.0 + (blkVar + speck) * strength) * mix(0.80, 1.03, mix(1.0, mortar, strength));
+      float blkVar = (hash31(blkId) - 0.5) * 0.12;
+      float speck = (vnoise3(hp * 1.65) - 0.5) * 0.08;
+      albedo *= (1.0 + (blkVar + speck) * strength) * mix(0.86, 1.02, mix(1.0, mortar, strength));
       vec3 grad = vec3(
-        vnoise3(hp * 1.3 + vec3(0.25, 0.0, 0.0)) - vnoise3(hp * 1.3 - vec3(0.25, 0.0, 0.0)),
-        vnoise3(hp * 1.3 + vec3(0.0, 0.25, 0.0)) - vnoise3(hp * 1.3 - vec3(0.0, 0.25, 0.0)),
-        (fz < 0.14 ? -0.35 : (fz > 0.86 ? 0.35 : 0.0)) + (vnoise3(hp * 1.3 + vec3(0.0, 0.0, 0.25)) - vnoise3(hp * 1.3 - vec3(0.0, 0.0, 0.25)))
+        vnoise3(hp * 1.45 + vec3(0.25, 0.0, 0.0)) - vnoise3(hp * 1.45 - vec3(0.25, 0.0, 0.0)),
+        vnoise3(hp * 1.45 + vec3(0.0, 0.25, 0.0)) - vnoise3(hp * 1.45 - vec3(0.0, 0.25, 0.0)),
+        (fz < 0.14 ? -0.28 : (fz > 0.86 ? 0.28 : 0.0)) + (vnoise3(hp * 1.45 + vec3(0.0, 0.0, 0.25)) - vnoise3(hp * 1.45 - vec3(0.0, 0.0, 0.25)))
       );
-      nLoc = normalize(nLoc + grad * (0.24 * strength));
+      nLoc = normalize(nLoc + grad * (0.20 * strength));
     }
   } else if (matId >= 56 && matId <= 80) {
     // Carved Timber / Wood Grain

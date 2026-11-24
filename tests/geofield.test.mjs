@@ -33,6 +33,8 @@ test("AA-GeoField continuous SDF primitives, smooth union, lathe, spline loft, a
   const dome = sdLatheZ(0, 0, 3, [[0, 0], [4, 0], [4, 2], [2.5, 4.5], [0, 5.2]]);
   assert.ok(dome < 0, "interior of lathe dome must be negative");
   assert.ok(sdLatheZ(5, 0, 3, [[0, 0], [4, 0], [4, 2], [2.5, 4.5], [0, 5.2]]) > 0.5);
+  assert.ok(sdLatheZ(10, 0, -2, [[0, 0], [4, 0], [4, 2], [2.5, 4.5], [0, 5.2]]) > 5.0, "below lathe must be strictly positive");
+  assert.ok(sdLatheZ(10, 0, 9, [[0, 0], [4, 0], [4, 2], [2.5, 4.5], [0, 5.2]]) > 5.0, "above lathe must be strictly positive");
   const [fx, fy] = opPolarFold(0, 4, 8);
   assert.ok(Math.abs(Math.hypot(fx, fy) - 4) < 1e-6);
 
