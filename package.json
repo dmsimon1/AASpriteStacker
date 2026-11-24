@@ -12,7 +12,7 @@
     "build": "npm run build --workspaces && node scripts/bundle-demos.mjs",
     "build:site": "npm run build && node scripts/build-site.mjs",
     "deploy:site": "npm run build:site && cf deploy ./site/dist",
-    "typecheck": "tsc -b packages/core packages/blueprint packages/bridge packages/mcp",
+    "typecheck": "tsc -b packages/core packages/blueprint packages/geofield packages/bridge packages/mcp",
     "test": "npm run build && node --test tests/*.test.mjs",
     "test:py": ".venv/bin/python tests/test_aa_stacker.py",
     "test:all": "npm test && npm run test:py",
