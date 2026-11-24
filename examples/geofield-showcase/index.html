@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AA-GeoField Non-Legoland Procedural SDF Showcase | AASpriteStacker</title>
+<title>AA-GeoField Wrapped UVs &amp; Multifractal Terrain Showcase | AASpriteStacker</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23081624'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%2338e8d8' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%23fbbf24'/%3E%3C/svg%3E">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #071320; }
@@ -16,46 +16,52 @@
   }
   body.ready #wait { display: none; }
   body.nohud #hud, body.nohud #splitBar, body.nohud #splitLabels { display: none !important; }
-  #hud { font: 12px/1.42 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; color: #f8fafc; pointer-events: none; }
+  #hud { font: 11.5px/1.4 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; color: #f8fafc; pointer-events: none; }
   #panel {
-    position: fixed; left: 14px; top: 14px; padding: 9px 13px;
-    background: rgba(9, 18, 32, 0.78); border: 1px solid rgba(56, 232, 216, 0.34);
+    position: fixed; left: 14px; top: 14px; padding: 8px 12px;
+    background: rgba(9, 18, 32, 0.80); border: 1px solid rgba(56, 232, 216, 0.34);
     border-radius: 10px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-    width: fit-content; max-width: 470px; z-index: 6;
+    width: fit-content; max-width: 440px; z-index: 6;
   }
   #panel h1 {
-    margin: 0 0 4px; font-size: 13px; font-weight: 800; letter-spacing: 0.09em;
+    margin: 0 0 4px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.08em;
     text-transform: uppercase; color: #5eead4;
   }
   #panel h1 span {
     color: rgba(248, 250, 252, 0.76); font-weight: 500; letter-spacing: 0.02em;
-    text-transform: none; font-size: 11.5px; margin-left: 6px;
+    text-transform: none; font-size: 11px; margin-left: 6px;
   }
   #stats { margin: 0; font: inherit; white-space: pre; color: rgba(248, 250, 252, 0.92); }
   #controls {
     position: fixed; right: 14px; top: 14px; display: flex; flex-direction: column;
-    gap: 6px; align-items: flex-end; pointer-events: auto; z-index: 7;
+    gap: 5px; align-items: flex-end; pointer-events: auto; z-index: 7;
   }
   .row {
-    display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; align-items: center; padding: 5px 7px;
-    background: rgba(9, 18, 32, 0.80); border: 1px solid rgba(148, 163, 184, 0.24);
+    display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; align-items: center; padding: 4px 6px;
+    background: rgba(9, 18, 32, 0.82); border: 1px solid rgba(148, 163, 184, 0.24);
     border-radius: 9px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   }
   .row button {
-    font: 700 11px/1.2 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+    font: 700 10.5px/1.2 ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
     color: #f1f5f9; background: rgba(148, 163, 184, 0.14);
     border: 1px solid rgba(148, 163, 184, 0.28); border-radius: 6px;
-    padding: 5px 8px; cursor: pointer;
+    padding: 4.5px 7px; cursor: pointer;
   }
   .row button:hover { background: rgba(56, 232, 216, 0.20); border-color: rgba(56, 232, 216, 0.65); }
   .row button[aria-pressed="true"] { background: #2dd4bf; color: #042022; border-color: #99f6e4; }
   .row button.warm[aria-pressed="true"] { background: #fbbf24; color: #1f1302; border-color: #fde68a; }
-  .slider-group {
-    display: flex; align-items: center; gap: 7px; padding: 2px 4px;
-    font: 600 11px/1.2 ui-monospace, monospace; color: #e2e8f0;
+  .row button.alpine[aria-pressed="true"] { background: #7dd3fc; color: #062133; border-color: #e0f2fe; }
+  .row-lbl {
+    font: 700 10px/1 ui-monospace, monospace; letter-spacing: 0.06em;
+    color: rgba(148, 163, 184, 0.85); text-transform: uppercase; padding: 0 3px;
   }
-  .slider-group input[type="range"] { width: 108px; accent-color: #2dd4bf; cursor: pointer; }
-  .slider-group span.val { color: #5eead4; min-width: 118px; text-align: right; }
+  .slider-group {
+    display: flex; align-items: center; gap: 5px; padding: 1px 4px;
+    font: 600 10.5px/1.2 ui-monospace, monospace; color: #e2e8f0;
+  }
+  .slider-group input[type="range"] { width: 82px; accent-color: #2dd4bf; cursor: pointer; }
+  .slider-group span.val { color: #5eead4; min-width: 32px; text-align: right; }
+  #terrainSliders { display: none; }
   #splitBar {
     position: fixed; top: 0; bottom: 0; left: 50%; width: 16px; margin-left: -8px;
     cursor: ew-resize; z-index: 9; display: none; pointer-events: auto;
@@ -70,7 +76,7 @@
     font: 800 11px/1 ui-monospace, monospace; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.55); white-space: nowrap;
   }
   #splitLabels {
-    position: fixed; left: 16px; right: 16px; bottom: 52px; display: none;
+    position: fixed; left: 16px; right: 16px; bottom: 48px; display: none;
     justify-content: space-between; pointer-events: none; z-index: 8;
   }
   #splitLabels span {
@@ -83,7 +89,7 @@
     gap: 5px; font-size: 10.5px; z-index: 6; overflow: hidden;
   }
   #keys span {
-    padding: 2.5px 7px 2.5px 5px; background: rgba(9, 18, 32, 0.76);
+    padding: 2.5px 7px 2.5px 5px; background: rgba(9, 18, 32, 0.78);
     border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 6px;
     color: rgba(241, 245, 249, 0.88); white-space: nowrap;
   }
@@ -96,54 +102,61 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="wait">evaluating AA-GeoField continuous R16F SDF fields...</div>
+<div id="wait">evaluating AA-GeoField wrapped UVs, R16F SDF &amp; multifractal terrain...</div>
 <div id="splitBar" title="Drag to compare Classic Blocky Voxels vs AA-GeoField Continuous SDF"></div>
 <div id="splitLabels">
   <span>LEFT: Blocky Voxel DDA (Legoland Cubes)</span>
-  <span>RIGHT: AA-GeoField Continuous R16F SDF + Triplanar Relief + 3D Lights</span>
+  <span>RIGHT: AA-GeoField Crisp R16F SDF + Wrapped Surface UVs + 3D Lights</span>
 </div>
 <div id="hud">
   <div id="panel">
-    <h1>AA-GEOFIELD <span>Non-Legoland SDF &amp; Sprite-Stack</span></h1>
+    <h1>AA-GEOFIELD <span>Wrapped Surface UVs &amp; Multifractal</span></h1>
     <pre id="stats"></pre>
   </div>
   <div id="controls">
     <div class="row">
-      <button id="btnWorld_rotunda" aria-pressed="true" type="button">World A: Sunken Roman Rotunda</button>
-      <button id="btnWorld_coastal" class="warm" aria-pressed="false" type="button">World B: Coastal Arch &amp; Tower</button>
-      <button id="btnSplit" aria-pressed="false" type="button">A/B Split vs Lego (E)</button>
-      <button id="btnExploded" aria-pressed="false" type="button">Exploded 2D Slices (X)</button>
-      <button id="btnExportSlices" type="button">Export slices.png</button>
+      <button id="btnWorld_rotunda" aria-pressed="true" type="button">A: Roman Rotunda</button>
+      <button id="btnWorld_coastal" class="warm" aria-pressed="false" type="button">B: Coastal Tower</button>
+      <button id="btnWorld_alpine" class="alpine" aria-pressed="false" type="button">C: Alpine Gorge</button>
+      <button id="btnSplit" aria-pressed="false" type="button">Split (E)</button>
+      <button id="btnExploded" aria-pressed="false" type="button">Slices (X)</button>
+      <button id="btnExportSlices" type="button">Export PNG</button>
     </div>
     <div class="row">
       <div class="slider-group">
-        <label for="rngStyleDial">Style Dial</label>
-        <input id="rngStyleDial" type="range" min="0" max="100" value="0" />
-        <span id="valStyleDial" class="val">0.00 (Painterly SDF)</span>
+        <label for="rngRelief">Relief</label>
+        <input id="rngRelief" type="range" min="0" max="100" value="88" />
+        <span id="valRelief" class="val">88%</span>
       </div>
       <div class="slider-group">
-        <label for="rngRelief">Micro-Relief</label>
-        <input id="rngRelief" type="range" min="0" max="100" value="78" />
-        <span id="valRelief" class="val" style="min-width:34px">78%</span>
+        <label for="rngDrape">Ivy</label>
+        <input id="rngDrape" type="range" min="0" max="100" value="72" />
+        <span id="valDrape" class="val">72%</span>
       </div>
-      <div class="slider-group">
-        <label for="rngDrape">Moss / Ivy</label>
-        <input id="rngDrape" type="range" min="0" max="100" value="75" />
-        <span id="valDrape" class="val" style="min-width:34px">75%</span>
-      </div>
-    </div>
-    <div class="row">
-      <button id="btnTod_auto" aria-pressed="true" type="button">Mood: Auto</button>
+      <button id="btnTod_auto" aria-pressed="true" type="button">Auto</button>
       <button id="btnTod_day" class="warm" aria-pressed="false" type="button">Day</button>
-      <button id="btnTod_golden" class="warm" aria-pressed="false" type="button">Golden Hr</button>
+      <button id="btnTod_golden" class="warm" aria-pressed="false" type="button">Gold</button>
       <button id="btnTod_night" aria-pressed="false" type="button">Night</button>
-      <button id="btnQual_eco" aria-pressed="false" type="button">Eco 2x</button>
-      <button id="btnQual_balanced" aria-pressed="false" type="button">Bal 4x</button>
-      <button id="btnQual_ultra" aria-pressed="true" type="button">Ultra 8x</button>
+      <button id="btnQual_eco" aria-pressed="false" type="button">2x</button>
+      <button id="btnQual_balanced" aria-pressed="false" type="button">4x</button>
+      <button id="btnQual_ultra" aria-pressed="true" type="button">8x</button>
+    </div>
+    <div id="terrainSliders" class="row">
+      <span class="row-lbl">Multifractal</span>
+      <div class="slider-group">
+        <label for="rngRidge">Ridge</label>
+        <input id="rngRidge" type="range" min="20" max="150" value="100" />
+        <span id="valRidge" class="val">1.0</span>
+      </div>
+      <div class="slider-group">
+        <label for="rngErosion">Erosion</label>
+        <input id="rngErosion" type="range" min="0" max="150" value="100" />
+        <span id="valErosion" class="val">1.0</span>
+      </div>
     </div>
   </div>
   <div id="keys">
-    <span><b>W</b>Switch World</span>
+    <span><b>W</b>Switch World (A/B/C)</span>
     <span><b>E</b>A/B Split vs Lego</span>
     <span><b>X</b>Exploded 2D Slices</span>
     <span><b>Drag / Wheel</b>Orbit &amp; Zoom</span>

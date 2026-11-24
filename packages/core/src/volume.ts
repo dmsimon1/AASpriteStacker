@@ -291,6 +291,7 @@ export interface CreateVolumeAssetOptions {
   explicitSdf?: Float32Array;
   explicitEmissive?: Uint8Array;
   explicitMaterial?: Uint8Array;
+  explicitUvPhase?: Uint8Array;
   sockets?: Record<string, SocketDef>;
   provenance?: AssetProvenance;
 }
@@ -428,12 +429,16 @@ export function createVolumeAsset(opts: CreateVolumeAssetOptions): VolumeAsset {
   }
 
   const materialU8 = opts.explicitMaterial ? new Uint8Array(opts.explicitMaterial) : undefined;
+  const uvPhaseU8 = opts.explicitUvPhase ? new Uint8Array(opts.explicitUvPhase) : undefined;
   let hash = hashBytesFNV1a(opts.rgba);
   if (opts.explicitSdf) {
     hash += "-" + hashBytesFNV1a(new Uint8Array(opts.explicitSdf.buffer, opts.explicitSdf.byteOffset, opts.explicitSdf.byteLength));
   }
   if (materialU8) {
     hash += "-" + hashBytesFNV1a(materialU8);
+  }
+  if (uvPhaseU8) {
+    hash += "-" + hashBytesFNV1a(uvPhaseU8);
   }
 
   return {
@@ -452,6 +457,7 @@ export function createVolumeAsset(opts: CreateVolumeAssetOptions): VolumeAsset {
     normAo,
     emisU8,
     materialU8,
+    uvPhaseU8,
     hasExactSdf: Boolean(opts.explicitSdf),
     sockets: opts.sockets ?? {},
     provenance: opts.provenance ?? { kind: "slices" },
