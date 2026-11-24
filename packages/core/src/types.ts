@@ -12,6 +12,13 @@ export type AAMode = "legacy" | "voxel-dda" | "smooth-sdf" | "bandlimited";
 export type AAQuality = "eco" | "balanced" | "ultra";
 export type BackgroundMode = "terrain" | "studio" | "solid" | "transparent";
 export type RenderStyle = "arcade-8bit" | "hd-2d" | "smooth-toy" | "retro-raw";
+export type ArtStyle =
+  | "crisp-maquette"
+  | "moebius-cel"
+  | "painterly"
+  | "hd-2d-voxel"
+  | "classic-sprite"
+  | "clay-maquette";
 export type ShadeStyle = "toon-aa" | "pbr-lite" | "unlit";
 export type CameraMode = "overhead" | "chase" | "cockpit" | "ortho" | "oblique" | "free";
 export type IsometricPreset = "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter";
@@ -100,6 +107,8 @@ export interface VolumeAsset {
   emisU8: Uint8Array;
   /** Optional per-voxel material class (0..255, see MATERIAL_ID) uploaded in uEmisTex.g (RG8). */
   materialU8?: Uint8Array;
+  /** Optional seam-free periodic wrapped surface UV volume (RGBA8: cos(2pi*u), sin(2pi*u), cos(2pi*v), sin(2pi*v)). */
+  uvPhaseU8?: Uint8Array;
   /** True when sdfF32 holds an exact analytic/procedural continuous SDF (not a binary voxel EDT). */
   hasExactSdf?: boolean;
   /** Named semantic attachment sockets (e.g. thrusterL, wingtipR, cockpitCam). */
@@ -177,6 +186,8 @@ export interface LightingState {
   microRelief?: number;
   /** Optional continuous stylization dial (0 = smooth painterly SDF sculpt, 0.5 = stylized, 1 = stacked sprite). */
   styleDial?: number;
+  /** Optional discrete art-direction style preset (crisp-maquette | moebius-cel | painterly | hd-2d-voxel | classic-sprite | clay-maquette). */
+  artStyle?: ArtStyle;
 }
 
 export interface TerrainState {

@@ -36,6 +36,7 @@ import {
 import type {
   AAMode,
   AAQuality,
+  ArtStyle,
   BackgroundMode,
   EngineTelemetry,
   OverdrawReport,
@@ -84,6 +85,7 @@ interface GpuAssetTex {
   sdfIsFloat: boolean;
   norm: WebGLTexture;
   emis: WebGLTexture;
+  uv: WebGLTexture | null;
 }
 
 interface VisibleSlot {
@@ -106,6 +108,15 @@ function styleToInt(s: RenderStyle): number {
   if (s === "smooth-toy") return 2;
   if (s === "retro-raw") return 3;
   return 0; // arcade-8bit
+}
+
+function artStyleToInt(s?: ArtStyle): number {
+  if (s === "moebius-cel") return 1;
+  if (s === "painterly") return 2;
+  if (s === "hd-2d-voxel") return 3;
+  if (s === "classic-sprite") return 4;
+  if (s === "clay-maquette") return 5;
+  return 0; // crisp-maquette
 }
 
 function defaultAAModeForStyle(s: RenderStyle, fallback: AAMode): AAMode {
@@ -173,6 +184,7 @@ export class AASpriteRenderer {
   };
   private floatColorExt = false;
   private dummySdfTex: WebGLTexture | null = null;
+  private dummyUvTex: WebGLTexture | null = null;
 
   private emptyVao: WebGLVertexArrayObject | null = null;
   private cubeVao: WebGLVertexArrayObject | null = null;
@@ -312,11 +324,16 @@ export class AASpriteRenderer {
         if (entry.sdf) gl.deleteTexture(entry.sdf);
         gl.deleteTexture(entry.norm);
         gl.deleteTexture(entry.emis);
+        if (entry.uv) gl.deleteTexture(entry.uv);
       }
       this.assetCache.clear();
       if (this.dummySdfTex) {
         gl.deleteTexture(this.dummySdfTex);
         this.dummySdfTex = null;
+      }
+      if (this.dummyUvTex) {
+        gl.deleteTexture(this.dummyUvTex);
+        this.dummyUvTex = null;
       }
       for (const vao of [this.emptyVao, this.cubeVao, this.ribbonVao]) if (vao) gl.deleteVertexArray(vao);
       for (const buf of [this.cubeVbo, this.cubeEbo, this.instanceVbo, this.ribbonVbo]) if (buf) gl.deleteBuffer(buf);
@@ -340,6 +357,7 @@ export class AASpriteRenderer {
       if (entry.sdf) gl.deleteTexture(entry.sdf);
       gl.deleteTexture(entry.norm);
       gl.deleteTexture(entry.emis);
+      if (entry.uv) gl.deleteTexture(entry.uv);
     }
     this.assetCache.delete(assetId);
     return true;
@@ -472,6 +490,7 @@ export class AASpriteRenderer {
     gl.uniform1i(this.progs.entity.u.uSdfTex, 1);
     gl.uniform1i(this.progs.entity.u.uNormalTex, 2);
     gl.uniform1i(this.progs.entity.u.uEmisTex, 3);
+    gl.uniform1i(this.progs.entity.u.uUvTex, 4);
     gl.useProgram(this.progs.jfaInit.program);
     gl.uniform1i(this.progs.jfaInit.u.uAuxTex, 0);
     gl.useProgram(this.progs.jfaStep.program);
@@ -482,7 +501,7 @@ export class AASpriteRenderer {
     gl.uniform1i(this.progs.comp.u.uSeedTex, 2);
     gl.useProgram(null);
 
-    // 1x1x1 dummy 3D SDF texture so voxel-dda assets skip uploading unused uSdfTex VRAM
+    // 1x1x1 dummy 3D SDF & wrapped-UV textures so assets without SDF/UV skip unused VRAM
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     const dummy = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_3D, dummy);
@@ -490,6 +509,13 @@ export class AASpriteRenderer {
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     this.dummySdfTex = dummy;
+
+    const dummyUv = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_3D, dummyUv);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 1, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128, 128, 128, 128]));
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    this.dummyUvTex = dummyUv;
 
     this.emptyVao = gl.createVertexArray();
 
@@ -745,6 +771,7 @@ export class AASpriteRenderer {
     gl.uniformMatrix4fv(ep.u.uInvViewProj, false, invViewProj);
     gl.uniform3fv(ep.u.uCamPos, doc.camera.pos);
     gl.uniform1i(ep.u.uStyle, styleInt);
+    gl.uniform1i(ep.u.uArtStyle, artStyleToInt(doc.lighting.artStyle));
     gl.uniform1i(ep.u.uShadeStyle, shadeStyleToInt(doc.lighting.shadeStyle));
     gl.uniform3fv(ep.u.uSunDir, sunDir);
     gl.uniform1f(ep.u.uTimeOfDay, doc.lighting.timeOfDay);
@@ -888,6 +915,7 @@ export class AASpriteRenderer {
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D, gpuTex.sdf ?? this.dummySdfTex);
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_3D, gpuTex.norm);
         gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_3D, gpuTex.emis);
+        gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_3D, gpuTex.uv ?? this.dummyUvTex);
         lastBoundAssetKey = assetKey;
         lastBoundNeedSdf = runNeedSdf;
       }
@@ -895,6 +923,7 @@ export class AASpriteRenderer {
       gl.uniform3f(ep.u.uVolSize, leadAsset.w, leadAsset.l, leadAsset.h);
       gl.uniform1f(ep.u.uSdfRange, leadAsset.sdfRange);
       gl.uniform1f(ep.u.uSdfIsFloat, gpuTex.sdf && gpuTex.sdfIsFloat ? 1.0 : 0.0);
+      gl.uniform1f(ep.u.uHasUvTex, gpuTex.uv ? 1.0 : 0.0);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceVbo);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, ib.subarray(0, instCount * INSTANCE_FLOATS));
       gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, instCount);
@@ -1033,10 +1062,14 @@ export class AASpriteRenderer {
       if (existing.sdf) gl.deleteTexture(existing.sdf);
       gl.deleteTexture(existing.norm);
       gl.deleteTexture(existing.emis);
+      if (existing.uv) gl.deleteTexture(existing.uv);
     }
 
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     const upSdf = needSdf ? this.uploadSdfTex(gl, asset) : null;
+    const uvTex = asset.uvPhaseU8 && asset.uvPhaseU8.length === asset.w * asset.l * asset.h * 4
+      ? this.make3DTex(gl, asset.w, asset.l, asset.h, gl.RGBA8, gl.RGBA, asset.uvPhaseU8, gl.LINEAR)
+      : null;
     const entry: GpuAssetTex = {
       hash: asset.hash,
       albedo: this.make3DTex(gl, asset.w, asset.l, asset.h, gl.RGBA8, gl.RGBA, asset.rgba, gl.LINEAR),
@@ -1044,6 +1077,7 @@ export class AASpriteRenderer {
       sdfIsFloat: upSdf ? upSdf.isFloat : false,
       norm: this.make3DTex(gl, asset.w, asset.l, asset.h, gl.RGBA8, gl.RGBA, asset.normAo, gl.LINEAR),
       emis: this.uploadEmisMatTex(gl, asset),
+      uv: uvTex,
     };
     this.assetCache.set(asset.id, entry);
     return entry;
@@ -1253,6 +1287,7 @@ export class AASpriteRenderer {
         gl.uniform1f(tp.u.uTimeOfDay, doc.lighting.timeOfDay);
         gl.uniform1f(tp.u.uFogDensity, doc.lighting.fogDensity);
         gl.uniform1i(tp.u.uStyle, styleInt);
+        gl.uniform1i(tp.u.uArtStyle, artStyleToInt(doc.lighting.artStyle));
         gl.uniform1i(tp.u.uTerrainEnabled, 1);
         gl.uniform1f(tp.u.uSeed, doc.terrain.seed);
         gl.uniform1f(tp.u.uMaxHeight, doc.terrain.maxHeight);

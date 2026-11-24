@@ -149,15 +149,18 @@ uniform sampler3D uAlbedoTex;
 uniform sampler3D uSdfTex;
 uniform sampler3D uNormalTex;
 uniform sampler3D uEmisTex;
+uniform sampler3D uUvTex;
 
 uniform vec2 uResolution;
 uniform vec3 uVolSize;
 uniform float uSdfRange;
 uniform float uSdfIsFloat;
+uniform float uHasUvTex;
 uniform mat4 uInvViewProj;
 uniform vec3 uCamPos;
 
 uniform int uStyle;           // 0=arcade-8bit, 1=hd-2d, 2=smooth-toy, 3=retro-raw
+uniform int uArtStyle;        // 0=crisp-maquette, 1=moebius-cel, 2=painterly, 3=hd-2d-voxel, 4=classic-sprite, 5=clay-maquette
 uniform float uSplitX;
 uniform int uShadeStyle;
 uniform vec3 uSunDir;
@@ -398,101 +401,143 @@ float traceSoftSdfShadow(vec3 ro, vec3 rd) {
   return clamp(res, 0.0, 1.0);
 }
 
-// Triplanar procedural micro-relief (escapes both Legoland blocks and melted plastic clay!)
+// Crisp wrapped-UV procedural detail relief (seamless on cylinders, domes, conical roofs & curved arches!)
 void applyMaterialRelief(
-  vec3 hp, inout vec3 nLoc, inout vec3 albedo, int matId, float strength,
+  vec3 hp, vec3 uvVol, inout vec3 nLoc, inout vec3 albedo, int matId, float strength,
   out float rough, out float metal, out float sss, out float fresnelAmt
 ) {
   rough = 0.84;
   metal = 0.0;
   sss = 0.0;
   fresnelAmt = 0.04;
+
+  // Orthonormal surface tangent frame in local object space for crisp directional brick/tile normal bumps
+  vec3 upRef = abs(nLoc.z) < 0.90 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+  vec3 tangU = normalize(cross(upRef, nLoc));
+  vec3 tangV = normalize(cross(nLoc, tangU));
+
+  // Decode seam-free periodic wrapped surface UVs (cos/sin in uUvTex -> continuous sub-voxel [0,1)!)
+  bool hasWrappedUv = false;
+  float uTile = 0.0;
+  float vTile = 0.0;
+  if (uHasUvTex > 0.5) {
+    vec4 uvSc = texture(uUvTex, uvVol) * 2.0 - 1.0;
+    if (length(uvSc.xy) > 0.28 && length(uvSc.zw) > 0.28) {
+      hasWrappedUv = true;
+      uTile = fract(atan(uvSc.y, uvSc.x) * 0.15915494);
+      vTile = fract(atan(uvSc.w, uvSc.z) * 0.15915494);
+    }
+  }
+
   vec3 an = abs(nLoc);
   vec3 wTri = pow(an, vec3(4.0));
   wTri /= max(wTri.x + wTri.y + wTri.z, 1e-4);
 
   if (matId >= 24 && matId <= 48) {
-    // Ashlar / Weathered Hand-Laid Masonry Stone
+    // Crisp Wrapped Running-Bond Ashlar Masonry / Radial Arch Voussoirs
     rough = 0.86;
     if (strength > 0.01) {
-      vec3 sp = hp * 0.72;
-      float rowZ = floor(sp.z);
-      float stag = mod(rowZ, 2.0) * 0.5;
-      float fx = fract(sp.x * 0.55 + stag);
-      float fy = fract(sp.y * 0.55 + stag);
-      float fz = fract(sp.z);
-      float mortarX = smoothstep(0.04, 0.12, fx) * smoothstep(0.04, 0.12, 1.0 - fx);
-      float mortarY = smoothstep(0.04, 0.12, fy) * smoothstep(0.04, 0.12, 1.0 - fy);
-      float mortarZ = smoothstep(0.06, 0.15, fz) * smoothstep(0.06, 0.15, 1.0 - fz);
-      float sideCourse = mix(mortarX, mortarY, step(an.y, an.x)) * mortarZ;
-      float topPave = mortarX * mortarY;
-      float mortar = mix(sideCourse, topPave, wTri.z);
-      vec3 blkId = vec3(floor(sp.x * 0.55 + stag), floor(sp.y * 0.55 + stag), rowZ);
-      float blkVar = (hash31(blkId) - 0.5) * 0.12;
-      float speck = (vnoise3(hp * 1.65) - 0.5) * 0.08;
-      albedo *= (1.0 + (blkVar + speck) * strength) * mix(0.86, 1.02, mix(1.0, mortar, strength));
-      vec3 grad = vec3(
-        vnoise3(hp * 1.45 + vec3(0.25, 0.0, 0.0)) - vnoise3(hp * 1.45 - vec3(0.25, 0.0, 0.0)),
-        vnoise3(hp * 1.45 + vec3(0.0, 0.25, 0.0)) - vnoise3(hp * 1.45 - vec3(0.0, 0.25, 0.0)),
-        (fz < 0.14 ? -0.28 : (fz > 0.86 ? 0.28 : 0.0)) + (vnoise3(hp * 1.45 + vec3(0.0, 0.0, 0.25)) - vnoise3(hp * 1.45 - vec3(0.0, 0.0, 0.25)))
-      );
-      nLoc = normalize(nLoc + grad * (0.20 * strength));
+      float uStag, vInRow, blkHash;
+      if (hasWrappedUv) {
+        float rowHalf = step(0.5, vTile);
+        vInRow = fract(vTile * 2.0);
+        float uShift = fract(uTile + rowHalf * 0.25);
+        uStag = fract(uShift * 2.0);
+        // Brick-coherent mineral warmth (moves to brick center so individual bricks never split mid-stone)
+        vec3 blkCenter = hp + tangU * ((0.5 - uStag) * 1.15) + tangV * ((0.5 - vInRow) * 0.75);
+        float colIdx = floor(uShift * 2.0);
+        blkHash = fract(vnoise3(blkCenter * 0.34) * 0.65 + hash31(vec3(colIdx * 3.1, rowHalf * 5.7, floor(blkCenter.z * 0.25) * 2.3)) * 0.55);
+      } else {
+        vec3 sp = hp * 0.72;
+        float rowZ = floor(sp.z);
+        float stag = mod(rowZ, 2.0) * 0.5;
+        uStag = mix(fract(sp.x * 0.55 + stag), fract(sp.y * 0.55 + stag), step(an.y, an.x));
+        vInRow = mix(fract(sp.z), fract(sp.y * 0.55), wTri.z);
+        blkHash = hash31(vec3(floor(sp.x * 0.55 + stag), floor(sp.y * 0.55 + stag), rowZ));
+      }
+      float eU = min(uStag, 1.0 - uStag);
+      float eV = min(vInRow, 1.0 - vInRow);
+      float mortar = smoothstep(0.032, 0.078, eU) * smoothstep(0.048, 0.115, eV);
+      float bevelLip = (smoothstep(0.84, 0.94, vInRow) - smoothstep(0.16, 0.06, vInRow)) * mortar;
+      float bevelSide = (smoothstep(0.88, 0.96, uStag) - smoothstep(0.12, 0.04, uStag)) * mortar;
+      float blkVar = (blkHash - 0.5) * 0.13;
+      float grit = (vnoise3(hp * 2.15) - 0.5) * 0.08;
+      albedo *= (1.0 + (blkVar + grit) * strength) * mix(0.80, 1.03, mix(1.0, mortar, strength));
+      vec3 bump = tangU * (bevelSide * 0.34) + tangV * (bevelLip * 0.38);
+      vec3 microG = vec3(
+        vnoise3(hp * 2.0 + vec3(0.2, 0, 0)) - vnoise3(hp * 2.0 - vec3(0.2, 0, 0)),
+        vnoise3(hp * 2.0 + vec3(0, 0.2, 0)) - vnoise3(hp * 2.0 - vec3(0, 0.2, 0)),
+        vnoise3(hp * 2.0 + vec3(0, 0, 0.2)) - vnoise3(hp * 2.0 - vec3(0, 0, 0.2))
+      ) * 0.14;
+      nLoc = normalize(nLoc + (bump + microG) * strength);
     }
   } else if (matId >= 56 && matId <= 80) {
-    // Carved Timber / Wood Grain
-    rough = 0.78;
+    // Carved Timber Planks & Directional Wood Grain
+    rough = 0.76;
     if (strength > 0.01) {
-      float grain = sin(hp.x * 2.4 + vnoise3(hp * 0.7) * 5.0) * 0.5 + 0.5;
-      float plank = smoothstep(0.04, 0.12, fract(hp.z * 0.45));
-      albedo *= mix(0.86, 1.06, mix(0.5, grain * plank, strength));
-      nLoc = normalize(nLoc + vec3(0.0, 0.0, (grain - 0.5) * 0.18 * strength));
+      float uW = hasWrappedUv ? uTile * 2.0 : hp.x * 0.4;
+      float vW = hasWrappedUv ? fract(vTile * 2.0) : fract(hp.z * 0.45);
+      float grain = sin(uW * 12.0 + vnoise3(hp * 0.85) * 4.5) * 0.5 + 0.5;
+      float seam = smoothstep(0.03, 0.09, min(vW, 1.0 - vW));
+      albedo *= mix(0.84, 1.06, mix(0.5, grain * seam, strength));
+      nLoc = normalize(nLoc + tangV * ((seam - 0.5) * 0.26 + (grain - 0.5) * 0.12) * strength);
     }
   } else if (matId >= 88 && matId <= 112) {
-    // Organic Foliage / Moss / Coral (painterly Dreams-inspired micro-fleck + warm subsurface wrap)
-    rough = 0.74;
-    sss = 0.55;
+    // Organic Foliage / Moss / Coral (crisp sculpted leaf clusters + warm subsurface wrap)
+    rough = 0.72;
+    sss = 0.52;
     if (strength > 0.01) {
-      float fl = vnoise3(hp * 1.85);
-      float fl2 = vnoise3(hp * 3.4 + 11.3);
-      albedo *= mix(0.84, 1.14, mix(0.5, fl * 0.65 + fl2 * 0.35, strength));
-      vec3 leafG = vec3(fl - 0.5, fl2 - 0.5, (fl * fl2 - 0.25)) * (0.34 * strength);
+      float fl = vnoise3(hp * 2.1);
+      float fl2 = vnoise3(hp * 4.2 + 11.3);
+      float cluster = smoothstep(0.28, 0.72, fl * 0.65 + fl2 * 0.35);
+      albedo *= mix(0.82, 1.15, mix(0.5, cluster, strength));
+      vec3 leafG = vec3(fl - 0.5, fl2 - 0.5, (cluster - 0.5)) * (0.36 * strength);
       nLoc = normalize(nLoc + leafG);
     }
   } else if (matId >= 120 && matId <= 144) {
-    // Terracotta Barrel Tiles / Satin Painted Lacquer
-    rough = 0.48;
-    fresnelAmt = 0.10;
+    // Wrapped Radiating Terracotta Barrel Roof Tiles / Satin Ceramic
+    rough = 0.44;
+    fresnelAmt = 0.12;
     if (strength > 0.01) {
-      float rib = sin(hp.x * 2.2 + hp.y * 2.2) * 0.5 + 0.5;
-      float course = smoothstep(0.06, 0.18, fract(hp.z * 0.75));
-      float tileVar = (hash31(floor(hp * 0.6)) - 0.5) * 0.14;
-      albedo *= (1.0 + tileVar * strength) * mix(0.86, 1.07, mix(0.5, rib * course, strength));
-      nLoc = normalize(nLoc + vec3(cos(hp.x * 2.2) * 0.20, cos(hp.y * 2.2) * 0.20, 0.0) * strength);
+      float uR = hasWrappedUv ? fract(uTile * 2.0) : fract((hp.x + hp.y) * 0.42);
+      float vR = hasWrappedUv ? fract(vTile * 2.0) : fract(hp.z * 0.65);
+      float barrel = sin(uR * 3.14159265);
+      float barrelSlope = cos(uR * 3.14159265);
+      float lip = smoothstep(0.05, 0.14, vR);
+      float tVar = (hash31(floor(hp * 0.55)) - 0.5) * 0.12;
+      albedo *= (1.0 + tVar * strength) * mix(0.82, 1.08, mix(0.5, (0.45 + 0.55 * barrel) * lip, strength));
+      vec3 tileN = tangU * (barrelSlope * 0.36) + tangV * ((vR < 0.14 ? -0.35 : 0.08));
+      nLoc = normalize(nLoc + tileN * strength);
     }
   } else if (matId >= 152 && matId <= 184) {
     // Brushed Brass / Bronze / Steel Metallic
-    rough = 0.26;
-    metal = 0.86;
-    fresnelAmt = 0.35;
+    rough = 0.24;
+    metal = 0.88;
+    fresnelAmt = 0.38;
     if (strength > 0.01) {
-      float brush = (vnoise3(hp * vec3(1.2, 1.2, 4.2)) - 0.5) * 0.10;
-      albedo *= (1.0 + brush * strength);
+      float brush = (vnoise3(hp * vec3(1.4, 1.4, 5.0)) - 0.5) * 0.10;
+      float rivet = hasWrappedUv
+        ? smoothstep(0.14, 0.05, length(vec2(fract(uTile * 2.0) - 0.5, fract(vTile * 2.0) - 0.5)))
+        : 0.0;
+      albedo *= (1.0 + (brush + rivet * 0.14) * strength);
     }
   } else if (matId >= 196 && matId <= 224) {
     // Translucent Glossy Glass / Crystal
-    rough = 0.10;
-    metal = 0.15;
-    fresnelAmt = 0.65;
+    rough = 0.08;
+    metal = 0.16;
+    fresnelAmt = 0.68;
     sss = 0.30;
   } else if (matId >= 232) {
     // Bioluminescent Fluid / Glowing Crystal
-    rough = 0.18;
-    fresnelAmt = 0.45;
+    rough = 0.16;
+    fresnelAmt = 0.48;
     sss = 0.85;
   } else if (strength > 0.01) {
-    // Subtle painterly grain even on matte materials so nothing looks like sterile plastic
-    float g = (vnoise3(hp * 1.9) - 0.5) * 0.07 * strength;
-    albedo *= (1.0 + g);
+    // Natural Stratified Rock / Matte Mineral Grain
+    float strata = sin(hp.z * 0.85 + vnoise3(hp * 0.25) * 3.5) * 0.5 + 0.5;
+    float grit = (vnoise3(hp * 2.2) - 0.5) * 0.11;
+    albedo *= (1.0 + grit * strength) * mix(0.92, 1.06, mix(0.5, strata, strength * 0.7));
+    nLoc = normalize(nLoc + tangV * ((strata - 0.5) * 0.22 * strength));
   }
 }
 
@@ -618,7 +663,8 @@ bool traceSmoothSdfRay(
   if (!hit) return false;
 
   vec3 hp = roVox + rdN * s;
-  const float e = 0.22;
+  // Tight crisp SDF normal gradient (e = 0.085 kills marshmallow oversmoothing on cornices & arches!)
+  const float e = 0.085;
   vec3 nLoc = normalize(
     vec3( 1, -1, -1) * sampleSdf(hp + vec3( e, -e, -e)) +
     vec3(-1, -1,  1) * sampleSdf(hp + vec3(-e, -e,  e)) +
@@ -626,22 +672,51 @@ bool traceSmoothSdfRay(
     vec3( 1,  1,  1) * sampleSdf(hp + vec3( e,  e,  e))
   );
 
-  // Sample slightly inward (-nLoc * 0.30) so continuous boundaries always land inside true surface color/material!
-  vec3 hpSample = clamp(hp - nLoc * 0.30, vec3(0.5), uVolSize - 0.5);
+  // Exact mean curvature along surface normal -> convex bevel catchlights & crisp concave seam darkening!
+  float curv = (uSdfIsFloat > 0.5)
+    ? clamp((sampleSdf(hp + nLoc * 0.38) + sampleSdf(hp - nLoc * 0.38)) * 2.8, -1.0, 1.0)
+    : 0.0;
+
+  // Sample slightly inward (-nLoc * 0.25) with crisp sharp-edged albedo (no airbrush smear!)
+  vec3 hpSample = clamp(hp - nLoc * 0.25, vec3(0.5), uVolSize - 0.5);
   vec3 uv = hpSample / uVolSize;
-  vec3 albedo = texture(uAlbedoTex, uv).rgb;
   ivec3 ic = clamp(ivec3(floor(hpSample)), ivec3(0), ivec3(uVolSize) - 1);
+  vec3 albedoLin = texture(uAlbedoTex, uv).rgb;
+  vec3 albedoNear = texelFetch(uAlbedoTex, ic, 0).rgb;
+  vec3 albedo = mix(albedoNear, albedoLin, 0.34);
   vec2 emMat = texelFetch(uEmisTex, ic, 0).rg;
   float ef = emMat.r;
   int matId = int(floor(emMat.g * 255.0 + 0.5));
 
-  // Continuous Style Dial (0 = smooth sculptural miniature, 0.5 = stylized crisp, 0.85+ = voxel-faceted)
-  float reliefWeight = uMicroRelief * clamp(1.0 - uStyleDial * 1.15, 0.0, 1.0);
+  // Studio Clay & Basswood Architectural Maquette Mode (uArtStyle == 5)!
+  if (uArtStyle == 5 && ef < 0.35) {
+    if (matId >= 152 && matId <= 184) albedo = vec3(0.84, 0.68, 0.34);       // warm studio brass
+    else if (matId >= 56 && matId <= 80) albedo = vec3(0.76, 0.58, 0.42);   // warm basswood
+    else if (matId >= 120 && matId <= 144) albedo = vec3(0.86, 0.72, 0.58); // sanded birch roof
+    else if (matId >= 88 && matId <= 112) albedo = vec3(0.78, 0.80, 0.74);  // sage studio flock
+    else albedo = vec3(0.92, 0.89, 0.84);                                   // crisp gallery plaster
+  }
+
+  // Apply wrapped-UV material relief (suppressed slightly in Moebius flat ink mode so cel bands pop!)
+  float styleReliefMul = (uArtStyle == 1) ? 0.42 : (uArtStyle == 5 ? 0.55 : 1.0);
+  float reliefWeight = uMicroRelief * styleReliefMul * clamp(1.0 - uStyleDial * 1.15, 0.0, 1.0);
   float rough, metal, sss, fresnelAmt;
-  applyMaterialRelief(hp, nLoc, albedo, matId, reliefWeight, rough, metal, sss, fresnelAmt);
+  applyMaterialRelief(hp, uv, nLoc, albedo, matId, reliefWeight, rough, metal, sss, fresnelAmt);
+
+  // Painterly Gouache / Arcane directional brushstroke normal modulation (uArtStyle == 2)!
+  if (uArtStyle == 2) {
+    float br1 = vnoise3(hp * vec3(0.65, 2.4, 0.95));
+    float br2 = vnoise3(hp * vec3(2.3, 0.7, 1.4) + 7.3);
+    albedo *= mix(0.86, 1.16, smoothstep(0.25, 0.75, br1 * 0.6 + br2 * 0.4));
+    nLoc = normalize(nLoc + vec3(br1 - 0.5, br2 - 0.5, (br1 - br2) * 0.5) * 0.32);
+  }
+
+  // Convex architectural bevel catchlight (crisp highlights on stone corners, ridges & brass!)
+  if (ef < 0.25) {
+    albedo *= (1.0 + max(0.0, curv) * (uArtStyle == 5 ? 0.18 : 0.13));
+  }
 
   if (uStyleDial > 0.25) {
-    // Gradually introduce subtle stylized/cube-face normal snapping as Style Dial rises toward sprite-stack!
     vec3 an = abs(nLoc);
     vec3 snapN = (an.x >= an.y && an.x >= an.z) ? vec3(sign(nLoc.x), 0.0, 0.0)
       : (an.y >= an.z) ? vec3(0.0, sign(nLoc.y), 0.0)
@@ -651,8 +726,9 @@ bool traceSmoothSdfRay(
   }
 
   vec3 worldN = normalize(normalMat * nLoc);
-  // Multi-scale analytical SDF ambient occlusion (darkens arches, caves, overhangs, crevices!)
+  // Multi-scale analytical SDF AO + crisp concave crevice accent!
   float ao = (uSdfIsFloat > 0.5) ? computeSdfAo(hp, nLoc) : texture(uNormalTex, uv).a;
+  ao = clamp(ao * (1.0 - max(0.0, -curv) * 0.26), 0.28, 1.0);
 
   // Analytical soft penumbra SDF self-shadows!
   float selfSh = 0.0;
@@ -664,20 +740,53 @@ bool traceSmoothSdfRay(
   }
 
   vec3 baseLin = srgbToLin(clamp(albedo, 0.0, 1.0));
-  vec3 shaded = shadeVoxel(baseLin, worldN, ao, ef, selfSh, false, emisBoost);
-
-  // Specular sun highlight + Fresnel sky rim for metallic / glass / satin materials!
-  float ndotl = max(0.0, dot(worldN, uSunDir));
-  vec3 Hsun = normalize(uSunDir + viewDirW);
-  float shin = mix(12.0, 96.0, 1.0 - rough);
-  float sunSpec = pow(max(0.0, dot(worldN, Hsun)), shin) * (1.0 - selfSh * 0.85) * ndotl;
-  vec3 specCol = mix(vec3(1.0, 0.98, 0.92), baseLin * 1.45, metal);
+  vec3 shaded;
   float nightW = max(0.0, (uTimeOfDay - 0.48) / 0.52);
-  shaded += specCol * sunSpec * mix(0.06, 0.95, 1.0 - rough) * (1.0 - nightW * 0.55);
 
-  float fres = pow(1.0 - max(0.0, dot(worldN, viewDirW)), 3.2) * fresnelAmt;
-  vec3 skyRim = mix(vec3(0.55, 0.78, 1.0), vec3(0.16, 0.36, 0.62), nightW);
-  shaded += skyRim * fres * ao * 0.65;
+  if (uArtStyle == 1) {
+    // MOEBIUS / SABLE LIGNE CLAIRE INK & CEL STYLE!
+    float ndl = dot(worldN, uSunDir);
+    float litVal = mix(ndl, min(ndl, -0.35), selfSh * 0.85);
+    float band = (litVal > 0.32) ? 1.14 : (litVal > -0.06 ? 0.82 : 0.46);
+    vec3 bandTint = (litVal > 0.32)
+      ? mix(vec3(1.06, 1.02, 0.94), vec3(0.74, 0.84, 1.0), nightW)
+      : (litVal > -0.06 ? mix(vec3(0.90, 0.92, 0.98), vec3(0.42, 0.54, 0.76), nightW)
+        : mix(vec3(0.56, 0.64, 0.86), vec3(0.20, 0.28, 0.50), nightW));
+    shaded = baseLin * srgbToLin(bandTint) * band * mix(0.68, 1.0, ao);
+    if (ef > 0.05) {
+      shaded = mix(shaded, baseLin * (1.25 + emisBoost * 0.55), smoothstep(0.05, 0.55, ef));
+    }
+    // Crisp internal comic pen crosshatching in deep shadows!
+    if (litVal <= -0.06 && ef < 0.2) {
+      float hatch = smoothstep(0.18, 0.30, abs(fract((gl_FragCoord.x + gl_FragCoord.y) * 0.14) - 0.5));
+      shaded *= mix(0.72, 1.0, hatch);
+    }
+    // Crisp Ligne Claire dark ink silhouette & curvature crease lines!
+    float viewGrazing = 1.0 - max(0.0, dot(worldN, viewDirW));
+    float inkCrease = smoothstep(0.42, 0.76, abs(curv)) + smoothstep(0.76, 0.91, viewGrazing);
+    if (ef < 0.45) {
+      shaded = mix(shaded, vec3(0.015, 0.020, 0.036), clamp(inkCrease * 0.82, 0.0, 0.88));
+    }
+  } else {
+    shaded = shadeVoxel(baseLin, worldN, ao, ef, selfSh, false, emisBoost);
+    if (uArtStyle == 2 && ef < 0.25) {
+      // Painterly Gouache / Arcane warm-vs-cool color temperature separation!
+      float litMix = smoothstep(-0.25, 0.55, dot(worldN, uSunDir) * (1.0 - selfSh * 0.7));
+      vec3 tempShift = mix(vec3(0.76, 0.80, 1.18), vec3(1.14, 1.04, 0.88), litMix);
+      shaded *= tempShift;
+    }
+    // Specular sun highlight + Fresnel sky rim for metallic / glass / satin materials!
+    float ndotl = max(0.0, dot(worldN, uSunDir));
+    vec3 Hsun = normalize(uSunDir + viewDirW);
+    float shin = mix(14.0, 96.0, 1.0 - rough);
+    float sunSpec = pow(max(0.0, dot(worldN, Hsun)), shin) * (1.0 - selfSh * 0.85) * ndotl;
+    vec3 specCol = mix(vec3(1.0, 0.98, 0.92), baseLin * 1.45, metal);
+    shaded += specCol * sunSpec * mix(0.06, 0.95, 1.0 - rough) * (1.0 - nightW * 0.55);
+
+    float fres = pow(1.0 - max(0.0, dot(worldN, viewDirW)), 3.2) * fresnelAmt;
+    vec3 skyRim = mix(vec3(0.55, 0.78, 1.0), vec3(0.16, 0.36, 0.62), nightW);
+    shaded += skyRim * fres * ao * 0.65;
+  }
 
   // Real-time 3D Point & Spot Lights on continuous SDF surfaces!
   if (uPointLightCount > 0) {
@@ -704,7 +813,7 @@ void main() {
   int iModeA = int(vFlags.z + 0.5);
   int iModeB = int(vFlags.w + 0.5);
   int mode = (uSplitX >= 0.0 && (gl_FragCoord.x / uResolution.x) < uSplitX) ? iModeA : iModeB;
-  bool isLegacy = (mode == 0);
+  bool isLegacy = (mode == 0) || (uArtStyle == 4);
   bool smoothSdf = (mode == 2);
   int spp = isLegacy ? 1 : int(vMeta.w + 0.5);
   bool doSelfShadow = vFlags.x > 0.5;
@@ -733,8 +842,8 @@ void main() {
   vec4 dVoxDx   = vClipCol0 * (2.0 / uResolution.x);
   vec4 dVoxDy   = vClipCol1 * (2.0 / uResolution.y);
 
-  // When Style Dial approaches 1.0 on a continuous SDF volume, smoothly cross over into crisp classic stacked voxels!
-  bool useSmoothSdf = smoothSdf && (uStyleDial < 0.88);
+  // Art styles 3 (hd-2d-voxel) & 4 (classic-sprite) switch cleanly to voxel-DDA / retro sprite stack!
+  bool useSmoothSdf = smoothSdf && (uStyleDial < 0.88) && (uArtStyle != 3) && (uArtStyle != 4);
 
   vec3 accLin = vec3(0.0);
   vec3 accNorm = vec3(0.0);
