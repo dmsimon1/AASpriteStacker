@@ -37,6 +37,10 @@ export class GeoFieldState {
   public b = 200;
   public emis = 0;
   public mat: number = MATERIAL_ID.matte;
+  /** Optional periodic wrapped surface UV coordinates (1.0 unit = 2 bricks/tiles x 2 courses). */
+  public u = 0;
+  public v = 0;
+  public hasUv = false;
 
   reset(): void {
     this.d = 1e6;
@@ -45,10 +49,26 @@ export class GeoFieldState {
     this.b = 200;
     this.emis = 0;
     this.mat = MATERIAL_ID.matte;
+    this.u = 0;
+    this.v = 0;
+    this.hasUv = false;
+  }
+
+  /** Assign intrinsic wrapped surface UVs on the current winning surface. */
+  setUv(u: number, v: number): void {
+    this.u = u;
+    this.v = v;
+    this.hasUv = true;
   }
 
   /** Sharp architectural union (preserves crisp creases between masonry, trim, roofs, and metal). */
-  union(d: number, col: RGB, mat: MaterialKind | number = MATERIAL_ID.matte, emis = 0): void {
+  union(
+    d: number,
+    col: RGB,
+    mat: MaterialKind | number = MATERIAL_ID.matte,
+    emis = 0,
+    uv?: readonly [number, number],
+  ): void {
     if (d < this.d) {
       this.d = d;
       this.r = col[0];
@@ -56,11 +76,25 @@ export class GeoFieldState {
       this.b = col[2];
       this.emis = emis;
       this.mat = typeof mat === "number" ? mat : MATERIAL_ID[mat];
+      if (uv) {
+        this.u = uv[0];
+        this.v = uv[1];
+        this.hasUv = true;
+      } else {
+        this.hasUv = false;
+      }
     }
   }
 
   /** Organic smooth union (blends rock, roots, snowdrifts, coral, and smooth colors seamlessly!). */
-  smoothUnion(d: number, k: number, col: RGB, mat: MaterialKind | number = MATERIAL_ID.matte, emis = 0): void {
+  smoothUnion(
+    d: number,
+    k: number,
+    col: RGB,
+    mat: MaterialKind | number = MATERIAL_ID.matte,
+    emis = 0,
+    uv?: readonly [number, number],
+  ): void {
     const res = opSmoothMin(this.d, d, k);
     this.d = res.d;
     const t = res.h;
@@ -70,21 +104,42 @@ export class GeoFieldState {
     this.emis = mix(this.emis, emis, t);
     if (t > 0.5) {
       this.mat = typeof mat === "number" ? mat : MATERIAL_ID[mat];
+      if (uv) {
+        this.u = uv[0];
+        this.v = uv[1];
+        this.hasUv = true;
+      } else {
+        this.hasUv = false;
+      }
     }
   }
 
   /** Carve out arches, caves, recessed windows, or interiors (k=0 sharp crease, k>0 filleted). */
-  subtract(dCut: number, k = 0, innerCol?: RGB, innerMat?: MaterialKind | number, innerEmis?: number): void {
+  subtract(
+    dCut: number,
+    k = 0,
+    innerCol?: RGB,
+    innerMat?: MaterialKind | number,
+    innerEmis?: number,
+    innerUv?: readonly [number, number],
+  ): void {
     const prevD = this.d;
     const nextD = opSmoothSubtract(prevD, dCut, k);
-    if (innerCol && nextD > prevD + 1e-4) {
+    if (nextD > prevD + 1e-4) {
       const blend = k > 1e-4 ? Math.min(1, (nextD - prevD) / Math.max(0.2, k)) : 1.0;
-      this.r = mix(this.r, innerCol[0], blend);
-      this.g = mix(this.g, innerCol[1], blend);
-      this.b = mix(this.b, innerCol[2], blend);
-      if (innerEmis !== undefined) this.emis = mix(this.emis, innerEmis, blend);
+      if (innerCol) {
+        this.r = mix(this.r, innerCol[0], blend);
+        this.g = mix(this.g, innerCol[1], blend);
+        this.b = mix(this.b, innerCol[2], blend);
+        if (innerEmis !== undefined) this.emis = mix(this.emis, innerEmis, blend);
+      }
       if (innerMat !== undefined && blend > 0.45) {
         this.mat = typeof innerMat === "number" ? innerMat : MATERIAL_ID[innerMat];
+      }
+      if (innerUv && blend > 0.45) {
+        this.u = innerUv[0];
+        this.v = innerUv[1];
+        this.hasUv = true;
       }
     }
     this.d = nextD;
@@ -130,7 +185,12 @@ export function compileGeoVolume(opts: CompileGeoVolumeOptions): VolumeAsset {
   const sdfF32 = new Float32Array(total);
   const emisU8 = new Uint8Array(total);
   const matU8 = new Uint8Array(total);
+  // Neutral phase center (128 = 0.0 vector) so un-UV'd regions & air never introduce wrap seams
+  const uvPhaseU8 = new Uint8Array(total * 4);
+  uvPhaseU8.fill(128);
+  let anyUv = false;
   const st = new GeoFieldState();
+  const TAU = Math.PI * 2;
 
   for (let z = 0; z < h; z++) {
     const pz = z + 0.5;
@@ -146,8 +206,8 @@ export function compileGeoVolume(opts: CompileGeoVolumeOptions): VolumeAsset {
         const p = idx * 4;
         sdfF32[idx] = st.d;
 
-        // Populate exact color/material inside the surface AND across a 2-voxel narrow exterior band
-        // so GPU trilinear filtering right at d = 0 never leaks black air or wrong material IDs!
+        // Populate exact color/material/wrapped-UV inside the surface AND across a 2-voxel narrow exterior band
+        // so GPU trilinear filtering right at d = 0 never leaks black air, seams, or wrong material IDs!
         if (st.d <= 2.2) {
           rgba[p] = Math.max(0, Math.min(255, Math.round(st.r)));
           rgba[p + 1] = Math.max(0, Math.min(255, Math.round(st.g)));
@@ -155,6 +215,15 @@ export function compileGeoVolume(opts: CompileGeoVolumeOptions): VolumeAsset {
           rgba[p + 3] = st.d <= 0.0 ? 255 : 0;
           emisU8[idx] = Math.max(0, Math.min(255, Math.round(st.emis)));
           matU8[idx] = Math.max(0, Math.min(255, Math.round(st.mat)));
+          if (st.hasUv) {
+            anyUv = true;
+            const au = st.u * TAU;
+            const av = st.v * TAU;
+            uvPhaseU8[p] = Math.max(0, Math.min(255, Math.round((Math.cos(au) * 0.5 + 0.5) * 255)));
+            uvPhaseU8[p + 1] = Math.max(0, Math.min(255, Math.round((Math.sin(au) * 0.5 + 0.5) * 255)));
+            uvPhaseU8[p + 2] = Math.max(0, Math.min(255, Math.round((Math.cos(av) * 0.5 + 0.5) * 255)));
+            uvPhaseU8[p + 3] = Math.max(0, Math.min(255, Math.round((Math.sin(av) * 0.5 + 0.5) * 255)));
+          }
         }
       }
     }
@@ -172,6 +241,7 @@ export function compileGeoVolume(opts: CompileGeoVolumeOptions): VolumeAsset {
     explicitSdf: sdfF32,
     explicitEmissive: emisU8,
     explicitMaterial: matU8,
+    explicitUvPhase: anyUv ? uvPhaseU8 : undefined,
     sdfRange: 8.0,
     sockets: opts.sockets,
     provenance: { kind: "geofield", source: "aastack-geofield" },

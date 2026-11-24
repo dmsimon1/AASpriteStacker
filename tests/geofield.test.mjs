@@ -9,15 +9,19 @@ import {
   SimulationZone,
   compileGeoVolume,
   fbm3,
+  musgraveRidged2D,
   opPolarFold,
   opSmoothMin,
   sampleCatmullRomSpline,
+  sampleMultifractalTerrain,
   scatterOnSdf,
   sdArchY,
   sdBox,
+  sdCylinderZ,
   sdLatheZ,
   sdPitchedRoofY,
   sdSplineLoft,
+  swissTurbulence2D,
 } from "../packages/geofield/dist/index.js";
 
 test("AA-GeoField continuous SDF primitives, smooth union, lathe, spline loft, and 2D slice export", () => {
@@ -118,4 +122,68 @@ test("AA-GeoField continuous SDF primitives, smooth union, lathe, spline loft, a
   );
   sim.step(0.05);
   assert.ok(Math.abs(sim.state.y - 0.2) < 1e-6);
+});
+
+test("AA-GeoField seam-free periodic wrapped UVs (uvPhaseU8) preserve wrap continuity", () => {
+  const tower = compileGeoVolume({
+    id: "test_wrapped_tower",
+    w: 24,
+    l: 24,
+    h: 20,
+    voxelScale: 0.25,
+    evaluate: (x, y, z, out) => {
+      const lx = x - 12;
+      const ly = y - 12;
+      const d = sdCylinderZ(lx, ly, z - 10, 7.5, 9.5);
+      // 8 full 2-brick periods around circumference -> integer wrap across atan2(-pi -> +pi)
+      const u = (Math.atan2(ly, lx) / (Math.PI * 2)) * 8.0;
+      const v = z / 4.0;
+      out.union(d, [212, 198, 174], "stone", 0, [u, v]);
+    },
+  });
+
+  assert.ok(tower.uvPhaseU8 instanceof Uint8Array, "uvPhaseU8 must be emitted when UVs are set");
+  assert.equal(tower.uvPhaseU8.length, 24 * 24 * 20 * 4);
+
+  // Sample two adjacent voxels straddling the atan2(-pi -> +pi) seam at x = 4, y = 11 vs y = 12, z = 10
+  const idxA = (10 * 24 * 24 + 11 * 24 + 4) * 4;
+  const idxB = (10 * 24 * 24 + 12 * 24 + 4) * 4;
+  const cA = (tower.uvPhaseU8[idxA] / 255) * 2 - 1;
+  const sA = (tower.uvPhaseU8[idxA + 1] / 255) * 2 - 1;
+  const cB = (tower.uvPhaseU8[idxB] / 255) * 2 - 1;
+  const sB = (tower.uvPhaseU8[idxB + 1] / 255) * 2 - 1;
+  assert.ok(Math.hypot(cA, sA) > 0.92, "surface UV phase vector must have unit length");
+  assert.ok(Math.hypot(cB, sB) > 0.92, "adjacent seam UV phase vector must have unit length");
+  // Cosine similarity across the branch cut must stay strongly positive (zero 180-deg flip seam!)
+  assert.ok(cA * cB + sA * sB > 0.4, "periodic cos/sin phase must stay continuous across atan2 wrap");
+
+  // Far-air corner voxel must stay neutral (128 = zero vector)
+  const airIdx = 0;
+  assert.equal(tower.uvPhaseU8[airIdx], 128);
+  assert.equal(tower.uvPhaseU8[airIdx + 1], 128);
+});
+
+test("Musgrave ridged multifractal + Swiss-Turbulence Alpine Gorge terrain engine", () => {
+  const r0 = musgraveRidged2D(0.5, 0.8, 5);
+  const s0 = swissTurbulence2D(0.5, 0.8, 5, 1.0);
+  assert.ok(Number.isFinite(r0) && r0 > 0, "musgraveRidged2D must produce positive ridge height");
+  assert.ok(Number.isFinite(s0) && s0 > 0, "swissTurbulence2D must produce positive eroded height");
+
+  const river = sampleMultifractalTerrain(0, 0);
+  const westBench = sampleMultifractalTerrain(-23, 0);
+  const eastBench = sampleMultifractalTerrain(23, 0);
+  const highPeak = sampleMultifractalTerrain(-45, -110);
+
+  assert.ok(river.height < 0, `gorge center must carve below river level, got ${river.height}`);
+  assert.ok(river.riverMask > 0.9, "gorge center must have strong riverMask");
+  assert.ok(westBench.height > 7 && westBench.height < 18, `west bridge bench expected ~10-14, got ${westBench.height}`);
+  assert.ok(eastBench.height > 7 && eastBench.height < 18, `east bridge bench expected ~10-14, got ${eastBench.height}`);
+  assert.ok(highPeak.height > westBench.height + 10, "background alpine massif must tower above valley bench");
+
+  for (const s of [river, westBench, eastBench, highPeak]) {
+    const nLen = Math.hypot(s.normal[0], s.normal[1], s.normal[2]);
+    assert.ok(Math.abs(nLen - 1.0) < 1e-4, "analytical terrain normal must be unit length");
+    assert.ok(s.normal[1] > 0, "terrain normal must point upward");
+    assert.ok(s.slope >= 0 && s.slope <= 1, "slope must be normalized in [0,1]");
+  }
 });
