@@ -16,5 +16,7 @@ examples/airwolf-city/bundle.js
 examples/airwolf-city/bundle.js.map
 examples/xmas-mainstreet/bundle.js
 examples/xmas-mainstreet/bundle.js.map
+examples/geofield-showcase/bundle.js
+examples/geofield-showcase/bundle.js.map
 site/dist/
 .cloudflare/

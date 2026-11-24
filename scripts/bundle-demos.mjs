@@ -80,3 +80,20 @@ await build({
 });
 
 console.log("Bundled examples/xmas-mainstreet/bundle.js");
+
+const GEOFIELD_DIR = resolve(ROOT, "examples/geofield-showcase");
+await build({
+  entryPoints: [resolve(GEOFIELD_DIR, "src/main.ts")],
+  outfile: resolve(GEOFIELD_DIR, "bundle.js"),
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  minify: true,
+  sourcemap: true,
+  alias: {
+    "@aastack/core": resolve(ROOT, "packages/core/dist/index.js"),
+    "@aastack/geofield": resolve(ROOT, "packages/geofield/dist/index.js"),
+  },
+});
+
+console.log("Bundled examples/geofield-showcase/bundle.js");
