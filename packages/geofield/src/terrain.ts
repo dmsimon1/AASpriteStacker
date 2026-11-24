@@ -1,12 +1,14 @@
 /**
- * Contemporary Multifractal Terrain Engine (CPU / GPU 1:1 Parity).
+ * Contemporary Multifractal Alpine Terrain Engine (1:1 CPU / WebGL2 GPU Parity).
  *
- * Implements:
- *  1. Ken Musgrave's Ridged Multifractal (1993) for sharp knife-edge alpine peaks & arêtes
- *  2. Giliam de Carpentier's Swiss-Turbulence / Inigo Quilez analytical derivative erosion
- *     for flat alluvial valley benches + carved mountain drainage gullies
- *  3. Parametric Alpine Glacier Gorge carving so 3D AA-GeoField architectural landmarks
- *     (stone viaducts, mountain watchtowers, conifers) snap cleanly onto exact terrain height & slope!
+ * Synthesizes three proven geological terrain algorithms (zero smooth plastic Bryce/KPT look):
+ *  1. Ken Musgrave's Ridged Multifractal (1993) with domain-warped rotated octaves for razor-sharp
+ *     pyramidal alpine arêtes and jagged mountain skylines.
+ *  2. Giliam de Carpentier's Swiss-Turbulence (2012) & Inigo Quilez analytical derivative damping
+ *     for realistic eroded mountain gullies alongside flat rocky valley benches.
+ *  3. Natural Glacial U-Valley & Bridgehead Spur shaping so 3D AA-GeoField architectural landmarks
+ *     (stone viaducts, mountain watchtowers, conifers) snap cleanly onto real alpine rock ledges
+ *     with open valley sightlines toward towering distant snow-capped peaks.
  */
 
 import type { Vec3 } from "@aastack/core";
@@ -15,28 +17,28 @@ import { fract, mix, smoothstep } from "./fields.js";
 export interface MultifractalTerrainConfig {
   /** World seed offset (shifts noise domain deterministically). */
   seed?: number;
-  /** Peak vertical amplitude in world units (default 48). */
+  /** Peak vertical amplitude in world units (default 64). */
   maxHeight?: number;
-  /** Musgrave ridged multifractal weight (0 = gentle rolling hills, 1 = alpine peaks, 1.5 = craggy spires). */
+  /** Musgrave ridged multifractal weight (0.2 = eroded hills, 1.0 = alpine peaks, 1.5 = jagged Dolomites). */
   ridgeWeight?: number;
   /** Swiss-Turbulence analytical derivative erosion strength (0..1.5, default 1.0). */
   erosion?: number;
-  /** Altitude above which snow settles on moderate slopes (default 21). */
+  /** Altitude above which crisp wind-drifted alpine snowpack settles (default 22). */
   snowline?: number;
-  /** Carve the central winding Alpine glacier river gorge (default true). */
+  /** Carve the central winding Alpine glacial river valley (default true). */
   gorgeEnabled?: boolean;
 }
 
 export interface TerrainSample {
-  /** World Y elevation at (x, z) (negative under water level y = 0). */
+  /** World Y elevation at (x, z) (negative under river surface y = 0). */
   height: number;
   /** Analytical unit surface normal [nx, ny, nz] in world space (+Y up). */
   normal: Vec3;
-  /** Surface steepness in [0, 1] (0 = flat plateau, 1 = vertical cliff). */
+  /** Surface steepness in [0, 1] (0 = flat shelf, 1 = sheer granite face). */
   slope: number;
   /** [0, 1] glacier river channel mask (1 = deep river bed). */
   riverMask: number;
-  /** [0, 1] snow accumulation mask (altitude + gentle-slope weighted). */
+  /** [0, 1] snow accumulation mask (altitude + moderate-slope weighted). */
   snowMask: number;
 }
 
@@ -84,18 +86,18 @@ export function vnoise2Grad(x: number, z: number): { v: number; dx: number; dz: 
 }
 
 /**
- * Ken Musgrave's Ridged Multifractal (1993) with rotated octaves to eliminate axial artifacts.
- * Returns sharp mountain ridges in ~[0, 1.35].
+ * Ken Musgrave's Ridged Multifractal (1993) with rotated octaves and sharp ridge exponent.
+ * Produces knife-edge alpine peaks, pyramidal crests, and jagged tectonic arêtes.
  */
 export function musgraveRidged2D(
   x: number,
   z: number,
-  octaves = 5,
+  octaves = 6,
   offset = 1.0,
-  gain = 2.05,
+  gain = 2.15,
 ): number {
   let sum = 0;
-  let amp = 0.54;
+  let amp = 0.56;
   let weight = 1.0;
   let px = x;
   let pz = z;
@@ -106,27 +108,26 @@ export function musgraveRidged2D(
     sig = sig * sig * weight;
     weight = Math.max(0, Math.min(1, sig * gain));
     sum += sig * amp;
-    // Domain rotation + lacunarity 2.07
-    const nx = (ROT_A * px - ROT_B * pz) * 2.07 + 17.3;
-    const nz = (ROT_B * px + ROT_A * pz) * 2.07 + 11.7;
+    const nx = (ROT_A * px - ROT_B * pz) * 2.09 + 17.3;
+    const nz = (ROT_B * px + ROT_A * pz) * 2.09 + 11.7;
     px = nx;
     pz = nz;
-    amp *= 0.5;
+    amp *= 0.49;
   }
   return sum;
 }
 
 /**
  * Giliam de Carpentier's Swiss-Turbulence (analytical derivative-damped pseudo-erosion).
- * High accumulated slope damps finer octaves and warps ridges down-slope, creating
- * realistic flat valley benches alongside deeply incised alpine drainage gullies!
+ * High accumulated slope damps finer octaves and warps subsequent ridges down-slope,
+ * carving dendritic erosion chutes and rocky scree aprons without offline simulation.
  */
 export function swissTurbulence2D(
   x: number,
   z: number,
-  octaves = 5,
+  octaves = 6,
   erosion = 1.0,
-  warp = 0.22,
+  warp = 0.28,
 ): number {
   let sum = 0;
   let amp = 0.52;
@@ -138,80 +139,87 @@ export function swissTurbulence2D(
 
   for (let i = 0; i < octaves; i++) {
     const g = vnoise2Grad(px + warp * dxSum, pz + warp * dzSum);
-    const n = 1.0 - Math.abs(g.v * 2.0 - 1.0);
-    const signFlip = g.v * 2.0 - 1.0 >= 0 ? -2.0 : 2.0;
-    const gdx = g.dx * signFlip;
-    const gdz = g.dz * signFlip;
+    const signed = g.v * 2.0 - 1.0;
+    const n = 1.0 - Math.abs(signed);
+    const sgn = signed >= 0 ? -2.0 : 2.0;
+    const gdx = g.dx * sgn;
+    const gdz = g.dz * sgn;
     const slopeSq = dxSum * dxSum + dzSum * dzSum;
-    const damp = 1.0 / (1.0 + erosion * 1.45 * slopeSq);
+    const damp = 1.0 / (1.0 + erosion * 1.65 * slopeSq);
     sum += amp * n * n * damp;
-    dxSum += amp * gdx * freq * 0.35;
-    dzSum += amp * gdz * freq * 0.35;
+    dxSum += amp * gdx * freq * 0.36;
+    dzSum += amp * gdz * freq * 0.36;
 
-    const nx = (ROT_A * px - ROT_B * pz) * 2.03 + 23.1;
-    const nz = (ROT_B * px + ROT_A * pz) * 2.03 + 9.4;
+    const nx = (ROT_A * px - ROT_B * pz) * 2.05 + 23.1;
+    const nz = (ROT_B * px + ROT_A * pz) * 2.05 + 9.4;
     px = nx;
     pz = nz;
-    freq *= 2.03;
+    freq *= 2.05;
     amp *= 0.48;
   }
   return sum;
 }
 
-/** Centerline X(z) of the winding Alpine glacier river gorge (passes cleanly through x=0 at z=0). */
+/** Winding Alpine glacial river centerline X(z) passing cleanly through x=0 at z=0. */
 export function alpineRiverCenterX(z: number): number {
-  return Math.sin(z * 0.024) * 15.0 + Math.sin(z * 0.056) * 4.0;
+  return Math.sin(z * 0.019) * 18.0 + Math.sin(z * 0.047) * 5.0;
 }
 
 /** Evaluate exact multifractal terrain height at (x, z), matching GPU `alpineTerrainHeight` 1:1. */
 export function sampleMultifractalHeight(x: number, z: number, cfg: MultifractalTerrainConfig = {}): number {
   const seed = cfg.seed ?? 137.0;
-  const maxHeight = cfg.maxHeight ?? 54.0;
+  const maxHeight = cfg.maxHeight ?? 44.0;
   const ridgeWeight = cfg.ridgeWeight ?? 1.0;
   const erosion = cfg.erosion ?? 1.0;
   const gorgeEnabled = cfg.gorgeEnabled ?? true;
 
-  const sx = x * 0.014 + seed * 0.13;
-  const sz = z * 0.014 - seed * 0.09;
+  // Domain-warped tectonic coordinates so mountain chains curve organically instead of grid-aligned
+  const wx = x * 0.0095 + seed * 0.13;
+  const wz = z * 0.0095 - seed * 0.09;
+  const warpX = (vnoise2Grad(wx * 1.2 + 3.1, wz * 1.2 - 1.4).v - 0.5) * 0.65;
+  const warpZ = (vnoise2Grad(wx * 1.2 - 4.7, wz * 1.2 + 2.8).v - 0.5) * 0.65;
+  const sx = wx + warpX;
+  const sz = wz + warpZ;
 
-  // 1. Macro Musgrave Ridged Multifractal mountain spine
-  const ridged = musgraveRidged2D(sx, sz, 5, 1.0, 2.05);
-  // 2. Swiss-Turbulence analytical derivative-eroded gullies & valley benches
-  const swiss = swissTurbulence2D(sx * 1.45 + 4.3, sz * 1.45 - 2.7, 5, erosion, 0.24);
-  // 3. Dramatic background mountain massif (-Z) & towering outer valley walls
-  const backMassif = smoothstep(-10.0, -135.0, z) * 0.96;
-  const flankMassif = smoothstep(38.0, 128.0, Math.abs(x)) * 0.52;
-  const uplift = backMassif + flankMassif;
+  // 1. Macro Musgrave Ridged Multifractal alpine spine (6 octaves)
+  const ridged = musgraveRidged2D(sx, sz, 6, 1.0, 2.15);
+  // 2. Swiss-Turbulence analytical derivative-eroded mountain slopes & gullies (6 octaves)
+  const swiss = swissTurbulence2D(sx * 1.38 + 4.3, sz * 1.38 - 2.7, 6, erosion, 0.28);
 
-  const baseField = mix(swiss * 0.92, ridged * 0.66 + swiss * 0.46, Math.max(0, Math.min(1, ridgeWeight * 0.78)));
-  let h = (baseField * (0.62 + 0.50 * ridgeWeight) + uplift * (0.48 + 0.42 * ridged)) * maxHeight * 0.72 + 4.2;
+  // Sweeping distant alpine range (-Z) & flanking ridges calibrated so jagged peaks silhouette cleanly against sky!
+  const distMassif = smoothstep(-28.0, -185.0, z) * 0.92;
+  const sideRanges = smoothstep(34.0, 150.0, Math.abs(x)) * 0.58;
+  const macroEnvelope = 0.28 + distMassif + sideRanges;
+
+  const ridgeMix = Math.max(0, Math.min(1, ridgeWeight * 0.80));
+  const rawField = mix(swiss * 0.92, ridged * 0.72 + swiss * 0.38, ridgeMix);
+  const peaked = Math.pow(Math.max(0, rawField * 2.05), 1.32) * (0.64 + 0.52 * ridgeWeight);
+  let h = peaked * macroEnvelope * maxHeight * 0.88 + 2.4;
 
   if (gorgeEnabled) {
     const rX = alpineRiverCenterX(z);
     const dRiver = Math.abs(x - rX);
 
-    // Glacial U-valley opens gracefully toward the viewer (+Z > 6) so the viaduct, tower & alpine skyline shine!
-    const foreOpen = smoothstep(5.0, 48.0, z);
-    const chInner = 8.4 + foreOpen * 12.0;
-    const chOuter = 20.5 + foreOpen * 24.0;
-    const channelT = smoothstep(chInner, chOuter, dRiver);
+    // Wide glacial U-valley pinching gently at bridge crossing (z=0), opening to sunlit valley & distant cirque
+    const pinchAtBridge = Math.exp(-((z + 1.0) * (z + 1.0)) / (24.0 * 24.0));
+    const headwallClose = smoothstep(-115.0, -230.0, z);
+    const valleyHalfFloor = mix(15.5, 8.6, pinchAtBridge) * (1.0 - headwallClose * 0.78);
+    const valleyHalfSlope = mix(52.0, 22.5, pinchAtBridge) * (1.0 - headwallClose * 0.45);
+    const valleyT = smoothstep(valleyHalfFloor, valleyHalfSlope, dRiver);
 
-    // Crisp chiseled canyon walls without spiky local fangs next to bridge abutments
-    const wallMask = smoothstep(0.10, 0.45, channelT) * (1.0 - smoothstep(0.65, 0.96, channelT));
-    const crag = (vnoise2Grad(x * 0.10 + 3.1, z * 0.10 - 1.7).v - 0.5) * 2.1 +
-      (vnoise2Grad(x * 0.22 - 5.2, z * 0.22 + 4.3).v - 0.5) * 1.1;
+    const riverBed = -2.2 + (vnoise2Grad(x * 0.09, z * 0.09).v - 0.5) * 1.1;
+    const valleyH = mix(riverBed, h, Math.max(valleyT, headwallClose * 0.82));
 
-    // Solid natural rock abutment ledges at x = +-21..36 around z in [-26, +12] for viaduct + watchtower
-    const heroZone = smoothstep(40.0, 12.0, Math.abs(z + 4.0));
-    const benchProfile = smoothstep(14.5, 20.5, dRiver) * smoothstep(42.0, 26.0, dRiver) * heroZone * (1.0 - foreOpen * 0.90);
+    // Twin natural granite bridgehead ledges at x = +-21..36 around z in [-22, +10]
+    const spurBand = smoothstep(26.0, 8.0, Math.abs(z + 3.0)) *
+      smoothstep(13.5, 20.5, dRiver) *
+      smoothstep(42.0, 26.0, dRiver);
+    const spurRock = 10.6 + (swiss - 0.45) * 2.2;
+    h = mix(valleyH, spurRock, spurBand * 0.90);
 
-    const canyonH = mix(-2.6, Math.max(h, 10.2), channelT) + crag * wallMask;
-    const benchH = 10.6 + (swiss - 0.42) * 2.4;
-    h = mix(canyonH, benchH, benchProfile * 0.88);
-
-    // Roll foreground canyon shoulders gently down into pine hills so the entire viaduct & sky peaks stay unobstructed!
-    const foreClear = smoothstep(4.0, 38.0, z) * smoothstep(95.0, 24.0, dRiver);
-    h = mix(h, Math.min(h, 4.8 + (swiss - 0.35) * 3.2), foreClear * 0.88);
+    // Keep foreground river mouth (+Z > 8) low and open so foreground flanks never feel like a dark tunnel
+    const foreMouth = smoothstep(6.0, 38.0, z) * smoothstep(88.0, 20.0, dRiver);
+    h = mix(h, Math.min(h, riverBed + smoothstep(12.0, 48.0, dRiver) * 8.5), foreMouth * 0.90);
   }
 
   return h;
@@ -236,11 +244,11 @@ export function sampleMultifractalTerrain(
 
   const gorgeEnabled = cfg.gorgeEnabled ?? true;
   const dRiver = gorgeEnabled ? Math.abs(x - alpineRiverCenterX(z)) : 999;
-  const riverMask = gorgeEnabled ? 1.0 - smoothstep(7.5, 13.5, dRiver) : 0.0;
+  const riverMask = gorgeEnabled ? 1.0 - smoothstep(7.5, 14.0, dRiver) : 0.0;
 
-  const snowline = cfg.snowline ?? 24.5;
-  const altSnow = smoothstep(snowline - 3.5, snowline + 7.5, h);
-  const slopeSnow = 1.0 - smoothstep(0.32, 0.56, slope);
+  const snowline = cfg.snowline ?? 22.0;
+  const altSnow = smoothstep(snowline - 2.0, snowline + 4.0, h);
+  const slopeSnow = 1.0 - smoothstep(0.30, 0.46, slope);
   const snowMask = Math.max(0, Math.min(1, altSnow * slopeSnow));
 
   return { height: h, normal, slope, riverMask, snowMask };

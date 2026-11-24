@@ -1,10 +1,11 @@
 /**
- * Tri-Atmosphere Ground, Water & Contemporary Multifractal Terrain Shader for AA-GeoField:
+ * Tri-Atmosphere Ground, Water & Modern Multifractal Terrain Shader for AA-GeoField:
  *  - uSeed < 50    -> World A: Bioluminescent Sunken Roman Sea Cave (teal Voronoi caustics + spotlight)
  *  - uSeed 50..119 -> World B: Sunlit Mediterranean Cove (crystalline turquoise sandbars + surf foam)
- *  - uSeed >= 120  -> World C: Musgrave Ridged Multifractal + Swiss-Turbulence Derivative-Eroded
- *                              Alpine Mountain Gorge & Turquoise Glacier River (1:1 parity with CPU
- *                              `@aastack/geofield` `sampleMultifractalTerrain` + Art Style coherence!)
+ *  - uSeed >= 120  -> World C: Modern High-Detail Musgrave Ridged Multifractal + Swiss-Turbulence
+ *                              Alpine Glacial Valley (6-octave raymarch + 10-octave faceted rock/gully
+ *                              detail normals, concavity AO, crisp wind-drifted snowpack, matte
+ *                              geological lighting with ZERO plastic gloss, and Rayleigh aerial haze!)
  */
 
 export const GEOFIELD_GROUND_FS = `#version 300 es
@@ -18,7 +19,6 @@ uniform vec3 uSunDir;
 uniform float uTimeOfDay;
 uniform float uFogDensity;
 uniform int uStyle;
-uniform int uArtStyle;
 uniform int uTerrainEnabled;
 uniform float uSeed;
 uniform float uMaxHeight;
@@ -40,6 +40,12 @@ float hash21(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
   p3 += dot(p3, p3.yzx + 33.33);
   return fract((p3.x + p3.y) * p3.z);
+}
+
+vec2 hash22(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.xx + p3.yz) * p3.zy);
 }
 
 float vnoise(vec2 p) {
@@ -75,110 +81,179 @@ vec3 vnoise2Grad(vec2 p) {
   return vec3(v, g);
 }
 
+// Angular Worley/Voronoi fractured alpine rock cleavage (returns F1, F2-F1 crack edge, cellId)
+vec3 rockVoronoi(vec2 p) {
+  vec2 n = floor(p);
+  vec2 f = fract(p);
+  float d1 = 8.0;
+  float d2 = 8.0;
+  float id = 0.0;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      vec2 g = vec2(float(i), float(j));
+      vec2 o = hash22(n + g);
+      vec2 r = g + o - f;
+      float d = dot(r, r);
+      if (d < d1) {
+        d2 = d1;
+        d1 = d;
+        id = o.x;
+      } else if (d < d2) {
+        d2 = d;
+      }
+    }
+  }
+  return vec3(sqrt(d1), sqrt(d2) - sqrt(d1), id);
+}
+
 const mat2 OCT_ROT = mat2(0.8, 0.6, -0.6, 0.8);
 
-// Ken Musgrave's Ridged Multifractal (1993) for sharp knife-edge alpine peaks & arêtes
+// Ken Musgrave's Ridged Multifractal (1993) with 6 octaves for sharp alpine arêtes
 float musgraveRidged2D(vec2 p) {
   float sum = 0.0;
-  float amp = 0.54;
+  float amp = 0.56;
   float weight = 1.0;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 6; i++) {
     float n = vnoise2Grad(p).x * 2.0 - 1.0;
     float sig = 1.0 - abs(n);
     sig = sig * sig * weight;
-    weight = clamp(sig * 2.05, 0.0, 1.0);
+    weight = clamp(sig * 2.15, 0.0, 1.0);
     sum += sig * amp;
-    p = (OCT_ROT * p) * 2.07 + vec2(17.3, 11.7);
-    amp *= 0.5;
+    p = (OCT_ROT * p) * 2.09 + vec2(17.3, 11.7);
+    amp *= 0.49;
   }
   return sum;
 }
 
-// Giliam de Carpentier's Swiss-Turbulence (analytical derivative-damped pseudo-erosion)
+// Giliam de Carpentier's Swiss-Turbulence (analytical derivative-damped pseudo-erosion, 6 octaves)
 float swissTurbulence2D(vec2 p, float erosion) {
   float sum = 0.0;
   float amp = 0.52;
   float freq = 1.0;
   vec2 dSum = vec2(0.0);
-  for (int i = 0; i < 5; i++) {
-    vec3 g = vnoise2Grad(p + 0.24 * dSum);
-    float n = 1.0 - abs(g.x * 2.0 - 1.0);
-    float sgn = (g.x * 2.0 - 1.0) >= 0.0 ? -2.0 : 2.0;
+  for (int i = 0; i < 6; i++) {
+    vec3 g = vnoise2Grad(p + 0.28 * dSum);
+    float signedV = g.x * 2.0 - 1.0;
+    float n = 1.0 - abs(signedV);
+    float sgn = signedV >= 0.0 ? -2.0 : 2.0;
     vec2 grad = g.yz * sgn;
-    float damp = 1.0 / (1.0 + erosion * 1.45 * dot(dSum, dSum));
+    float damp = 1.0 / (1.0 + erosion * 1.65 * dot(dSum, dSum));
     sum += amp * n * n * damp;
-    dSum += amp * grad * freq * 0.35;
-    p = (OCT_ROT * p) * 2.03 + vec2(23.1, 9.4);
-    freq *= 2.03;
+    dSum += amp * grad * freq * 0.36;
+    p = (OCT_ROT * p) * 2.05 + vec2(23.1, 9.4);
+    freq *= 2.05;
     amp *= 0.48;
   }
   return sum;
 }
 
 float alpineRiverCenterX(float z) {
-  return sin(z * 0.024) * 15.0 + sin(z * 0.056) * 4.0;
+  return sin(z * 0.019) * 18.0 + sin(z * 0.047) * 5.0;
 }
 
 // Exact 1:1 GPU counterpart to @aastack/geofield sampleMultifractalHeight(x, z, cfg)!
 float alpineTerrainHeight(vec2 xz) {
-  float maxH = max(12.0, uMaxHeight);
+  float maxH = max(16.0, uMaxHeight);
   float ridgeW = clamp(uTerrainScale, 0.0, 1.8);
   float erosion = clamp(uTerraceSteps, 0.0, 1.8);
-  vec2 sp = xz * 0.014 + vec2(uSeed * 0.13, -uSeed * 0.09);
+
+  vec2 w = xz * 0.0095 + vec2(uSeed * 0.13, -uSeed * 0.09);
+  vec2 warp = vec2(
+    vnoise2Grad(w * 1.2 + vec2(3.1, -1.4)).x - 0.5,
+    vnoise2Grad(w * 1.2 + vec2(-4.7, 2.8)).x - 0.5
+  ) * 0.65;
+  vec2 sp = w + warp;
 
   float ridged = musgraveRidged2D(sp);
-  float swiss = swissTurbulence2D(sp * 1.45 + vec2(4.3, -2.7), erosion);
-  float backMassif = smoothstep(-10.0, -135.0, xz.y) * 0.96;
-  float flankMassif = smoothstep(38.0, 128.0, abs(xz.x)) * 0.52;
-  float uplift = backMassif + flankMassif;
+  float swiss = swissTurbulence2D(sp * 1.38 + vec2(4.3, -2.7), erosion);
 
-  float baseField = mix(swiss * 0.92, ridged * 0.66 + swiss * 0.46, clamp(ridgeW * 0.78, 0.0, 1.0));
-  float h = (baseField * (0.62 + 0.50 * ridgeW) + uplift * (0.48 + 0.42 * ridged)) * maxH * 0.72 + 4.2;
+  float distMassif = smoothstep(-28.0, -185.0, xz.y) * 0.92;
+  float sideRanges = smoothstep(34.0, 150.0, abs(xz.x)) * 0.58;
+  float macroEnv = 0.28 + distMassif + sideRanges;
+
+  float rawField = mix(swiss * 0.92, ridged * 0.72 + swiss * 0.38, clamp(ridgeW * 0.80, 0.0, 1.0));
+  float peaked = pow(max(0.0, rawField * 2.05), 1.32) * (0.64 + 0.52 * ridgeW);
+  float h = peaked * macroEnv * maxH * 0.88 + 2.4;
 
   float rX = alpineRiverCenterX(xz.y);
   float dRiver = abs(xz.x - rX);
-  float foreOpen = smoothstep(5.0, 48.0, xz.y);
-  float chInner = 8.4 + foreOpen * 12.0;
-  float chOuter = 20.5 + foreOpen * 24.0;
-  float channelT = smoothstep(chInner, chOuter, dRiver);
+  float pinch = exp(-((xz.y + 1.0) * (xz.y + 1.0)) / (24.0 * 24.0));
+  float headwallClose = smoothstep(-115.0, -230.0, xz.y);
+  float vFloor = mix(15.5, 8.6, pinch) * (1.0 - headwallClose * 0.78);
+  float vSlope = mix(52.0, 22.5, pinch) * (1.0 - headwallClose * 0.45);
+  float valleyT = smoothstep(vFloor, vSlope, dRiver);
 
-  float wallMask = smoothstep(0.10, 0.45, channelT) * (1.0 - smoothstep(0.65, 0.96, channelT));
-  float crag = (vnoise2Grad(xz * 0.10 + vec2(3.1, -1.7)).x - 0.5) * 2.1 +
-    (vnoise2Grad(xz * 0.22 + vec2(-5.2, 4.3)).x - 0.5) * 1.1;
+  float riverBed = -2.2 + (vnoise2Grad(xz * 0.09).x - 0.5) * 1.1;
+  float valleyH = mix(riverBed, h, max(valleyT, headwallClose * 0.82));
 
-  float heroZone = smoothstep(40.0, 12.0, abs(xz.y + 4.0));
-  float benchProfile = smoothstep(14.5, 20.5, dRiver) * smoothstep(42.0, 26.0, dRiver) * heroZone * (1.0 - foreOpen * 0.90);
+  float spurBand = smoothstep(26.0, 8.0, abs(xz.y + 3.0)) *
+    smoothstep(13.5, 20.5, dRiver) *
+    smoothstep(42.0, 26.0, dRiver);
+  float spurRock = 10.6 + (swiss - 0.45) * 2.2;
+  h = mix(valleyH, spurRock, spurBand * 0.90);
 
-  float canyonH = mix(-2.6, max(h, 10.2), channelT) + crag * wallMask;
-  float benchH = 10.6 + (swiss - 0.42) * 2.4;
-  h = mix(canyonH, benchH, benchProfile * 0.88);
-
-  float foreClear = smoothstep(4.0, 38.0, xz.y) * smoothstep(95.0, 24.0, dRiver);
-  h = mix(h, min(h, 4.8 + (swiss - 0.35) * 3.2), foreClear * 0.88);
+  float foreMouth = smoothstep(6.0, 38.0, xz.y) * smoothstep(88.0, 20.0, dRiver);
+  h = mix(h, min(h, riverBed + smoothstep(12.0, 48.0, dRiver) * 8.5), foreMouth * 0.90);
   return h;
 }
 
-vec3 alpineTerrainNormal(vec2 xz) {
-  const float e = 0.45;
-  float hx = alpineTerrainHeight(xz + vec2(e, 0.0)) - alpineTerrainHeight(xz - vec2(e, 0.0));
-  float hz = alpineTerrainHeight(xz + vec2(0.0, e)) - alpineTerrainHeight(xz - vec2(0.0, e));
-  return normalize(vec3(-hx, 2.0 * e, -hz));
+// High-frequency 4-octave micro-crag + fractured Voronoi rock relief (Evaluated ONLY at shading hit!)
+// Gives razor-sharp faceted alpine granite faces and dendritic scree chutes up close without raymarch cost!
+float alpineMicroDetail(vec2 xz, float slope, float erosion) {
+  // 4 extra sharp ridged octaves (10 octaves total!)
+  vec2 p = xz * 0.14;
+  float d = 0.0;
+  float amp = 0.52;
+  for (int i = 0; i < 4; i++) {
+    float r = 1.0 - abs(vnoise(p) * 2.0 - 1.0);
+    d += r * r * amp;
+    p = (OCT_ROT * p) * 2.18 + vec2(9.1, 5.7);
+    amp *= 0.48;
+  }
+  // Sharp angular fractured Voronoi granite planes on steep faces (ZERO smooth putty!)
+  vec3 vor = rockVoronoi(xz * 0.24 + vec2(d * 0.35, -d * 0.25));
+  float rockCleavage = smoothstep(0.02, 0.24, vor.y) * (0.45 + 0.55 * vor.z);
+  float steepW = smoothstep(0.12, 0.42, slope);
+  return (d * 1.25 + rockCleavage * 0.85 * steepW) * (0.55 + 0.45 * erosion);
 }
 
-// Fast 14-step soft analytical mountain self-shadowing across the gorge
+vec3 alpineTerrainNormalHigh(vec2 xz, float dist, float erosion, out float macroSlope) {
+  float eMacro = max(0.35, dist * 0.0035);
+  float hL = alpineTerrainHeight(xz - vec2(eMacro, 0.0));
+  float hR = alpineTerrainHeight(xz + vec2(eMacro, 0.0));
+  float hD = alpineTerrainHeight(xz - vec2(0.0, eMacro));
+  float hU = alpineTerrainHeight(xz + vec2(0.0, eMacro));
+  vec3 nMacro = normalize(vec3(hL - hR, 2.0 * eMacro, hD - hU));
+  macroSlope = clamp(1.0 - nMacro.y, 0.0, 1.0);
+
+  // Add high-frequency 10-octave rocky micro-facets attenuated cleanly with distance (zero aliasing!)
+  float detailFade = 1.0 - smoothstep(45.0, 260.0, dist);
+  if (detailFade > 0.01) {
+    float eMic = max(0.14, dist * 0.0022);
+    float mL = alpineMicroDetail(xz - vec2(eMic, 0.0), macroSlope, erosion);
+    float mR = alpineMicroDetail(xz + vec2(eMic, 0.0), macroSlope, erosion);
+    float mD = alpineMicroDetail(xz - vec2(0.0, eMic), macroSlope, erosion);
+    float mU = alpineMicroDetail(xz + vec2(0.0, eMic), macroSlope, erosion);
+    vec3 nMicro = vec3((mL - mR) / (2.0 * eMic), 0.0, (mD - mU) / (2.0 * eMic));
+    return normalize(nMacro + nMicro * (0.52 * detailFade));
+  }
+  return nMacro;
+}
+
+// Fast 18-step analytical soft mountain self-shadows across the glacial valley
 float alpineSoftShadow(vec3 ro, vec3 sunDir) {
   float res = 1.0;
-  float t = 1.2;
-  for (int i = 0; i < 14; i++) {
+  float t = 1.4;
+  for (int i = 0; i < 18; i++) {
     vec3 p = ro + sunDir * t;
     float h = alpineTerrainHeight(p.xz);
     float diff = p.y - h;
-    if (diff < 0.05) return 0.14;
-    res = min(res, 3.8 * diff / t);
-    t += clamp(diff * 0.65, 1.6, 14.0);
-    if (t > 125.0) break;
+    if (diff < 0.06) return 0.12;
+    res = min(res, 4.4 * diff / t);
+    t += clamp(diff * 0.58, 1.6, 18.0);
+    if (t > 210.0) break;
   }
-  return clamp(res, 0.14, 1.0);
+  return clamp(res, 0.12, 1.0);
 }
 
 // Animated underwater Voronoi caustic web for crystalline lagoon & cove floors
@@ -202,7 +277,6 @@ float caustic(vec2 p, float t) {
 
 void main() {
   bool isLegacy = (uSplitX >= 0.0 && (gl_FragCoord.x / uResolution.x) < uSplitX) ? (uLeftLegacy == 1) : (uRightLegacy == 1);
-  if (uArtStyle == 4) isLegacy = true;
   vec2 fragPx = gl_FragCoord.xy;
   if (isLegacy) {
     float blk = max(3.0, floor(min(uResolution.x, uResolution.y) / 145.0));
@@ -219,20 +293,17 @@ void main() {
   bool isCove = uSeed >= 50.0 && !isAlpine;
   float sunsetW = max(0.0, 1.0 - abs(uTimeOfDay - 0.5) * 2.6);
   float nightW  = clamp((uTimeOfDay - 0.46) / 0.54, 0.0, 1.0);
+  vec3 sunD = normalize(uSunDir);
 
   vec3 skyZen, skyHor;
-  if (uArtStyle == 5) {
-    // Architectural Studio Clay Maquette Cyclorama Backdrop!
-    skyZen = vec3(0.76, 0.79, 0.84);
-    skyHor = vec3(0.91, 0.90, 0.87);
-  } else if (isAlpine) {
-    // Crisp high-altitude Alpine sky (brilliant glacier cerulean / golden alpenglow / starry dusk)
-    vec3 dayZen = vec3(0.16, 0.42, 0.78);
-    vec3 dayHor = vec3(0.74, 0.86, 0.96);
-    vec3 sunZen = vec3(0.20, 0.30, 0.56);
-    vec3 sunHor = vec3(0.96, 0.68, 0.46);
-    vec3 nitZen = vec3(0.03, 0.06, 0.14);
-    vec3 nitHor = vec3(0.11, 0.17, 0.30);
+  if (isAlpine) {
+    // Crisp photographic high-altitude Rayleigh alpine sky
+    vec3 dayZen = vec3(0.17, 0.40, 0.74);
+    vec3 dayHor = vec3(0.68, 0.80, 0.92);
+    vec3 sunZen = vec3(0.19, 0.28, 0.52);
+    vec3 sunHor = vec3(0.94, 0.67, 0.48);
+    vec3 nitZen = vec3(0.03, 0.055, 0.13);
+    vec3 nitHor = vec3(0.10, 0.16, 0.28);
     skyZen = mix(mix(dayZen, sunZen, sunsetW), nitZen, nightW);
     skyHor = mix(mix(dayHor, sunHor, sunsetW), nitHor, nightW);
   } else if (!isCove) {
@@ -251,17 +322,17 @@ void main() {
 
   float upT = pow(clamp(rd.y * 1.45, 0.0, 1.0), 0.72);
   vec3 skyCol = mix(skyHor, skyZen, upT);
-  if ((isCove || isAlpine) && uArtStyle != 5) {
-    float sunAmt = max(0.0, dot(rd, normalize(uSunDir)));
-    vec3 sunGlowCol = mix(vec3(1.0, 0.94, 0.78), vec3(1.0, 0.58, 0.30), sunsetW);
-    skyCol += sunGlowCol * pow(sunAmt, 16.0) * (1.0 - nightW * 0.85) * 0.62;
+  if (isCove || isAlpine) {
+    float sunAmt = max(0.0, dot(rd, sunD));
+    vec3 sunGlowCol = mix(vec3(1.0, 0.94, 0.82), vec3(1.0, 0.62, 0.34), sunsetW);
+    skyCol += sunGlowCol * pow(sunAmt, 14.0) * (1.0 - nightW * 0.85) * 0.52;
   }
 
   // =========================================================================
-  // WORLD C: MUSGRAVE RIDGED MULTIFRACTAL + SWISS-TURBULENCE ALPINE GORGE!
+  // WORLD C: MODERN HIGH-DETAIL MULTIFRACTAL ALPINE VALLEY (ZERO BRYCE LOOK!)
   // =========================================================================
   if (isAlpine) {
-    float maxTerrY = max(36.0, uMaxHeight * 1.75);
+    float maxTerrY = max(55.0, uMaxHeight * 2.15);
     float tWater = (ro.y > 0.0 && rd.y < -0.0005) ? (0.0 - ro.y) / rd.y : 1e9;
     float t = (ro.y > maxTerrY && rd.y < -0.001) ? (maxTerrY - ro.y) / rd.y : 0.4;
     float tPrev = t;
@@ -269,7 +340,7 @@ void main() {
     float tHit = 1e9;
 
     if (!(ro.y > maxTerrY && rd.y >= 0.0)) {
-      for (int i = 0; i < 112; i++) {
+      for (int i = 0; i < 124; i++) {
         vec3 p = ro + rd * t;
         float h = alpineTerrainHeight(p.xz);
         float diff = p.y - h;
@@ -287,13 +358,13 @@ void main() {
           break;
         }
         tPrev = t;
-        float stepD = clamp(diff * 0.38, 0.22 + t * 0.0055, 8.5) * uStepFactor;
+        float stepD = clamp(diff * 0.36, 0.20 + t * 0.0045, 11.0) * uStepFactor;
         t += stepD;
-        if (t > 430.0) break;
+        if (t > 560.0) break;
       }
     }
 
-    bool hitWater = (tWater > 0.1 && tWater < 430.0 && (!hitTerr || tWater < tHit));
+    bool hitWater = (tWater > 0.1 && tWater < 560.0 && (!hitTerr || tWater < tHit));
     if (!hitTerr && !hitWater) {
       outColor = vec4(skyCol, 1.0);
       outAux = vec4(0.0, 0.0, isLegacy ? 1.0 : 0.0, 0.0);
@@ -305,143 +376,137 @@ void main() {
     vec3 col;
     float emis = 0.0;
     float hitDist;
-    vec3 sunD = normalize(uSunDir);
 
     if (hitWater) {
       hitDist = tWater;
       wp = ro + rd * tWater;
       vec2 xz = wp.xz;
       float bedH = alpineTerrainHeight(xz);
-      float depth = clamp(-bedH * 0.45, 0.0, 1.0);
-      // Animated downstream glacial torrent ripples flowing along +Z!
-      float n1 = vnoise(xz * 0.24 - vec2(0.0, uWaveTime * 0.85));
-      float n2 = vnoise(xz * 0.72 - vec2(sin(xz.y * 0.05) * 0.8, uWaveTime * 1.45));
-      vec3 waterN = normalize(vec3((n1 - 0.5) * 0.18 + (n2 - 0.5) * 0.12, 1.0, (n2 - 0.5) * 0.16 - (n1 - 0.5) * 0.10));
-      float fres = pow(1.0 - max(0.0, dot(-rd, waterN)), 3.2);
+      float depth = clamp(-bedH * 0.48, 0.0, 1.0);
+
+      // Crisp glacial mountain stream ripples + rocky shoal cobbles visible in shallow edge!
+      float n1 = vnoise(xz * 0.28 - vec2(0.0, uWaveTime * 0.95));
+      float n2 = vnoise(xz * 0.85 - vec2(sin(xz.y * 0.04) * 0.8, uWaveTime * 1.55));
+      float cobble = rockVoronoi(xz * 0.95).x;
+      vec3 waterN = normalize(vec3((n1 - 0.5) * 0.16 + (n2 - 0.5) * 0.10, 1.0, (n2 - 0.5) * 0.14 - (n1 - 0.5) * 0.09));
+      float fres = pow(1.0 - max(0.0, dot(-rd, waterN)), 3.4);
       vec3 reflDir = reflect(rd, waterN);
       vec3 reflCol = mix(skyHor, skyZen, clamp(reflDir.y * 1.5, 0.0, 1.0));
 
-      if (uArtStyle == 5) {
-        col = mix(vec3(0.68, 0.76, 0.82), vec3(0.84, 0.88, 0.91), fres * 0.5);
-      } else {
-        vec3 glacialDeep = mix(vec3(0.05, 0.34, 0.46), vec3(0.02, 0.10, 0.18), nightW);
-        vec3 glacialShal = mix(vec3(0.18, 0.68, 0.72), vec3(0.05, 0.20, 0.28), nightW);
-        col = mix(glacialShal, glacialDeep, smoothstep(0.1, 0.9, depth));
-        // Sparkling glacial whitewater foam hugging rocky canyon banks!
-        float bankFoam = smoothstep(0.55, 0.04, depth + (n1 - 0.5) * 0.25) * (0.55 + 0.45 * smoothstep(0.35, 0.8, n2));
-        col = mix(col, mix(vec3(0.92, 0.97, 1.0), vec3(0.96, 0.84, 0.72), sunsetW), bankFoam * (1.0 - nightW * 0.65) * 0.68);
-        vec3 H = normalize(sunD - rd);
-        float glint = pow(max(0.0, dot(waterN, H)), 56.0) * (1.0 - nightW * 0.85);
-        col += mix(vec3(1.0, 0.97, 0.88), vec3(1.0, 0.72, 0.42), sunsetW) * glint * 1.1;
-        col = mix(col, reflCol, fres * 0.45);
-        // Subtle shadow beneath the stone viaduct crossing at z ~ 0
-        if (abs(xz.x) < 18.0 && abs(xz.y) < 5.0) {
-          float bSh = (1.0 - smoothstep(12.0, 18.0, abs(xz.x))) * (1.0 - smoothstep(2.0, 5.0, abs(xz.y)));
-          col *= (1.0 - bSh * 0.38);
-        }
-        // Warm dusk bridge lantern shimmer reflected in the gorge water!
-        float warmW = clamp(0.25 + sunsetW * 0.65 + nightW * 0.95, 0.0, 1.1);
-        for (int i = 0; i < 6; i++) {
-          if (i >= uShadowCount) break;
-          vec4 l = uShadowCasters[i];
-          if (l.w <= 0.1) continue;
-          float d = length(xz - l.xz);
-          float pool = exp(-(d * d) / max(l.w * l.w * 1.4, 1.0)) * (0.75 + 0.25 * n2);
-          col += vec3(0.96, 0.62, 0.22) * pool * warmW * 0.52;
-          emis = max(emis, pool * warmW * 0.18);
-        }
+      vec3 glacialDeep = mix(vec3(0.05, 0.26, 0.35), vec3(0.02, 0.08, 0.15), nightW);
+      vec3 glacialShal = mix(vec3(0.16, 0.48, 0.52), vec3(0.05, 0.16, 0.22), nightW);
+      vec3 pebbleBed = mix(vec3(0.32, 0.31, 0.29), vec3(0.10, 0.11, 0.15), nightW) * (0.78 + 0.32 * cobble);
+
+      col = mix(glacialShal, glacialDeep, smoothstep(0.15, 0.85, depth));
+      col = mix(pebbleBed, col, smoothstep(0.02, 0.32, depth));
+      // Subtle rocky bank whitewater foam
+      float bankFoam = smoothstep(0.28, 0.03, depth + (n1 - 0.5) * 0.14) * smoothstep(0.35, 0.78, n2);
+      col = mix(col, mix(vec3(0.88, 0.93, 0.97), vec3(0.92, 0.82, 0.72), sunsetW), bankFoam * (1.0 - nightW * 0.65) * 0.55);
+
+      vec3 H = normalize(sunD - rd);
+      float glint = pow(max(0.0, dot(waterN, H)), 72.0) * (1.0 - nightW * 0.85);
+      col += mix(vec3(1.0, 0.97, 0.88), vec3(1.0, 0.72, 0.42), sunsetW) * glint * 0.95;
+      col = mix(col, reflCol, fres * 0.46);
+
+      if (abs(xz.x) < 18.0 && abs(xz.y) < 5.0) {
+        float bSh = (1.0 - smoothstep(12.0, 18.0, abs(xz.x))) * (1.0 - smoothstep(2.0, 5.0, abs(xz.y)));
+        col *= (1.0 - bSh * 0.38);
+      }
+      float warmW = clamp(0.22 + sunsetW * 0.55 + nightW * 0.95, 0.0, 1.1);
+      for (int i = 0; i < 6; i++) {
+        if (i >= uShadowCount) break;
+        vec4 l = uShadowCasters[i];
+        if (l.w <= 0.1) continue;
+        float d = length(xz - l.xz);
+        float pool = exp(-(d * d) / max(l.w * l.w * 1.4, 1.0)) * (0.75 + 0.25 * n2);
+        col += vec3(0.96, 0.62, 0.22) * pool * warmW * 0.48;
+        emis = max(emis, pool * warmW * 0.16);
       }
     } else {
       hitDist = tHit;
       wp = ro + rd * tHit;
-      vec3 N = alpineTerrainNormal(wp.xz);
-      float slope = clamp(1.0 - N.y, 0.0, 1.0);
-      // Clean geological stratified granite ledges & multi-scale mineral grain (zero camo rings!)
-      float rockCoarse = vnoise(wp.xz * 0.18 + vec2(wp.y * 0.05, -wp.y * 0.04));
-      float rockMed = vnoise(wp.xz * 0.52 + vec2(3.7, -2.1));
-      float rockMicro = vnoise(wp.xz * 1.85 + vec2(wp.y * 0.65, -wp.y * 0.45));
-      float rockGrain = rockCoarse * 0.45 + rockMed * 0.35 + rockMicro * 0.20;
-      float strataPhase = wp.y * 0.68 + rockCoarse * 2.2 + rockMed * 0.65;
-      float strata = sin(strataPhase * 3.14159) * 0.5 + 0.5;
-      float ledge = smoothstep(0.06, 0.26, fract(strataPhase * 0.5));
-      vec3 rockBump = vec3(
-        (rockMed - 0.5) * 0.22 + (rockMicro - 0.5) * 0.16,
-        (ledge - 0.5) * 0.26,
-        (strata - 0.5) * 0.20 - (rockMicro - 0.5) * 0.14
+      float erosion = clamp(uTerraceSteps, 0.0, 1.8);
+      float macroSlope;
+      vec3 N = alpineTerrainNormalHigh(wp.xz, hitDist, erosion, macroSlope);
+      float fineSlope = clamp(1.0 - N.y, 0.0, 1.0);
+
+      // Analytical terrain concavity AO (gullies & couloirs darken organically, sharp crests catch light!)
+      float hAvg = 0.25 * (
+        alpineTerrainHeight(wp.xz + vec2(3.5, 0.0)) +
+        alpineTerrainHeight(wp.xz - vec2(3.5, 0.0)) +
+        alpineTerrainHeight(wp.xz + vec2(0.0, 3.5)) +
+        alpineTerrainHeight(wp.xz - vec2(0.0, 3.5))
       );
-      N = normalize(N + rockBump * smoothstep(0.12, 0.38, slope));
+      float concavity = wp.y - hAvg; // positive on ridge crests, negative in eroded gullies
+      float terrAo = clamp(0.76 + concavity * 0.14, 0.42, 1.08);
 
-      float sh = alpineSoftShadow(wp + N * 0.6, sunD);
-      float ndl = dot(N, sunD);
+      // Sharp geological rock cleavage & scree rubble texture (ZERO horizontal zebra bands!)
+      vec3 vor = rockVoronoi(wp.xz * 0.24);
+      float rPatch = vnoise(wp.xz * 0.075);
+      float rFine = vnoise(wp.xz * 0.95);
+      float crackDark = smoothstep(0.015, 0.14, vor.y);
 
-      // Alpine geological biome layering: granite cliffs -> pine meadows -> scree -> snow-capped peaks!
-      float snowline = 24.5 + (rockCoarse - 0.5) * 5.0 + smoothstep(-8.0, 26.0, wp.z) * 12.0;
-      float snowMask = smoothstep(snowline - 3.5, snowline + 6.5, wp.y) * (1.0 - smoothstep(0.28, 0.52, slope));
-      float grassMask = (1.0 - smoothstep(15.5, 24.5, wp.y)) * (1.0 - smoothstep(0.16, 0.38, slope)) * smoothstep(0.8, 4.2, wp.y);
-      float screeMask = smoothstep(1.2, 8.0, wp.y) * (1.0 - smoothstep(0.32, 0.58, slope)) * (1.0 - grassMask);
+      // Realistic desaturated alpine palettes (alpine granite, talus scree, olive pine heath, matte snow!)
+      vec3 graniteDark = vec3(0.24, 0.26, 0.30);
+      vec3 graniteMid  = vec3(0.39, 0.38, 0.37);
+      vec3 graniteWarm = vec3(0.47, 0.44, 0.40);
+      vec3 rockCol = mix(graniteDark, mix(graniteMid, graniteWarm, rPatch), 0.35 + 0.65 * vor.z);
+      rockCol *= mix(0.68, 1.05, crackDark) * (0.90 + 0.18 * rFine);
 
-      vec3 rockCol = mix(vec3(0.25, 0.28, 0.34), vec3(0.49, 0.46, 0.42), strata * 0.48 + rockGrain * 0.52);
-      rockCol *= mix(0.84, 1.06, ledge);
-      vec3 screeCol = mix(vec3(0.42, 0.40, 0.36), vec3(0.58, 0.54, 0.47), rockGrain);
-      vec3 meadowCol = mix(vec3(0.18, 0.35, 0.17), vec3(0.34, 0.49, 0.22), rockGrain * 0.65 + rockCoarse * 0.35);
-      vec3 snowCol = vec3(0.94, 0.96, 1.0);
+      vec3 screeCol = mix(vec3(0.38, 0.37, 0.35), vec3(0.50, 0.48, 0.44), rFine * 0.7 + vor.z * 0.3);
+      vec3 grassCol = mix(vec3(0.20, 0.30, 0.16), vec3(0.31, 0.38, 0.20), rPatch * 0.6 + rFine * 0.4);
+      vec3 snowCol  = vec3(0.91, 0.93, 0.96);
 
-      vec3 albedo = mix(rockCol, screeCol, screeMask * 0.55);
-      albedo = mix(albedo, meadowCol, grassMask);
+      // Crisp geological biome masks (tight boundaries modulated by fracture noise, NEVER blurry airbrush!)
+      float screeMask = smoothstep(0.20, 0.34, macroSlope) * (1.0 - smoothstep(0.46, 0.62, macroSlope));
+      float meadowField = (1.0 - smoothstep(14.0, 21.5, wp.y + (rPatch - 0.5) * 4.0))
+                        * (1.0 - smoothstep(0.24, 0.40, fineSlope))
+                        * smoothstep(1.2, 3.0, wp.y);
+      float meadowMask = smoothstep(0.32, 0.58, meadowField + (rFine - 0.5) * 0.20);
+
+      // Wind-drifted alpine snowpack crowns high ridges & concave couloirs while sheer rock needles pierce through!
+      float snowAlt = smoothstep(16.5, 29.0, wp.y - concavity * 2.0 + (rPatch - 0.5) * 4.5);
+      float snowSlope = 1.0 - smoothstep(0.34, 0.58, fineSlope);
+      float snowField = snowAlt * snowSlope + (rFine - 0.5) * 0.14;
+      float snowMask = smoothstep(0.34, 0.45, snowField);
+
+      vec3 albedo = mix(rockCol, screeCol, screeMask * 0.68);
+      albedo = mix(albedo, grassCol, meadowMask);
       albedo = mix(albedo, snowCol, snowMask);
-      // Wet dark river-washed granite boulders near water level
-      float wetMask = 1.0 - smoothstep(0.0, 2.2, wp.y);
-      albedo *= mix(1.0, 0.62, wetMask);
 
-      if (uArtStyle == 5) {
-        // Architectural Studio Clay Maquette topographic stepped plaster model!
-        float contour = smoothstep(0.05, 0.13, abs(fract(wp.y * 0.35) - 0.5));
-        albedo = mix(vec3(0.84, 0.81, 0.76), vec3(0.94, 0.92, 0.88), snowMask * 0.5 + 0.35) * mix(0.90, 1.0, contour);
-        float diff = clamp(ndl * sh, 0.0, 1.0);
-        col = albedo * (vec3(0.38, 0.40, 0.44) + vec3(0.76, 0.73, 0.68) * diff);
-      } else if (uArtStyle == 1) {
-        // Moebius / Sable Ligne Claire Ink & Stepped Cel Alpine Terrain!
-        float litV = mix(ndl, min(ndl, -0.3), (1.0 - sh) * 0.85);
-        float band = litV > 0.32 ? 1.12 : (litV > -0.05 ? 0.82 : 0.48);
-        vec3 bTint = litV > 0.32
-          ? mix(vec3(1.05, 1.02, 0.95), vec3(0.76, 0.84, 1.0), nightW)
-          : (litV > -0.05 ? vec3(0.88, 0.92, 0.99) : vec3(0.54, 0.64, 0.88));
-        col = albedo * bTint * band;
-        // Crisp topographic Ligne Claire contour ink lines along ridges & elevation steps!
-        float topoLine = 1.0 - smoothstep(0.025, 0.065, abs(fract(wp.y * 0.22) - 0.5));
-        float ridgeInk = smoothstep(0.72, 0.90, 1.0 - max(0.0, dot(N, -rd)));
-        col = mix(col, vec3(0.05, 0.07, 0.12), clamp(topoLine * 0.28 + ridgeInk * 0.55, 0.0, 0.75));
-      } else {
-        vec3 sunCol = mix(mix(vec3(1.18, 1.13, 1.04), vec3(1.32, 0.92, 0.64), sunsetW), vec3(0.45, 0.56, 0.82), nightW);
-        vec3 ambCol = mix(mix(vec3(0.32, 0.42, 0.58), vec3(0.36, 0.34, 0.52), sunsetW), vec3(0.11, 0.15, 0.28), nightW);
-        float diff = max(0.0, ndl) * sh;
-        col = albedo * (ambCol * (0.72 + 0.28 * N.y) + sunCol * diff);
-        if (uArtStyle == 2) {
-          // Painterly Gouache warm-sun vs cool-violet shadow shift!
-          float wMix = smoothstep(-0.15, 0.55, ndl * sh);
-          col *= mix(vec3(0.78, 0.82, 1.16), vec3(1.12, 1.03, 0.90), wMix);
-        }
-        // Subtle crisp alpenglow rim on sunlit snowfields
-        col += vec3(0.95, 0.88, 0.82) * snowMask * pow(max(0.0, dot(reflect(-sunD, N), -rd)), 12.0) * sh * 0.22 * (1.0 - nightW * 0.8);
-      }
+      // Damp river-washed granite cobblestones right along the glacial river waterline
+      float wetBank = 1.0 - smoothstep(0.0, 2.2, wp.y);
+      albedo = mix(albedo, screeCol * 0.62, wetBank * 0.85);
 
-      // Warm bridge lantern bounce onto nearby canyon cliff abutments!
-      float warmW = clamp(0.25 + sunsetW * 0.55 + nightW * 0.95, 0.0, 1.1);
+      // Physically-grounded MATTE diffuse + soft analytical mountain shadows (ZERO plastic specular sheen!)
+      float sh = alpineSoftShadow(wp + N * 0.75, sunD);
+      float ndl = max(0.0, dot(N, sunD));
+      float backBounce = max(0.0, dot(N, normalize(vec3(-sunD.x, 0.25, -sunD.z))));
+
+      vec3 sunCol = mix(mix(vec3(1.16, 1.11, 1.02), vec3(1.34, 0.88, 0.60), sunsetW), vec3(0.42, 0.54, 0.80), nightW);
+      vec3 skyAmb = mix(mix(vec3(0.30, 0.41, 0.58), vec3(0.34, 0.33, 0.50), sunsetW), vec3(0.10, 0.14, 0.26), nightW);
+      vec3 bounceCol = mix(vec3(0.22, 0.24, 0.22), vec3(0.32, 0.24, 0.20), sunsetW) * (1.0 - nightW * 0.7);
+
+      col = albedo * (skyAmb * (0.55 + 0.45 * N.y) * terrAo + bounceCol * backBounce * 0.35 * terrAo + sunCol * ndl * sh);
+
+      // Warm dusk bridge lantern spill onto nearby granite abutments
+      float warmW = clamp(0.22 + sunsetW * 0.55 + nightW * 0.95, 0.0, 1.1);
       for (int i = 0; i < 6; i++) {
         if (i >= uShadowCount) break;
         vec4 l = uShadowCasters[i];
         if (l.w <= 0.1) continue;
         float d = length(wp.xz - l.xz);
         float glow = exp(-(d * d) / max(l.w * l.w * 2.2, 2.0));
-        col += albedo * vec3(1.0, 0.68, 0.28) * glow * warmW * 0.45;
+        col += albedo * vec3(1.0, 0.68, 0.28) * glow * warmW * 0.42;
       }
     }
 
-    float fogStart = uArtStyle == 5 ? 95.0 : 58.0;
-    float fogT = uFogDensity <= 0.001
-      ? 0.0
-      : clamp(1.0 - exp(-pow(max(0.0, hitDist - fogStart) * 0.0044 * max(uFogDensity, 0.16), 1.45)), 0.0, 0.92);
-    vec3 finalCol = mix(col, skyHor, fogT);
+    // Physical Rayleigh + Mie alpine aerial perspective (separates foreground, valley & distant snowy massifs!)
+    float fogDensity = max(uFogDensity, 0.16);
+    float fogT = clamp(1.0 - exp(-max(0.0, hitDist - 42.0) * 0.0024 * (0.65 + fogDensity * 1.4)), 0.0, 0.86);
+    float mieSun = pow(max(0.0, dot(rd, sunD)), 6.0) * (1.0 - nightW * 0.85);
+    vec3 hazeCol = mix(skyHor, mix(vec3(1.0, 0.90, 0.76), vec3(1.0, 0.64, 0.38), sunsetW), mieSun * 0.38);
+    vec3 finalCol = mix(col, hazeCol, fogT);
 
     vec4 clipPos = uViewProj * vec4(wp, 1.0);
     gl_FragDepth = clamp((clipPos.z / clipPos.w) * 0.5 + 0.5, 0.0, 0.99997);
@@ -480,12 +545,7 @@ void main() {
   vec3 col;
   float emis = 0.0;
 
-  if (uArtStyle == 5) {
-    // Architectural Studio Acrylic/Resin Water Base for Clay Maquette mode!
-    float grid = smoothstep(0.02, 0.05, min(fract(xz.x * 0.25), fract(xz.y * 0.25)));
-    col = mix(vec3(0.76, 0.80, 0.84), vec3(0.84, 0.86, 0.88), grid * 0.5 + fres * 0.35);
-  } else if (!isCove) {
-    // WORLD A: Bioluminescent Sunken Roman Lagoon Floor + Caustic Teal-Emerald Water
+  if (!isCove) {
     float rRot = length(xz - vec2(0.0, -2.0));
     float shallow = smoothstep(26.0, 4.0, rRot);
     float caust = caustic(xz * 0.30, uWaveTime) * 0.65 + caustic(xz * 0.55 + 4.2, -uWaveTime * 0.7) * 0.35;
@@ -523,7 +583,6 @@ void main() {
       emis = max(emis, pool * 0.22);
     }
   } else {
-    // WORLD B: Sunlit Mediterranean Turquoise Cove + Warm Sandy Shallows + Gentle Foam!
     float dWestCliff = length(xz - vec2(-18.0, -4.0));
     float dEastCliff = length(xz - vec2(20.0, -6.0));
     float shallow = clamp(
@@ -546,7 +605,7 @@ void main() {
     float foam = shoreBand * smoothstep(0.45, 0.85, foamWave) * 0.42;
     col = mix(col, mix(vec3(0.92, 0.96, 0.99), vec3(0.96, 0.84, 0.70), sunsetW), foam * (1.0 - nightW * 0.65));
 
-    vec3 H = normalize(normalize(uSunDir) - rd);
+    vec3 H = normalize(sunD - rd);
     float sunGlint = pow(max(0.0, dot(waterN, H)), 64.0) * (1.0 - nightW * 0.85);
     col += mix(vec3(1.0, 0.96, 0.84), vec3(1.0, 0.68, 0.36), sunsetW) * sunGlint * 1.15;
     col = mix(col, reflCol, fres * 0.44);

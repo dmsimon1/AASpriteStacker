@@ -50,7 +50,7 @@ Every `AA-GeoField` object compiles into the exact same lightweight `W x L x H` 
 
 ### 3.1 SIGGRAPH-Grade Continuous SDF Sphere Tracer (`traceSmoothSdfRay`)
 - **96-step adaptive sphere tracing + 4-iteration binary bisection refinement** on surface hit for razor-sharp silhouettes and exact sub-voxel intersection on thin arches, ironwork, and curved hulls.
-- **Anti-Oversmoothing Crisp Architecture Pass:** Tight tetrahedral normal gradient (`e = 0.085`), exact mean SDF curvature (`sampleSdf(hp + n*0.38) + sampleSdf(hp - n*0.38)`) driving crisp convex bevel catchlights and concave seam darkening, and sharp-edged albedo sampling (`mix(texelFetch, texture, 0.34)`) to prevent blurry airbrushed transitions.
+- **Anti-Oversmoothing Matte Architecture Pass:** Tight tetrahedral normal gradient (`e = 0.085`), exact mean SDF curvature (`sampleSdf(hp + n*0.38) + sampleSdf(hp - n*0.38)`) driving crisp edge catchlights and concave seam darkening, sharp-edged albedo sampling (`mix(texelFetch, texture, 0.14)`), and physically grounded specular gating so dry stone, terracotta, timber, and foliage stay matte while metals and glass gleam cleanly.
 - **Slice-Clip Exact Intersection:** Clamps SDF cleanly to `vSliceClip` so Exploded-Slice inspection works seamlessly on continuous SDF volumes.
 
 ### 3.2 Seam-Free Periodic Wrapped Surface UVs (`uUvTex`) & Procedural Relief
@@ -80,14 +80,8 @@ uUvTex(x, y, z) = [cos(2*pi*u), sin(2*pi*u), cos(2*pi*v), sin(2*pi*v)] mapped to
 - **Analytical SDF Soft Penumbra Self-Shadows:** Marches `24` steps toward the sun using Inigo Quilez's `min(res, k * d / t)` penumbra estimator.
 - **Up to 16 Live 3D Point & Spot Lights (`uPointLights[]`, `uPointLightCols[]`, `uPointLightDirs[]`):** Evaluated once per surface hit on both continuous SDF and voxel-DDA assets.
 
-### 3.4 Six First-Class Discrete Rendering Styles (`ArtStyle` / `uArtStyle: 0..5`)
-Both the 3D entity shader (`ENTITY_OBB_FS`) and Pass-0 procedural terrain shader consume `uArtStyle` so architecture, foliage, terrain, and water transform cohesively with one click (keys `1-6`):
-1. **`crisp-maquette` (`0`, Default):** Sharp beveled *Tiny Glade*-inspired miniature with wrapped UVs, curvature catchlights, and soft penumbra lighting.
-2. **`moebius-cel` (`1`):** *Ligne Claire* / *Sable* stepped 3-band cel shading, dark ink curvature crease and grazing silhouette lines, diagonal comic pen crosshatching in shadows, topographic contour lines on terrain, and JFA outer ink outlines.
-3. **`painterly` (`2`):** Gouache / *Arcane*-inspired directional brushstroke normal modulation paired with warm-sunlight vs cool-violet shadow color temperature separation.
-4. **`hd-2d-voxel` (`3`):** Crisp micro-voxel DDA with 8x RGSS anti-aliasing, 18-neighbor cavity AO, and live 3D lights.
-5. **`classic-sprite` (`4`):** Retro chunky stacked-sprite aesthetic on the exact same underlying `VolumeAsset`.
-6. **`clay-maquette` (`5`):** Museum architectural studio scale model (gallery ivory plaster masonry, basswood timber, sanded birch roofs, warm studio brass fixtures, sage flock trees, and laser-cut topographic stepped terrain).
+### 3.4 Geometry-First Style Philosophy
+Artistic and architectural style belongs in the **generated 3D geometry and material grammar** (e.g., Roman fluted colonnades vs alpine timber-stone vs Gothic ribs vs Japanese joinery), not in post-pass shader filters or smoothing overlays. `@aastack/core` keeps shading clean, crisp, and physically grounded while `@aastack/geofield` varies structure directly in procedural geometry.
 
 ---
 
@@ -105,9 +99,10 @@ New zero-dependency TypeScript workspace package (`packages/geofield/`) implemen
 
 ### 4.3 Contemporary Multifractal Terrain Engine (`packages/geofield/src/terrain.ts`)
 Combines classic and contemporary analytical multifractal techniques with exact **1:1 CPU/GPU parity** (identical sin-free Dave Hoskins 2D hash and quintic Hermite derivatives in TypeScript and WebGL2 GLSL ES 3.00):
-- **Ken Musgrave's Ridged Multifractal (`musgraveRidged2D`):** Folded squared ridges weighted by preceding octave signal (`weight = clamp(signal * gain, 0, 1)`) with rotated octaves (`mat2(0.8, 0.6, -0.6, 0.8)`) for razor-sharp alpine peaks and arêtes.
-- **Giliam de Carpentier's Swiss-Turbulence / Analytical Derivative Erosion (`swissTurbulence2D`):** Accumulates exact analytical noise gradients (`vnoise2Grad`), warps higher octaves down-slope, and damps amplitude by `1 / (1 + erosion * dot(dSum, dSum))` to form flat alluvial valley benches alongside incised mountain gullies in real time with zero offline hydraulic pre-bake.
-- **Seamless 3D Asset-to-Terrain Fusion (`sampleMultifractalTerrain`):** Pass 0 raymarches the infinite multifractal mountain range and turquoise glacier river gorge with exact `gl_FragDepth` and 14-step analytical soft terrain shadows; CPU scene composition queries `sampleMultifractalTerrain(x, z, cfg)` to snap bridge abutments, alpine watchtowers, and snow-dusted conifers onto the exact terrain surface (re-snapping live as the user drags `Ridge` and `Erosion` sliders!).
+- **Domain-Warped Ken Musgrave Ridged Multifractal (`musgraveRidged2D`):** 6 octaves of folded squared ridges weighted by preceding octave signal (`weight = clamp(signal * gain, 0, 1)`) with rotated octaves (`mat2(0.8, 0.6, -0.6, 0.8)`) for jagged tectonic arêtes and mountain skylines.
+- **Giliam de Carpentier Swiss-Turbulence / Analytical Derivative Erosion (`swissTurbulence2D`):** 6 octaves accumulating exact analytical noise gradients (`vnoise2Grad`), warping higher octaves down-slope and damping amplitude by `1 / (1 + erosion * dot(dSum, dSum))` to form incised gullies alongside rocky valley benches.
+- **Dual-LOD 10-Octave Faceted Rock Detail & Matte Geological Shading:** Pass 0 raymarches the 6-octave macro terrain (`124` steps + `5` bisection refinements) and evaluates 4 extra high-frequency ridged octaves plus angular Worley/Voronoi granite cleavage (`F2 - F1`) strictly at the shading hit. Combined with analytical terrain concavity AO, 18-step soft mountain shadows, crisp wind-drifted snowpack pockets, zero plastic specular gloss on rock/snow, and Rayleigh/Mie aerial perspective.
+- **Seamless 3D Asset-to-Terrain Fusion (`sampleMultifractalTerrain`):** CPU scene composition queries `sampleMultifractalTerrain(x, z, cfg)` to snap bridge abutments, alpine watchtowers, and snow-dusted conifers onto exact terrain elevation, re-snapping live as `Ridge` and `Erosion` parameters change.
 
 ### 4.4 Declarative `GeoGraph` Compiler + 2D Slice-Strip Exporter
 - `compileGeoVolume(opts)` compiles continuous SDF, RGBA, emissive, material, and wrapped periodic `uvPhaseU8` directly into a `@aastack/core` `VolumeAsset`.

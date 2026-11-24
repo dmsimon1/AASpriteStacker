@@ -172,7 +172,7 @@ test("Musgrave ridged multifractal + Swiss-Turbulence Alpine Gorge terrain engin
   const river = sampleMultifractalTerrain(0, 0);
   const westBench = sampleMultifractalTerrain(-23, 0);
   const eastBench = sampleMultifractalTerrain(23, 0);
-  const highPeak = sampleMultifractalTerrain(-45, -110);
+  const highPeak = sampleMultifractalTerrain(65, -165);
 
   assert.ok(river.height < 0, `gorge center must carve below river level, got ${river.height}`);
   assert.ok(river.riverMask > 0.9, "gorge center must have strong riverMask");
