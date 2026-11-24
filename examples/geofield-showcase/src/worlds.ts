@@ -85,38 +85,38 @@ export function createSunkenRomanRotunda(params: GeoParams): VolumeAsset {
       const ly = y - cy;
       const rad = Math.hypot(lx, ly);
       const ang = Math.atan2(ly, lx);
+      const TAU = Math.PI * 2;
       const nWeath = fbm3(x * 0.08, y * 0.08, z * 0.08, 3);
-      const erosion = nWeath * (0.6 + weath * 1.1);
+      const erosion = nWeath * (0.32 + weath * 0.62);
 
       // 1. Stepped circular travertine stylobate rising out of the glowing lagoon!
-      const dStep1 = sdCylinderZ(lx, ly, z - 3.0, 41.5, 3.0) + erosion * 0.35;
-      const dStep2 = sdCylinderZ(lx, ly, z - 7.0, 37.5, 2.2) + erosion * 0.25;
-      const dStep3 = sdCylinderZ(lx, ly, z - 10.5, 34.5, 1.8) + erosion * 0.20;
+      const dStep1 = sdCylinderZ(lx, ly, z - 3.0, 41.5, 3.0) + erosion * 0.28;
+      const dStep2 = sdCylinderZ(lx, ly, z - 7.0, 37.5, 2.2) + erosion * 0.20;
+      const dStep3 = sdCylinderZ(lx, ly, z - 10.5, 34.5, 1.8) + erosion * 0.16;
       const dPlinth = Math.min(dStep1, Math.min(dStep2, dStep3));
-      out.union(dPlinth, MARBLE_WARM, "stone", 0);
+      out.union(dPlinth, MARBLE_WARM, "stone", 0, [(ang / TAU) * 24.0, z / 5.2]);
 
       // Sunken circular thermal wading pool carved inside the temple floor!
       const dPoolCut = sdCylinderZ(lx, ly, z - 11.5, 24.0, 3.2);
-      out.subtract(dPoolCut, 0.6, MARBLE_DARK, "stone", 0);
+      out.subtract(dPoolCut, 0.45, MARBLE_DARK, "stone", 0, [(ang / TAU) * 16.0, z / 4.8]);
 
       // 2. 12-Fold Polar Fluted Marble Colonnade (classical turned bases, fluted shafts, flaring capitals!)
       const [fx, fy] = opPolarFold(lx, ly, 12);
       const colX = fx - 30.2;
       const colY = fy;
-      const colRad = Math.hypot(colX, colY);
       const colAng = Math.atan2(colY, colX);
       const flute = Math.cos(colAng * 10.0) * 0.22;
-      const dColShaft = sdCylinderZ(colX, colY, z - 28.0, 2.75 - flute, 15.8) + erosion * 0.16;
+      const dColShaft = sdCylinderZ(colX, colY, z - 28.0, 2.75 - flute, 15.8) + erosion * 0.12;
       const dColBase = sdTorus(colX, colY, z - 13.0, 2.95, 1.05, "z");
       const dColCap = sdCappedConeZ(colX, colY, z - 44.2, 2.7, 4.1, 1.6);
       const dColAbacus = sdRoundBox(colX, colY, z - 46.2, 3.9, 3.9, 1.0, 0.35);
       const dColumn = Math.min(Math.min(dColShaft, dColBase), Math.min(dColCap, dColAbacus));
-      out.union(dColumn, MARBLE_HI, "stone", 0);
+      out.union(dColumn, MARBLE_HI, "stone", 0, [(colAng / TAU) * 3.0, z / 6.0]);
 
       // 3. Classical Ring Entablature + Arched Arcade Drum + Carved Cornice Ring!
       const dDrumOuter = sdCylinderZ(lx, ly, z - 49.5, 34.0, 4.8);
       const dDrumInner = sdCylinderZ(lx, ly, z - 49.5, 26.8, 6.2);
-      let dDrum = Math.max(dDrumOuter, -dDrumInner) + erosion * 0.22;
+      let dDrum = Math.max(dDrumOuter, -dDrumInner) + erosion * 0.18;
       // Carve 12 sweeping arched niches between the columns right into the lower drum!
       const [ax, ay] = opPolarFold(
         lx * Math.cos(Math.PI / 12) - ly * Math.sin(Math.PI / 12),
@@ -127,27 +127,28 @@ export function createSunkenRomanRotunda(params: GeoParams): VolumeAsset {
       dDrum = Math.max(dDrum, -dArcadeArch);
       const dCornice = sdTorus(lx, ly, z - 53.8, 33.8, 1.8, "z");
       const dFriezeBand = sdTorus(lx, ly, z - 46.8, 32.8, 1.0, "z");
-      out.union(Math.min(dDrum, Math.min(dCornice, dFriezeBand)), MARBLE_HI, "stone", 0);
+      out.union(Math.min(dDrum, Math.min(dCornice, dFriezeBand)), MARBLE_HI, "stone", 0, [(ang / TAU) * 22.0, z / 4.6]);
 
       // 4. Hollow Coffered Roman Dome (sdLatheZ + opOnion shell + open oculus + ancient atmospheric breach!)
       const dDomeSolid = sdLatheZ(lx, ly, z, domeProfile);
-      let dDomeShell = Math.max(opOnion(dDomeSolid, 2.3), 51.0 - z) + erosion * 0.25;
+      let dDomeShell = Math.max(opOnion(dDomeSolid, 2.3), 51.0 - z) + erosion * 0.20;
       // Open classical skylight oculus at dome apex!
       const dOculus = sdCylinderZ(lx, ly, z - 74.0, 9.8, 12.0);
       dDomeShell = Math.max(dDomeShell, -dOculus);
       // Dramatic asymmetric ancient breach on the front-right dome flank so camera peers inside the colonnade!
-      const dBreach = sdEllipsoid(lx - 18.0, ly + 17.0, z - 66.0, 17.5, 16.5, 14.5) + nWeath * 3.8;
+      const dBreach = sdEllipsoid(lx - 18.0, ly + 17.0, z - 66.0, 17.5, 16.5, 14.5) + nWeath * 3.6;
       dDomeShell = Math.max(dDomeShell, -dBreach);
       // Carved golden-bronze oculus rim ring!
       const dOculusRing = sdTorus(lx, ly, z - 76.6, 10.6, 1.15, "z");
-      out.union(dDomeShell, MARBLE_WARM, "stone", 0);
-      out.union(Math.max(dOculusRing, -dBreach), BRASS_GOLD, "metal", 0);
+      const domeArc = Math.hypot(rad - 34.0, z - 51.0);
+      out.union(dDomeShell, MARBLE_WARM, "stone", 0, [(ang / TAU) * 18.0, domeArc / 5.2]);
+      out.union(Math.max(dOculusRing, -dBreach), BRASS_GOLD, "metal", 0, [(ang / TAU) * 10.0, z / 3.0]);
 
       // 5. Central Sunken Marble Altar Pedestal + Glowing Bioluminescent Crystal Heart!
       const dAltar = sdLatheZ(lx, ly, z - 8.5, [
         [0, 0], [8.0, 0], [7.2, 2.2], [4.6, 4.5], [4.2, 10.5], [6.8, 12.2], [7.2, 13.8], [0, 13.8],
       ]);
-      out.union(dAltar, MARBLE_HI, "stone", 0);
+      out.union(dAltar, MARBLE_HI, "stone", 0, [(ang / TAU) * 6.0, z / 4.0]);
       const dBrassBasin = sdTorus(lx, ly, z - 22.0, 5.4, 0.9, "z");
       out.union(dBrassBasin, BRASS_GOLD, "metal", 0);
 
@@ -175,8 +176,6 @@ export function createSunkenRomanRotunda(params: GeoParams): VolumeAsset {
           }
         }
       }
-      // Suppress unused ang warning
-      if (ang > 99) out.d = 0;
     },
   });
 }
@@ -232,11 +231,12 @@ export function createVolcanicCaveArch(params: GeoParams): VolumeAsset {
         const mF = fbm3(x * 0.11 + 3.1, y * 0.11, z * 0.11, 2);
         const mossM = smoothstep(32, 54, z) * smoothstep(0.05 - params.drape * 0.35, 0.45, mF) * params.drape;
         if (mossM > 0.2) out.paint(mossM, MOSS_CAVE, "foliage", 0);
-        // Bioluminescent mineral seams glowing softly inside rock clefts!
+        // Bioluminescent mineral seams glowing smoothly inside rock clefts!
         if (z > 4 && z < 34) {
           const v = voronoi3(x * 0.12, y * 0.12, z * 0.12);
-          if (v.f1 > 0.62 && rNoise < 0.38) {
-            out.paint(0.92, lx < 0 ? VEIN_CYAN : VEIN_MAGENTA, "bioFluid", 220);
+          const veinT = smoothstep(0.56, 0.72, v.f1) * smoothstep(0.46, 0.28, rNoise);
+          if (veinT > 0.12) {
+            out.paint(veinT * 0.92, lx < 0 ? VEIN_CYAN : VEIN_MAGENTA, "bioFluid", Math.round(veinT * 225));
           }
         }
       }
@@ -279,12 +279,15 @@ export function createBrassBathysphere(): VolumeAsset {
     evaluate: (x, y, z, out) => {
       const lx = x - cx, ly = y - cy, lz = z - cz;
       const ax = Math.abs(lx);
+      const TAU = Math.PI * 2;
+      const hullU = (Math.atan2(lx, lz) / TAU) * 6.0;
+      const hullV = (Math.atan2(ly - 1.5, Math.hypot(lx, lz)) / Math.PI) * 4.0;
 
-      // Main brushed-brass pressure sphere + sleek tapered tail fairing
+      // Main brushed-brass pressure sphere + sleek tapered tail fairing (riveted spherical UVs!)
       const dSphere = sdEllipsoid(lx, ly - 1.5, lz, 14.5, 16.5, 14.2);
       const dTailCone = sdCylinderY(lx, ly + 12.5, lz, Math.max(2.5, 11.5 - Math.max(0, -ly - 4) * 0.52), 9.0);
-      out.union(dSphere, BRASS_HI, "metal", 0);
-      out.smoothUnion(dTailCone, 3.2, COPPER_PATINA, "metal", 0);
+      out.union(dSphere, BRASS_HI, "metal", 0, [hullU, hullV]);
+      out.smoothUnion(dTailCone, 3.2, COPPER_PATINA, "metal", 0, [hullU, hullV]);
 
       // Equatorial riveted bronze belt & vertical spine strap
       const dBelt = sdTorus(lx, ly - 1.5, lz, 14.6, 1.35, "z");
@@ -431,28 +434,56 @@ export function createCoastalStoneViaduct(params: GeoParams): VolumeAsset {
       const nx = lx / 52.0;
       const deckTop = 27.0 + Math.max(0, 1.0 - nx * nx) * 11.5;
       const nW = fbm3(x * 0.11, y * 0.11, z * 0.11, 3);
-      const weath = nW * (0.35 + params.weathering * 0.85);
+      const weath = nW * (0.18 + params.weathering * 0.42);
+      // Exact arc-length wrapped running-bond brick UVs along the S-curved stone bridge!
+      const uBridge = (lx * 1.03 + (Math.abs(ly) < 7.8 ? ly * 0.0 : 0.0)) / 6.8;
+      const vBridge = z / 4.2;
 
       // Main stone viaduct mass following the curved path
-      const dBody = sdRoundBox(lx, ly, z - deckTop * 0.5, 53.0, 9.2, deckTop * 0.5, 0.8) + weath * 0.45;
-      out.union(dBody, STONE_WARM, "stone", 0);
+      const dBody = sdRoundBox(lx, ly, z - deckTop * 0.5, 53.0, 9.2, deckTop * 0.5, 0.55) + weath * 0.35;
+      out.union(dBody, STONE_WARM, "stone", 0, [uBridge, vBridge]);
 
       // Raised low rounded stone parapet walls on both bridge edges + projecting cornice coping!
-      const dParapetL = sdRoundBox(lx, ly - 7.8, z - (deckTop + 2.6), 52.5, 1.5, 3.0, 0.6);
-      const dParapetR = sdRoundBox(lx, ly + 7.8, z - (deckTop + 2.6), 52.5, 1.5, 3.0, 0.6);
-      const dStringCourse = sdRoundBox(lx, ly, z - (deckTop - 0.6), 53.2, 9.9, 1.0, 0.35);
-      out.union(Math.min(Math.min(dParapetL, dParapetR), dStringCourse), STONE_TRIM, "stone", 0);
+      const dParapetL = sdRoundBox(lx, ly - 7.8, z - (deckTop + 2.6), 52.5, 1.5, 3.0, 0.45);
+      const dParapetR = sdRoundBox(lx, ly + 7.8, z - (deckTop + 2.6), 52.5, 1.5, 3.0, 0.45);
+      const dStringCourse = sdRoundBox(lx, ly, z - (deckTop - 0.6), 53.2, 9.9, 1.0, 0.28);
+      out.union(Math.min(Math.min(dParapetL, dParapetR), dStringCourse), STONE_TRIM, "stone", 0, [uBridge, vBridge]);
 
-      // Carve 3 generous semicircular Roman stone arches cleanly through the viaduct!
-      const dArchCenter = sdArchY(lx, ly, z, 14.5, 15.0, 14.0, 0);
-      const dArchLeft = sdArchY(lx + 33.5, ly, z, 10.5, 11.5, 14.0, 0);
-      const dArchRight = sdArchY(lx - 33.5, ly, z, 10.5, 11.5, 14.0, 0);
-      out.subtract(Math.min(dArchCenter, Math.min(dArchLeft, dArchRight)), 0.65, STONE_SHADE, "stone", 0);
+      // Projecting radial stone archivolt rings with TRUE RADIAL ARCH VOUSSOIR UVs on all 3 arches!
+      const arches: Array<[number, number, number, number]> = [
+        [0, 14.5, 15.0, 9.5],
+        [-33.5, 10.5, 11.5, 7.5],
+        [33.5, 10.5, 11.5, 7.5],
+      ];
+      let bestArchCut = 1e6;
+      let archInnerUv: [number, number] = [uBridge, vBridge];
+      for (const [ax0, ar, ah, voussoirPeriods] of arches) {
+        const dx = lx - ax0;
+        const dCut = sdArchY(dx, ly, z, ar, ah, 14.0, 0);
+        const rad = Math.hypot(dx, z - ah);
+        const theta = Math.atan2(Math.max(0, z - ah), dx);
+        const uV = (theta / Math.PI) * voussoirPeriods;
+        if (dCut < bestArchCut) {
+          bestArchCut = dCut;
+          archInnerUv = z >= ah - 0.8 ? [uV, ly / 5.2] : [ly / 5.2, z / 4.2];
+        }
+        // Raised sculpted Roman voussoir ring hugging the front & back bridge faces
+        if (z >= ah - 0.8) {
+          const ringRadial = Math.abs(rad - (ar + 1.45)) - 1.55;
+          const ringDepth = Math.abs(ly) - 9.75;
+          const dRing = Math.max(ringRadial, ringDepth);
+          out.union(dRing, STONE_TRIM, "stone", 0, [uV, (rad - ar) / 6.2]);
+        }
+      }
 
-      // Carved stone buttress cutwaters anchoring both central bridge piers into the turquoise sea!
+      // Carve the 3 generous semicircular Roman stone arches cleanly through the viaduct!
+      out.subtract(bestArchCut, 0.35, STONE_SHADE, "stone", 0, archInnerUv);
+
+      // Carved stone buttress cutwaters anchoring both central bridge piers!
       for (const px of [-18.5, 18.5]) {
         const dButtress = sdCappedConeZ(lx - px, Math.abs(ly) - 9.0, z - 12.0, 4.4, 2.4, 12.5);
-        out.smoothUnion(dButtress, 1.2, STONE_TRIM, "stone", 0);
+        const bAng = Math.atan2(Math.abs(ly) - 9.0, lx - px);
+        out.smoothUnion(dButtress, 0.9, STONE_TRIM, "stone", 0, [(bAng / (Math.PI * 2)) * 4.0, z / 4.2]);
       }
 
       // 4 Wrought-iron glowing coastal bridge lanterns perched on the pier buttresses!
@@ -518,41 +549,48 @@ export function createCoastalLookoutTower(params: GeoParams): VolumeAsset {
     },
     evaluate: (x, y, z, out) => {
       const lx = x - cx, ly = y - cy;
+      const TAU = Math.PI * 2;
       const nW = fbm3(x * 0.11, y * 0.11, z * 0.11, 3);
-      const weath = nW * (0.25 + params.weathering * 0.7);
+      const weath = nW * (0.12 + params.weathering * 0.32);
 
-      // 1. Round limestone coastal tower (sdLatheZ with flared corbel crown!)
+      // 1. Round limestone coastal tower (sdLatheZ + EXACT 360-deg wrapped cylindrical brick UVs!)
       const tx = lx + 9.0, ty = ly + 3.0;
-      const dTower = sdLatheZ(tx, ty, z, towerProfile) + weath * 0.4;
+      const tAng = Math.atan2(ty, tx);
+      // 11 integer 2-brick periods = 22 crisp ashlar stones seamlessly wrapping 360 degrees!
+      const towerUv: [number, number] = [(tAng / TAU) * 11.0, z / 4.4];
+      const dTower = sdLatheZ(tx, ty, z, towerProfile) + weath * 0.25;
       const dCorbel = sdTorus(tx, ty, z - 51.5, 14.5, 1.4, "z");
-      out.union(Math.min(dTower, dCorbel), z < 13 ? STONE_BASE : STONE_CREAM, "stone", 0);
+      out.union(Math.min(dTower, dCorbel), z < 13 ? STONE_BASE : STONE_CREAM, "stone", 0, towerUv);
 
-      // Smooth steep conical terracotta roof crowning the tower + brass finial spire!
+      // Smooth steep conical terracotta roof with RADIATING CONICAL BARREL-TILE UVs + brass finial!
       const dConeRoof = sdCappedConeZ(tx, ty, z - 70.5, 18.2, 0.7, 15.8);
       const dFinial = sdCylinderZ(tx, ty, z - 87.5, 0.7, 3.2);
       const dOrb = sdEllipsoid(tx, ty, z - 88.2, 1.5, 1.5, 1.5);
-      out.union(dConeRoof, TERRA_HI, "terracotta", 0);
+      // 14 integer 2-tile periods = 28 barrel tiles radiating cleanly from finial apex to eaves!
+      out.union(dConeRoof, TERRA_HI, "terracotta", 0, [(tAng / TAU) * 14.0, (z - 54.5) / 5.4]);
       out.union(Math.min(dFinial, dOrb), BRASS, "metal", 0);
 
-      // 2. Fused Asymmetric Stone Cottage Wing (smoothly blended into the round tower!)
+      // 2. Fused Asymmetric Stone Cottage Wing (tangent-aligned planar masonry UVs!)
       const wx = lx - 13.5, wy = ly - 2.0;
-      const dWing = sdRoundBox(wx, wy, z - 15.0, 14.5, 12.5, 15.5, 0.9) + weath * 0.4;
-      out.smoothUnion(dWing, 2.2, STONE_CREAM, "stone", 0);
+      const dWing = sdRoundBox(wx, wy, z - 15.0, 14.5, 12.5, 15.5, 0.65) + weath * 0.25;
+      const wingU = Math.abs(wx) / 14.5 > Math.abs(wy) / 12.5 ? wy / 6.4 : wx / 6.4;
+      out.smoothUnion(dWing, 1.6, STONE_CREAM, "stone", 0, [wingU, z / 4.4]);
 
-      // Smooth 45-deg pitched terracotta cottage roof (ZERO staircase!)
+      // Smooth 45-deg pitched terracotta cottage roof (slope-aligned barrel-tile UVs!)
       const dWingRoof = sdPitchedRoofY(wy, wx, z - 29.0, 15.2, 16.5, 14.5);
       const dRidgeBeam = sdCylinderX(wx, wy, z - 43.3, 1.15, 16.8);
-      out.union(Math.min(dWingRoof, dRidgeBeam), TERRA_DEEP, "terracotta", 0);
+      out.union(Math.min(dWingRoof, dRidgeBeam), TERRA_DEEP, "terracotta", 0, [wx / 4.4, (z - 29.0) / 3.8]);
 
       // Tall sculpted stone cottage chimney with terracotta pot!
-      const dChim = sdRoundBox(lx - 22.0, ly + 6.0, z - 36.0, 2.6, 2.6, 12.0, 0.45);
+      const dChim = sdRoundBox(lx - 22.0, ly + 6.0, z - 36.0, 2.6, 2.6, 12.0, 0.35);
       const dChimCap = sdCylinderZ(lx - 22.0, ly + 6.0, z - 48.5, 1.8, 1.4);
-      out.union(dChim, STONE_BASE, "stone", 0);
+      const chimU = Math.abs(lx - 22.0) > Math.abs(ly + 6.0) ? (ly + 6.0) / 3.8 : (lx - 22.0) / 3.8;
+      out.union(dChim, STONE_BASE, "stone", 0, [chimU, z / 3.4]);
       out.union(dChimCap, TERRA_HI, "terracotta", 0);
 
-      // 3. Recessed Arched Glowing Windows + Timber Arched Cottage Door (facing cove + sides!)
+      // 3. Recessed Arched Glowing Windows + Timber Arched Cottage Door (cleanly clear of cottage roof!)
       const dWinTop1 = sdArchY(tx, ty + 13.0, z - 36.0, 2.8, 4.5, 4.8, 0.25);
-      const dWinTop2 = sdArchY(ty, tx - 13.0, z - 36.0, 2.8, 4.5, 4.8, 0.25);
+      const dWinTop2 = sdArchY(ty, tx + 13.0, z - 36.0, 2.8, 4.5, 4.8, 0.25);
       const dWinMid = sdArchY(tx, ty + 13.0, z - 20.0, 2.5, 3.8, 4.8, 0);
       const dCotWin = sdArchY(wx - 4.0, wy + 12.0, z - 14.0, 3.8, 4.2, 4.6, 0);
       const dCotDoor = sdArchY(wx + 5.5, wy + 12.0, z - 1.5, 3.2, 8.2, 4.6, 0);
@@ -563,7 +601,8 @@ export function createCoastalLookoutTower(params: GeoParams): VolumeAsset {
       const dPane1 = sdBox(tx, ty + 11.2, z - 39.2, 2.6, 0.9, 4.4);
       const dPane2 = sdBox(tx, ty + 11.2, z - 22.8, 2.3, 0.9, 3.6);
       const dPane3 = sdBox(wx - 4.0, wy + 10.4, z - 17.5, 3.6, 0.9, 4.0);
-      out.union(Math.min(Math.min(dPane1, dPane2), dPane3), WIN_WARM, "glass", 162);
+      const dPane4 = sdBox(tx + 11.2, ty, z - 39.2, 0.9, 2.6, 4.4);
+      out.union(Math.min(Math.min(dPane1, dPane2), Math.min(dPane3, dPane4)), WIN_WARM, "glass", 162);
 
       // Climbing Mediterranean coastal ivy hugging the warm limestone base!
       if (params.drape > 0.05 && out.d < 2.2) {
@@ -767,6 +806,79 @@ export function createGlowOrbAsset(id: string, col: RGB): VolumeAsset {
     pivot: [4, 4, 4],
     evaluate: (x, y, z, out) => {
       out.union(sdEllipsoid(x - 4, y - 4, z - 4, 2.2, 2.2, 2.2), col, "bioFluid", 238);
+    },
+  });
+}
+
+// ============================================================================
+// WORLD C: ALPINE MULTIFRACTAL GORGE & STONE VIADUCT (SNOW-DUSTED CONIFERS)
+// ============================================================================
+
+/**
+ * 11. Organic Snow-Dusted Alpine Mountain Spruce (40x40x74 @ 0.21):
+ *     - Layered drooping conical spruce bough whorls using 7-fold polar symmetry + natural sway
+ *     - Crisp sunlit alpine snow caps clinging naturally to the upper faces of each bough tier!
+ */
+export function createAlpineSpruceGeo(id: string, seed: number, snowAmt = 0.58): VolumeAsset {
+  const W = 40, L = 40, H = 74;
+  const cx = W * 0.5, cy = L * 0.5;
+  const BARK: RGB = [86, 62, 46];
+  const PINE_DEEP: RGB = [26, 62, 46];
+  const PINE_MID: RGB = [42, 86, 58];
+  const SNOW_WHITE: RGB = [234, 240, 248];
+
+  const tiers: Array<[number, number, number]> = [
+    [15, 15.0, 9.5],
+    [25, 13.0, 9.0],
+    [35, 11.0, 8.5],
+    [45, 8.8, 8.0],
+    [54, 6.4, 7.2],
+    [63, 4.0, 6.5],
+  ];
+
+  return compileGeoVolume({
+    id,
+    name: "Snow-Dusted Alpine Spruce",
+    w: W, l: L, h: H,
+    voxelScale: 0.21,
+    pivot: [cx, cy, 0],
+    evaluate: (x, y, z, out) => {
+      const swayX = Math.sin(z * 0.045 + seed) * 1.1;
+      const swayY = Math.cos(z * 0.04 + seed * 1.3) * 0.9;
+      const lx = x - cx - swayX;
+      const ly = y - cy - swayY;
+      const r = Math.hypot(lx, ly);
+
+      // Sturdy tapering alpine spruce trunk
+      const dTrunk = sdCappedConeZ(lx, ly, z - 24.0, 2.4, 0.5, 24.5);
+      out.union(dTrunk, BARK, "wood", 0);
+
+      // 6 tiered drooping spruce bough whorls with 7-fold star-bough lobing!
+      const n = fbm3(x * 0.21 + seed, y * 0.21, z * 0.19, 3);
+      let dFoliage = 1e6;
+      let snowWeight = 0;
+      for (let i = 0; i < tiers.length; i++) {
+        const [tz, rad, th] = tiers[i];
+        const rot = i * 0.55 + seed;
+        const cs = Math.cos(rot), sn = Math.sin(rot);
+        const rx = lx * cs - ly * sn;
+        const ry = lx * sn + ly * cs;
+        const [fx, fy] = opPolarFold(rx, ry, 7);
+        const lobe = Math.cos(Math.atan2(fy, fx) * 7.0) * 0.18;
+        const droop = Math.min(1.0, r / Math.max(rad, 1.0)) * 2.6;
+        const dTier = sdCappedConeZ(lx, ly, z - tz + droop, rad * (1.0 + lobe), 0.75, th) + n * 1.15;
+        if (dTier < dFoliage) {
+          dFoliage = dTier;
+          const topOfTier = smoothstep(tz - 1.2, tz + th * 0.55, z + droop * 0.65);
+          snowWeight = topOfTier * smoothstep(0.15 - snowAmt * 0.55, 0.55, n + snowAmt * 0.45);
+        }
+      }
+
+      const pineCol = n > 0.08 ? PINE_MID : PINE_DEEP;
+      out.smoothUnion(dFoliage, 0.85, pineCol, "foliage", 0);
+      if (snowAmt > 0.05 && out.d < 2.0 && snowWeight > 0.28) {
+        out.paint(snowWeight * snowAmt, SNOW_WHITE, "matte", 0);
+      }
     },
   });
 }
