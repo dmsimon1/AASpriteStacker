@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AA-GeoField Non-Legoland Procedural SDF &amp; Multifractal Showcase | AASpriteStacker</title>
+<title>AA-GeoField Wrapped UVs &amp; Multifractal Terrain Showcase | AASpriteStacker</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23081624'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%2338e8d8' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%23fbbf24'/%3E%3C/svg%3E">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #071320; }
@@ -51,7 +51,6 @@
   .row button[aria-pressed="true"] { background: #2dd4bf; color: #042022; border-color: #99f6e4; }
   .row button.warm[aria-pressed="true"] { background: #fbbf24; color: #1f1302; border-color: #fde68a; }
   .row button.alpine[aria-pressed="true"] { background: #7dd3fc; color: #062133; border-color: #e0f2fe; }
-  .row button.stylebtn[aria-pressed="true"] { background: #c084fc; color: #1e0836; border-color: #f3e8ff; }
   .row-lbl {
     font: 700 10px/1 ui-monospace, monospace; letter-spacing: 0.06em;
     color: rgba(148, 163, 184, 0.85); text-transform: uppercase; padding: 0 3px;
@@ -111,7 +110,7 @@
 </div>
 <div id="hud">
   <div id="panel">
-    <h1>AA-GEOFIELD <span>Wrapped UVs, 6 Styles &amp; Multifractal</span></h1>
+    <h1>AA-GEOFIELD <span>Wrapped Surface UVs &amp; Multifractal</span></h1>
     <pre id="stats"></pre>
   </div>
   <div id="controls">
@@ -124,19 +123,10 @@
       <button id="btnExportSlices" type="button">Export PNG</button>
     </div>
     <div class="row">
-      <span class="row-lbl">Style</span>
-      <button id="btnArt_crisp-maquette" class="stylebtn" aria-pressed="true" type="button">1 Crisp</button>
-      <button id="btnArt_moebius-cel" class="stylebtn" aria-pressed="false" type="button">2 Moebius Ink</button>
-      <button id="btnArt_painterly" class="stylebtn" aria-pressed="false" type="button">3 Painterly</button>
-      <button id="btnArt_hd-2d-voxel" class="stylebtn" aria-pressed="false" type="button">4 HD-2D Voxel</button>
-      <button id="btnArt_classic-sprite" class="stylebtn" aria-pressed="false" type="button">5 Retro Stack</button>
-      <button id="btnArt_clay-maquette" class="stylebtn" aria-pressed="false" type="button">6 Clay Model</button>
-    </div>
-    <div class="row">
       <div class="slider-group">
         <label for="rngRelief">Relief</label>
-        <input id="rngRelief" type="range" min="0" max="100" value="85" />
-        <span id="valRelief" class="val">85%</span>
+        <input id="rngRelief" type="range" min="0" max="100" value="88" />
+        <span id="valRelief" class="val">88%</span>
       </div>
       <div class="slider-group">
         <label for="rngDrape">Ivy</label>
@@ -167,7 +157,6 @@
   </div>
   <div id="keys">
     <span><b>W</b>Switch World (A/B/C)</span>
-    <span><b>1-6</b>Art Style</span>
     <span><b>E</b>A/B Split vs Lego</span>
     <span><b>X</b>Exploded 2D Slices</span>
     <span><b>Drag / Wheel</b>Orbit &amp; Zoom</span>

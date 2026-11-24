@@ -36,7 +36,6 @@ import {
 import type {
   AAMode,
   AAQuality,
-  ArtStyle,
   BackgroundMode,
   EngineTelemetry,
   OverdrawReport,
@@ -108,15 +107,6 @@ function styleToInt(s: RenderStyle): number {
   if (s === "smooth-toy") return 2;
   if (s === "retro-raw") return 3;
   return 0; // arcade-8bit
-}
-
-function artStyleToInt(s?: ArtStyle): number {
-  if (s === "moebius-cel") return 1;
-  if (s === "painterly") return 2;
-  if (s === "hd-2d-voxel") return 3;
-  if (s === "classic-sprite") return 4;
-  if (s === "clay-maquette") return 5;
-  return 0; // crisp-maquette
 }
 
 function defaultAAModeForStyle(s: RenderStyle, fallback: AAMode): AAMode {
@@ -771,7 +761,6 @@ export class AASpriteRenderer {
     gl.uniformMatrix4fv(ep.u.uInvViewProj, false, invViewProj);
     gl.uniform3fv(ep.u.uCamPos, doc.camera.pos);
     gl.uniform1i(ep.u.uStyle, styleInt);
-    gl.uniform1i(ep.u.uArtStyle, artStyleToInt(doc.lighting.artStyle));
     gl.uniform1i(ep.u.uShadeStyle, shadeStyleToInt(doc.lighting.shadeStyle));
     gl.uniform3fv(ep.u.uSunDir, sunDir);
     gl.uniform1f(ep.u.uTimeOfDay, doc.lighting.timeOfDay);
@@ -1287,7 +1276,6 @@ export class AASpriteRenderer {
         gl.uniform1f(tp.u.uTimeOfDay, doc.lighting.timeOfDay);
         gl.uniform1f(tp.u.uFogDensity, doc.lighting.fogDensity);
         gl.uniform1i(tp.u.uStyle, styleInt);
-        gl.uniform1i(tp.u.uArtStyle, artStyleToInt(doc.lighting.artStyle));
         gl.uniform1i(tp.u.uTerrainEnabled, 1);
         gl.uniform1f(tp.u.uSeed, doc.terrain.seed);
         gl.uniform1f(tp.u.uMaxHeight, doc.terrain.maxHeight);

@@ -12,13 +12,6 @@ export type AAMode = "legacy" | "voxel-dda" | "smooth-sdf" | "bandlimited";
 export type AAQuality = "eco" | "balanced" | "ultra";
 export type BackgroundMode = "terrain" | "studio" | "solid" | "transparent";
 export type RenderStyle = "arcade-8bit" | "hd-2d" | "smooth-toy" | "retro-raw";
-export type ArtStyle =
-  | "crisp-maquette"
-  | "moebius-cel"
-  | "painterly"
-  | "hd-2d-voxel"
-  | "classic-sprite"
-  | "clay-maquette";
 export type ShadeStyle = "toon-aa" | "pbr-lite" | "unlit";
 export type CameraMode = "overhead" | "chase" | "cockpit" | "ortho" | "oblique" | "free";
 export type IsometricPreset = "dimetric-2to1" | "isometric" | "oblique-stack" | "topdown-3quarter";
@@ -182,12 +175,10 @@ export interface LightingState {
   selfShadow: boolean;
   /** Optional real-time 3D point and spot lights (up to 16) illuminating voxel & SDF surfaces. */
   pointLights?: PointLightState[];
-  /** Optional procedural triplanar micro-relief strength (0..1, default 0 for legacy demos). */
+  /** Optional procedural wrapped-UV / triplanar micro-relief strength (0..1, default 0 for legacy demos). */
   microRelief?: number;
-  /** Optional continuous stylization dial (0 = smooth painterly SDF sculpt, 0.5 = stylized, 1 = stacked sprite). */
+  /** Optional continuous stylization dial (0 = crisp continuous SDF, 1 = stacked sprite). */
   styleDial?: number;
-  /** Optional discrete art-direction style preset (crisp-maquette | moebius-cel | painterly | hd-2d-voxel | classic-sprite | clay-maquette). */
-  artStyle?: ArtStyle;
 }
 
 export interface TerrainState {

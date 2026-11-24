@@ -160,7 +160,6 @@ uniform mat4 uInvViewProj;
 uniform vec3 uCamPos;
 
 uniform int uStyle;           // 0=arcade-8bit, 1=hd-2d, 2=smooth-toy, 3=retro-raw
-uniform int uArtStyle;        // 0=crisp-maquette, 1=moebius-cel, 2=painterly, 3=hd-2d-voxel, 4=classic-sprite, 5=clay-maquette
 uniform float uSplitX;
 uniform int uShadeStyle;
 uniform vec3 uSunDir;
@@ -683,37 +682,19 @@ bool traceSmoothSdfRay(
   ivec3 ic = clamp(ivec3(floor(hpSample)), ivec3(0), ivec3(uVolSize) - 1);
   vec3 albedoLin = texture(uAlbedoTex, uv).rgb;
   vec3 albedoNear = texelFetch(uAlbedoTex, ic, 0).rgb;
-  vec3 albedo = mix(albedoNear, albedoLin, 0.34);
+  vec3 albedo = mix(albedoNear, albedoLin, 0.14);
   vec2 emMat = texelFetch(uEmisTex, ic, 0).rg;
   float ef = emMat.r;
   int matId = int(floor(emMat.g * 255.0 + 0.5));
 
-  // Studio Clay & Basswood Architectural Maquette Mode (uArtStyle == 5)!
-  if (uArtStyle == 5 && ef < 0.35) {
-    if (matId >= 152 && matId <= 184) albedo = vec3(0.84, 0.68, 0.34);       // warm studio brass
-    else if (matId >= 56 && matId <= 80) albedo = vec3(0.76, 0.58, 0.42);   // warm basswood
-    else if (matId >= 120 && matId <= 144) albedo = vec3(0.86, 0.72, 0.58); // sanded birch roof
-    else if (matId >= 88 && matId <= 112) albedo = vec3(0.78, 0.80, 0.74);  // sage studio flock
-    else albedo = vec3(0.92, 0.89, 0.84);                                   // crisp gallery plaster
-  }
-
-  // Apply wrapped-UV material relief (suppressed slightly in Moebius flat ink mode so cel bands pop!)
-  float styleReliefMul = (uArtStyle == 1) ? 0.42 : (uArtStyle == 5 ? 0.55 : 1.0);
-  float reliefWeight = uMicroRelief * styleReliefMul * clamp(1.0 - uStyleDial * 1.15, 0.0, 1.0);
+  // Apply wrapped-UV material relief (bricks, roof tiles, timber planks, rock strata, metal rivets)
+  float reliefWeight = uMicroRelief * clamp(1.0 - uStyleDial * 1.15, 0.0, 1.0);
   float rough, metal, sss, fresnelAmt;
   applyMaterialRelief(hp, uv, nLoc, albedo, matId, reliefWeight, rough, metal, sss, fresnelAmt);
 
-  // Painterly Gouache / Arcane directional brushstroke normal modulation (uArtStyle == 2)!
-  if (uArtStyle == 2) {
-    float br1 = vnoise3(hp * vec3(0.65, 2.4, 0.95));
-    float br2 = vnoise3(hp * vec3(2.3, 0.7, 1.4) + 7.3);
-    albedo *= mix(0.86, 1.16, smoothstep(0.25, 0.75, br1 * 0.6 + br2 * 0.4));
-    nLoc = normalize(nLoc + vec3(br1 - 0.5, br2 - 0.5, (br1 - br2) * 0.5) * 0.32);
-  }
-
-  // Convex architectural bevel catchlight (crisp highlights on stone corners, ridges & brass!)
+  // Subtle convex edge catchlight on architectural stone/metal corners
   if (ef < 0.25) {
-    albedo *= (1.0 + max(0.0, curv) * (uArtStyle == 5 ? 0.18 : 0.13));
+    albedo *= (1.0 + max(0.0, curv) * 0.10);
   }
 
   if (uStyleDial > 0.25) {
@@ -726,11 +707,11 @@ bool traceSmoothSdfRay(
   }
 
   vec3 worldN = normalize(normalMat * nLoc);
-  // Multi-scale analytical SDF AO + crisp concave crevice accent!
+  // Multi-scale analytical SDF AO + crisp concave crevice accent
   float ao = (uSdfIsFloat > 0.5) ? computeSdfAo(hp, nLoc) : texture(uNormalTex, uv).a;
-  ao = clamp(ao * (1.0 - max(0.0, -curv) * 0.26), 0.28, 1.0);
+  ao = clamp(ao * (1.0 - max(0.0, -curv) * 0.24), 0.28, 1.0);
 
-  // Analytical soft penumbra SDF self-shadows!
+  // Analytical soft penumbra SDF self-shadows
   float selfSh = 0.0;
   if (doSelfShadow && ef < 0.5 && uShadeStyle != 2 && dot(worldN, uSunDir) > -0.25) {
     float litSoft = (uSdfIsFloat > 0.5)
@@ -740,52 +721,22 @@ bool traceSmoothSdfRay(
   }
 
   vec3 baseLin = srgbToLin(clamp(albedo, 0.0, 1.0));
-  vec3 shaded;
   float nightW = max(0.0, (uTimeOfDay - 0.48) / 0.52);
+  vec3 shaded = shadeVoxel(baseLin, worldN, ao, ef, selfSh, false, emisBoost);
 
-  if (uArtStyle == 1) {
-    // MOEBIUS / SABLE LIGNE CLAIRE INK & CEL STYLE!
-    float ndl = dot(worldN, uSunDir);
-    float litVal = mix(ndl, min(ndl, -0.35), selfSh * 0.85);
-    float band = (litVal > 0.32) ? 1.14 : (litVal > -0.06 ? 0.82 : 0.46);
-    vec3 bandTint = (litVal > 0.32)
-      ? mix(vec3(1.06, 1.02, 0.94), vec3(0.74, 0.84, 1.0), nightW)
-      : (litVal > -0.06 ? mix(vec3(0.90, 0.92, 0.98), vec3(0.42, 0.54, 0.76), nightW)
-        : mix(vec3(0.56, 0.64, 0.86), vec3(0.20, 0.28, 0.50), nightW));
-    shaded = baseLin * srgbToLin(bandTint) * band * mix(0.68, 1.0, ao);
-    if (ef > 0.05) {
-      shaded = mix(shaded, baseLin * (1.25 + emisBoost * 0.55), smoothstep(0.05, 0.55, ef));
-    }
-    // Crisp internal comic pen crosshatching in deep shadows!
-    if (litVal <= -0.06 && ef < 0.2) {
-      float hatch = smoothstep(0.18, 0.30, abs(fract((gl_FragCoord.x + gl_FragCoord.y) * 0.14) - 0.5));
-      shaded *= mix(0.72, 1.0, hatch);
-    }
-    // Crisp Ligne Claire dark ink silhouette & curvature crease lines!
-    float viewGrazing = 1.0 - max(0.0, dot(worldN, viewDirW));
-    float inkCrease = smoothstep(0.42, 0.76, abs(curv)) + smoothstep(0.76, 0.91, viewGrazing);
-    if (ef < 0.45) {
-      shaded = mix(shaded, vec3(0.015, 0.020, 0.036), clamp(inkCrease * 0.82, 0.0, 0.88));
-    }
-  } else {
-    shaded = shadeVoxel(baseLin, worldN, ao, ef, selfSh, false, emisBoost);
-    if (uArtStyle == 2 && ef < 0.25) {
-      // Painterly Gouache / Arcane warm-vs-cool color temperature separation!
-      float litMix = smoothstep(-0.25, 0.55, dot(worldN, uSunDir) * (1.0 - selfSh * 0.7));
-      vec3 tempShift = mix(vec3(0.76, 0.80, 1.18), vec3(1.14, 1.04, 0.88), litMix);
-      shaded *= tempShift;
-    }
-    // Specular sun highlight + Fresnel sky rim for metallic / glass / satin materials!
+  // Physically grounded specular ONLY on genuine metals and glass (zero plastic gloss on stone/roof/foliage!)
+  float specMask = max(metal, smoothstep(0.36, 0.08, rough));
+  if (specMask > 0.01) {
     float ndotl = max(0.0, dot(worldN, uSunDir));
     vec3 Hsun = normalize(uSunDir + viewDirW);
-    float shin = mix(14.0, 96.0, 1.0 - rough);
+    float shin = mix(28.0, 110.0, 1.0 - rough);
     float sunSpec = pow(max(0.0, dot(worldN, Hsun)), shin) * (1.0 - selfSh * 0.85) * ndotl;
     vec3 specCol = mix(vec3(1.0, 0.98, 0.92), baseLin * 1.45, metal);
-    shaded += specCol * sunSpec * mix(0.06, 0.95, 1.0 - rough) * (1.0 - nightW * 0.55);
+    shaded += specCol * sunSpec * specMask * 0.85 * (1.0 - nightW * 0.55);
 
-    float fres = pow(1.0 - max(0.0, dot(worldN, viewDirW)), 3.2) * fresnelAmt;
+    float fres = pow(1.0 - max(0.0, dot(worldN, viewDirW)), 3.6) * fresnelAmt * specMask;
     vec3 skyRim = mix(vec3(0.55, 0.78, 1.0), vec3(0.16, 0.36, 0.62), nightW);
-    shaded += skyRim * fres * ao * 0.65;
+    shaded += skyRim * fres * ao * 0.50;
   }
 
   // Real-time 3D Point & Spot Lights on continuous SDF surfaces!
@@ -813,7 +764,7 @@ void main() {
   int iModeA = int(vFlags.z + 0.5);
   int iModeB = int(vFlags.w + 0.5);
   int mode = (uSplitX >= 0.0 && (gl_FragCoord.x / uResolution.x) < uSplitX) ? iModeA : iModeB;
-  bool isLegacy = (mode == 0) || (uArtStyle == 4);
+  bool isLegacy = (mode == 0);
   bool smoothSdf = (mode == 2);
   int spp = isLegacy ? 1 : int(vMeta.w + 0.5);
   bool doSelfShadow = vFlags.x > 0.5;
@@ -842,8 +793,7 @@ void main() {
   vec4 dVoxDx   = vClipCol0 * (2.0 / uResolution.x);
   vec4 dVoxDy   = vClipCol1 * (2.0 / uResolution.y);
 
-  // Art styles 3 (hd-2d-voxel) & 4 (classic-sprite) switch cleanly to voxel-DDA / retro sprite stack!
-  bool useSmoothSdf = smoothSdf && (uStyleDial < 0.88) && (uArtStyle != 3) && (uArtStyle != 4);
+  bool useSmoothSdf = smoothSdf && (uStyleDial < 0.88);
 
   vec3 accLin = vec3(0.0);
   vec3 accNorm = vec3(0.0);

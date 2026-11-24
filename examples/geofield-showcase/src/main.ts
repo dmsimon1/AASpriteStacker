@@ -1,13 +1,11 @@
 /**
- * AA-GeoField Non-Legoland Procedural Showcase (@aastack/core + @aastack/geofield).
+ * AA-GeoField Procedural Showcase (@aastack/core + @aastack/geofield).
  * Demonstrates:
- *  - Crisp Anti-Oversmoothed R16F Continuous SDF + Curvature Edge Catchlights
+ *  - Crisp Anti-Oversmoothed R16F Continuous SDF (matte stone/wood/foliage, zero plastic gloss)
  *  - Seam-Free Periodic Wrapped Surface UVs (360-deg cylindrical bricks, radiating barrel roof tiles,
- *    and radial wedge voussoirs fanning cleanly around curved Roman bridge arches!)
- *  - 6 First-Class Discrete Art Styles (Crisp Maquette, Moebius Ligne Claire Ink Cel, Painterly
- *    Gouache, HD-2D Micro-Voxel, Classic Retro Sprite Stack, and Studio Clay Architectural Maquette)
- *  - Contemporary Musgrave Ridged Multifractal + Swiss-Turbulence Derivative-Eroded Terrain
- *    (World C: Alpine Multifractal Gorge & Stone Viaduct) with 1:1 CPU/GPU height snapping!
+ *    and radial wedge voussoirs fanning cleanly around curved Roman bridge arches)
+ *  - Contemporary High-Detail Multifractal Terrain (Ken Musgrave Ridged Multifractal + Giliam de
+ *    Carpentier Swiss-Turbulence analytical erosion + 10-octave fractured rock detail normals)
  *  - Lightweight 2D Sprite-Stack Parity (1-Draw-Call Exploded Slices + slices.png Export)
  */
 
@@ -24,7 +22,6 @@ import {
   vec3Norm,
   vec3Scale,
   type AAQuality,
-  type ArtStyle,
   type EntityState,
   type PointLightState,
   type RibbonPoint,
@@ -59,22 +56,6 @@ type WorldId = "rotunda" | "coastal" | "alpine";
 type TodMode = "auto" | "day" | "golden" | "twilight" | "night";
 
 const EXPLODE_SLICES = 46;
-const ART_STYLES: ArtStyle[] = [
-  "crisp-maquette",
-  "moebius-cel",
-  "painterly",
-  "hd-2d-voxel",
-  "classic-sprite",
-  "clay-maquette",
-];
-const ART_LABELS: Record<ArtStyle, string> = {
-  "crisp-maquette": "CRISP MAQUETTE",
-  "moebius-cel": "MOEBIUS INK CEL",
-  painterly: "PAINTERLY GOUACHE",
-  "hd-2d-voxel": "HD-2D MICRO-VOXEL",
-  "classic-sprite": "CLASSIC SPRITE STACK",
-  "clay-maquette": "CLAY STUDIO MODEL",
-};
 
 const params = new URLSearchParams(window.location.search);
 const noHud = params.get("nohud") === "1";
@@ -84,8 +65,6 @@ if (noHud) document.body.classList.add("nohud");
 const initQuality = (params.get("quality") as AAQuality | null) ?? "ultra";
 const rawW = params.get("world");
 const initWorld: WorldId = rawW === "coastal" ? "coastal" : rawW === "alpine" ? "alpine" : "rotunda";
-const rawStyle = params.get("artStyle") as ArtStyle | null;
-const initArtStyle: ArtStyle = rawStyle && ART_STYLES.includes(rawStyle) ? rawStyle : "crisp-maquette";
 
 function worldSeed(w: WorldId): number {
   if (w === "alpine") return 137;
@@ -117,7 +96,7 @@ const world = new SceneWorld({
     fovDeg: 38,
     orthoSize: 28,
     near: 0.4,
-    far: 700,
+    far: 760,
   },
   lighting: {
     sunAzimuthDeg: 36,
@@ -127,15 +106,14 @@ const world = new SceneWorld({
     shadeStyle: "pbr-lite",
     outlineWidth: 0.0,
     selfShadow: true,
-    microRelief: 0.85,
+    microRelief: 0.88,
     styleDial: 0.0,
-    artStyle: initArtStyle,
     pointLights: [],
   },
   terrain: {
     enabled: true,
     seed: worldSeed(initWorld),
-    maxHeight: 48,
+    maxHeight: 64,
     scale: 1.0,
     waveTime: 0,
     terraceSteps: 1.0,
@@ -143,7 +121,6 @@ const world = new SceneWorld({
   splitCompare: {
     enabled: false,
     splitX: 0.5,
-    // LEFT: Classic Legoland Voxel DDA vs RIGHT: AA-GeoField Crisp R16F SDF + Wrapped UVs!
     leftMode: "voxel-dda",
     rightMode: "smooth-sdf",
   },
@@ -167,16 +144,14 @@ function createLightProxyAsset(): VolumeAsset {
 // ---------------------------------------------------------------------------
 const state = {
   worldId: initWorld as WorldId,
-  artStyle: initArtStyle as ArtStyle,
   tod: "auto" as TodMode,
   quality: initQuality as AAQuality,
-  styleDial: clamp(Number(params.get("styleDial") ?? 0.0) || 0.0, 0, 1),
-  microRelief: clamp(Number(params.get("relief") ?? 0.85) || 0.85, 0, 1),
+  microRelief: clamp(Number(params.get("relief") ?? 0.88) || 0.88, 0, 1),
   weathering: 0.45,
   drape: 0.72,
   ridgeWeight: clamp(Number(params.get("ridge") ?? 1.0) || 1.0, 0.2, 1.5),
   erosion: clamp(Number(params.get("erosion") ?? 1.0) || 1.0, 0.0, 1.5),
-  maxHeight: 54.0,
+  maxHeight: 44.0,
   splitEnabled: params.get("split") === "1",
   splitX: clamp(Number(params.get("splitX") ?? 0.5) || 0.5, 0.08, 0.92),
   exploded: params.get("exploded") === "1",
@@ -203,31 +178,31 @@ function currentTerrainCfg(): MultifractalTerrainConfig {
     maxHeight: state.maxHeight,
     ridgeWeight: state.ridgeWeight,
     erosion: state.erosion,
-    snowline: 24.5,
+    snowline: 22.0,
     gorgeEnabled: true,
   };
 }
 
-// Deterministic Alpine Spruce scatter coordinates snapped live via sampleMultifractalTerrain!
+// Deterministic Alpine Spruce scatter coordinates snapped live via sampleMultifractalTerrain
 const ALPINE_SPRUCE_SLOTS: Array<{ id: string; assetId: string; x: number; z: number; yaw: number; scale: number }> = [
-  { id: "spruce_0", assetId: "alpine_spruce_a", x: -34.0, z: -3.0, yaw: 0.4, scale: 1.08 },
-  { id: "spruce_1", assetId: "alpine_spruce_b", x: -29.5, z: -18.5, yaw: 1.8, scale: 1.22 },
-  { id: "spruce_2", assetId: "alpine_spruce_a", x: -37.5, z: -13.0, yaw: 3.1, scale: 1.15 },
-  { id: "spruce_3", assetId: "alpine_spruce_b", x: -22.5, z: -21.0, yaw: 0.9, scale: 0.95 },
-  { id: "spruce_4", assetId: "alpine_spruce_a", x: -27.5, z: 12.5, yaw: 2.4, scale: 1.12 },
-  { id: "spruce_5", assetId: "alpine_spruce_b", x: -35.0, z: 18.0, yaw: 4.5, scale: 0.96 },
-  { id: "spruce_6", assetId: "alpine_spruce_a", x: -18.5, z: 16.5, yaw: 1.2, scale: 0.88 },
-  { id: "spruce_7", assetId: "alpine_spruce_b", x: 24.5, z: -11.0, yaw: 2.1, scale: 1.18 },
-  { id: "spruce_8", assetId: "alpine_spruce_a", x: 31.0, z: -6.5, yaw: 0.7, scale: 1.05 },
-  { id: "spruce_9", assetId: "alpine_spruce_b", x: 28.5, z: -20.5, yaw: 3.7, scale: 1.26 },
-  { id: "spruce_10", assetId: "alpine_spruce_a", x: 36.5, z: -16.5, yaw: 5.0, scale: 1.10 },
-  { id: "spruce_11", assetId: "alpine_spruce_b", x: 26.0, z: 11.5, yaw: 1.5, scale: 1.06 },
-  { id: "spruce_12", assetId: "alpine_spruce_a", x: 33.5, z: 6.5, yaw: 2.9, scale: 0.98 },
-  { id: "spruce_13", assetId: "alpine_spruce_b", x: 21.5, z: 18.0, yaw: 4.1, scale: 0.90 },
-  { id: "spruce_14", assetId: "alpine_spruce_a", x: -19.0, z: -31.0, yaw: 0.2, scale: 1.25 },
-  { id: "spruce_15", assetId: "alpine_spruce_b", x: 18.5, z: -32.0, yaw: 2.6, scale: 1.20 },
-  { id: "spruce_16", assetId: "alpine_spruce_a", x: -39.0, z: -27.0, yaw: 1.1, scale: 1.30 },
-  { id: "spruce_17", assetId: "alpine_spruce_b", x: 40.0, z: -26.0, yaw: 3.4, scale: 1.28 },
+  { id: "spruce_0", assetId: "alpine_spruce_a", x: -34.0, z: -4.0, yaw: 0.4, scale: 1.08 },
+  { id: "spruce_1", assetId: "alpine_spruce_b", x: -30.5, z: -18.5, yaw: 1.8, scale: 1.22 },
+  { id: "spruce_2", assetId: "alpine_spruce_a", x: -38.5, z: -13.0, yaw: 3.1, scale: 1.15 },
+  { id: "spruce_3", assetId: "alpine_spruce_b", x: -23.5, z: -21.0, yaw: 0.9, scale: 0.95 },
+  { id: "spruce_4", assetId: "alpine_spruce_a", x: -29.5, z: 11.5, yaw: 2.4, scale: 1.05 },
+  { id: "spruce_5", assetId: "alpine_spruce_b", x: -37.0, z: 16.0, yaw: 4.5, scale: 0.96 },
+  { id: "spruce_6", assetId: "alpine_spruce_a", x: -21.0, z: 16.0, yaw: 1.2, scale: 0.86 },
+  { id: "spruce_7", assetId: "alpine_spruce_b", x: 25.0, z: -10.5, yaw: 2.1, scale: 1.18 },
+  { id: "spruce_8", assetId: "alpine_spruce_a", x: 31.5, z: -5.5, yaw: 0.7, scale: 1.05 },
+  { id: "spruce_9", assetId: "alpine_spruce_b", x: 29.0, z: -20.5, yaw: 3.7, scale: 1.26 },
+  { id: "spruce_10", assetId: "alpine_spruce_a", x: 37.5, z: -16.5, yaw: 5.0, scale: 1.10 },
+  { id: "spruce_11", assetId: "alpine_spruce_b", x: 27.0, z: 10.5, yaw: 1.5, scale: 1.02 },
+  { id: "spruce_12", assetId: "alpine_spruce_a", x: 34.5, z: 5.5, yaw: 2.9, scale: 0.98 },
+  { id: "spruce_13", assetId: "alpine_spruce_b", x: 23.0, z: 17.5, yaw: 4.1, scale: 0.88 },
+  { id: "spruce_14", assetId: "alpine_spruce_a", x: -24.0, z: -34.0, yaw: 0.2, scale: 1.25 },
+  { id: "spruce_15", assetId: "alpine_spruce_b", x: 24.5, z: -35.0, yaw: 2.6, scale: 1.20 },
+  { id: "spruce_16", assetId: "alpine_spruce_a", x: -42.0, z: -28.0, yaw: 1.1, scale: 1.30 },
+  { id: "spruce_17", assetId: "alpine_spruce_b", x: 43.0, z: -27.0, yaw: 3.4, scale: 1.28 },
 ];
 
 interface Particle {
@@ -281,8 +256,8 @@ world.registerAsset(createGnarledOliveTree("olive_a", 7));
 world.registerAsset(createGnarledOliveTree("olive_b", 23));
 world.registerAsset(createTuscanCypress("cypress_a", 5));
 world.registerAsset(createTuscanCypress("cypress_b", 19));
-world.registerAsset(createAlpineSpruceGeo("alpine_spruce_a", 11, 0.62));
-world.registerAsset(createAlpineSpruceGeo("alpine_spruce_b", 37, 0.48));
+world.registerAsset(createAlpineSpruceGeo("alpine_spruce_a", 11, 0.56));
+world.registerAsset(createAlpineSpruceGeo("alpine_spruce_b", 37, 0.42));
 world.registerAsset(createCoastalSkiff());
 
 function ensureParamAssets(worldId: WorldId): void {
@@ -313,18 +288,16 @@ function ensureParamAssets(worldId: WorldId): void {
 function snapAlpineTerrainEntities(): void {
   if (state.worldId !== "alpine") return;
   const cfg = currentTerrainCfg();
-  // Snap alpine watchtower onto west mountain bench (sink foundation 1.3 units for seamless slope seating!)
   const tower = world.getEntity("hero_actor");
   if (tower) {
-    const tSamp = sampleMultifractalTerrain(-25.5, -8.5, cfg);
-    tower.pos = [-25.5, tSamp.height - 1.35, -8.5];
+    const tSamp = sampleMultifractalTerrain(-25.5, -7.5, cfg);
+    tower.pos = [-25.5, tSamp.height - 1.35, -7.5];
   }
-  // Snap every snow-dusted alpine conifer directly onto exact multifractal terrain height!
   for (const s of ALPINE_SPRUCE_SLOTS) {
     const ent = world.getEntity(s.id);
     if (!ent) continue;
     const samp = sampleMultifractalTerrain(s.x, s.z, cfg);
-    const valid = samp.height > 2.2 && samp.height < 26.0 && samp.slope < 0.44;
+    const valid = samp.height > 1.8 && samp.height < 26.0 && samp.slope < 0.46;
     ent.visible = valid;
     ent.pos = [s.x, samp.height - 0.85, s.z];
   }
@@ -532,8 +505,7 @@ function buildWorldEntities(worldId: WorldId): EntityState[] {
       tag: "boat",
     });
   } else {
-    // WORLD C: ALPINE MULTIFRACTAL GORGE & CURVED STONE VIADUCT!
-    // Sweeping arched viaduct spanning the carved turquoise glacier canyon (abutments embedded at x = +-22!)
+    // WORLD C: ALPINE MULTIFRACTAL GLACIAL VALLEY & CURVED STONE VIADUCT
     ents.push({
       id: "alpine_viaduct",
       assetId: "coastal_viaduct",
@@ -545,13 +517,12 @@ function buildWorldEntities(worldId: WorldId): EntityState[] {
       emissiveBoost: 1.45,
       tag: "landmark",
     });
-    // Hero Alpine Stone Watchtower & Lodge snapped cleanly onto the West Mountain Bluff!
     const cfg = currentTerrainCfg();
-    const towerY = sampleMultifractalTerrain(-25.5, -8.5, cfg).height - 1.35;
+    const towerY = sampleMultifractalTerrain(-25.5, -7.5, cfg).height - 1.35;
     ents.push({
       id: "hero_actor",
       assetId: "coastal_tower",
-      pos: [-25.5, towerY, -8.5],
+      pos: [-25.5, towerY, -7.5],
       rot: quatFromYawPitchRoll(0.55, 0, 0),
       scale: 0.96,
       aaPriority: "hero",
@@ -575,7 +546,6 @@ function buildWorldEntities(worldId: WorldId): EntityState[] {
         tag: "explode_slice",
       });
     }
-    // Snow-dusted Alpine Conifers snapped 1:1 onto exact multifractal terrain height & slope!
     for (const s of ALPINE_SPRUCE_SLOTS) {
       const samp = sampleMultifractalTerrain(s.x, s.z, cfg);
       ents.push({
@@ -586,7 +556,7 @@ function buildWorldEntities(worldId: WorldId): EntityState[] {
         scale: s.scale,
         aaPriority: "hero",
         outline: false,
-        visible: samp.height > 2.2 && samp.height < 26.0 && samp.slope < 0.44,
+        visible: samp.height > 1.8 && samp.height < 26.0 && samp.slope < 0.46,
         tag: "tree",
       });
     }
@@ -608,19 +578,6 @@ function buildWorldEntities(worldId: WorldId): EntityState[] {
   return ents;
 }
 
-function syncOutlinesForStyle(): void {
-  const wantInk = state.artStyle === "moebius-cel";
-  const wantRetro = state.artStyle === "classic-sprite";
-  world.doc.lighting.outlineWidth = wantInk ? 0.92 : wantRetro ? 0.45 : 0.0;
-  for (const ent of world.doc.entities) {
-    if (ent.tag === "proxy" || ent.tag === "particle") {
-      ent.outline = false;
-    } else {
-      ent.outline = wantInk || wantRetro;
-    }
-  }
-}
-
 function applyLighting(): void {
   if (state.tod === "auto") {
     if (state.worldId === "rotunda") {
@@ -634,21 +591,21 @@ function applyLighting(): void {
       world.doc.lighting.sunElevationDeg = 32;
       world.doc.lighting.fogDensity = 0.15;
     } else {
-      // Crisp sunlit Alpine morning / golden alpenglow lighting!
-      world.doc.lighting.timeOfDay = 0.34;
-      world.doc.lighting.sunAzimuthDeg = -42;
-      world.doc.lighting.sunElevationDeg = 34;
+      // Crisp sunlit alpine morning with dramatic East-Southeast raking cross-light across jagged peaks!
+      world.doc.lighting.timeOfDay = 0.20;
+      world.doc.lighting.sunAzimuthDeg = 42;
+      world.doc.lighting.sunElevationDeg = 28;
       world.doc.lighting.fogDensity = 0.18;
     }
   } else if (state.tod === "day") {
     world.doc.lighting.timeOfDay = 0.08;
     world.doc.lighting.sunAzimuthDeg = 38;
-    world.doc.lighting.sunElevationDeg = 52;
-    world.doc.lighting.fogDensity = 0.12;
+    world.doc.lighting.sunElevationDeg = 46;
+    world.doc.lighting.fogDensity = 0.14;
   } else if (state.tod === "golden") {
     world.doc.lighting.timeOfDay = 0.50;
-    world.doc.lighting.sunAzimuthDeg = -32;
-    world.doc.lighting.sunElevationDeg = 20;
+    world.doc.lighting.sunAzimuthDeg = 32;
+    world.doc.lighting.sunElevationDeg = 18;
     world.doc.lighting.fogDensity = 0.20;
   } else if (state.tod === "twilight") {
     world.doc.lighting.timeOfDay = 0.74;
@@ -662,13 +619,12 @@ function applyLighting(): void {
     world.doc.lighting.fogDensity = 0.26;
   }
 
-  world.doc.lighting.artStyle = state.artStyle;
   world.doc.lighting.microRelief = state.microRelief;
-  world.doc.lighting.styleDial = state.styleDial;
+  world.doc.lighting.styleDial = 0.0;
+  world.doc.lighting.outlineWidth = 0.0;
   world.doc.terrain.maxHeight = state.maxHeight;
   world.doc.terrain.scale = state.ridgeWeight;
   world.doc.terrain.terraceSteps = state.erosion;
-  syncOutlinesForStyle();
 }
 
 function loadWorld(worldId: WorldId, resetCam = true): void {
@@ -691,11 +647,11 @@ function loadWorld(worldId: WorldId, resetCam = true): void {
       state.zoomDist = 56;
       state.camTarget = [-1.5, 9.2, -2.5];
     } else {
-      // Sweeping Alpine Gorge vista looking straight up the open glacier valley through the viaduct to snow peaks!
-      state.orbitYaw = 0.14;
-      state.orbitPitch = 0.20;
-      state.zoomDist = 80;
-      state.camTarget = [-2.0, 17.5, -14.0];
+      // Sweeping open glacial valley vista: viaduct + watchtower framed against snow-capped alpine skyline
+      state.orbitYaw = 0.16;
+      state.orbitPitch = 0.12;
+      state.zoomDist = 76;
+      state.camTarget = [-2.5, 20.0, -14.0];
     }
   }
   applySplit();
@@ -865,7 +821,7 @@ function stepSimulation(dt: number): void {
       if (wg) { wg.pos = [lx, 0.1, lz]; wg.scale = 3.2; }
     });
   } else {
-    // WORLD C: ALPINE MULTIFRACTAL GORGE!
+    // WORLD C: ALPINE MULTIFRACTAL GLACIAL VALLEY
     const hero = world.getEntity("hero_actor")!;
     const showSlices = state.explodeT > 0.015;
     hero.visible = !showSlices;
@@ -876,7 +832,6 @@ function stepSimulation(dt: number): void {
       if (showSlices) sl.pos[1] = (z - (EXPLODE_SLICES - 1) * 0.5) * 0.24 * state.explodeT;
     }
 
-    // Crisp alpine hearth chimney plume rising from the mountainside lodge!
     const chimPos = world.getSocketWorldPos("hero_actor", "chimney");
     if (chimPos && !showSlices) {
       const pts: RibbonPoint[] = [];
@@ -891,26 +846,25 @@ function stepSimulation(dt: number): void {
       ribbons.push({ id: "alpine_smoke", points: pts, color: [236, 232, 226], alpha: 0.30, emissive: false });
     }
 
-    // 4 Live 3D Bridge Lanterns spanning the glacier gorge + Alpine Watchtower warm hearth glow!
-    const lampW = clamp(0.55 + world.doc.lighting.timeOfDay * 1.25, 0.55, 1.85);
+    const lampW = clamp(0.45 + world.doc.lighting.timeOfDay * 1.25, 0.45, 1.85);
     const lPos: Array<[number, number, number]> = [
       [-7.6, 18.2, 2.2], [-7.6, 18.2, -3.5], [7.6, 18.2, 2.2], [7.6, 18.2, -3.5],
       [-23.5, hero.pos[1] + 9.0, -5.5], [0.0, 14.5, 0.0],
     ];
     lPos.forEach(([lx, ly, lz], i) => {
-      lights.push({ pos: [lx, ly, lz], radius: 22.0, color: [255, 200, 108], intensity: (i < 4 ? 1.25 : 0.95) * lampW });
+      lights.push({ pos: [lx, ly, lz], radius: 22.0, color: [255, 200, 108], intensity: (i < 4 ? 1.15 : 0.90) * lampW });
       const wg = world.getEntity(`water_glow_${i}`);
-      if (wg) { wg.pos = [lx, 0.1, lz]; wg.scale = 4.2; }
+      if (wg) { wg.pos = [lx, 0.1, lz]; wg.scale = 4.0; }
     });
   }
 
-  const maxOrbs = state.worldId === "rotunda" ? 36 : state.worldId === "alpine" ? 24 : (world.doc.lighting.timeOfDay > 0.6 ? 26 : 14);
+  const maxOrbs = state.worldId === "rotunda" ? 36 : state.worldId === "alpine" ? 18 : (world.doc.lighting.timeOfDay > 0.6 ? 26 : 14);
   const showOrbs = state.worldId === "rotunda" || state.worldId === "alpine" || world.doc.lighting.timeOfDay > 0.38;
   for (let i = 0; i < particleZone.state.length; i++) {
     const p = particleZone.state[i];
     const ent = world.getEntity(p.id);
     if (!ent) continue;
-    const active = showOrbs && i < maxOrbs && state.artStyle !== "clay-maquette";
+    const active = showOrbs && i < maxOrbs;
     ent.visible = active;
     if (!active) continue;
     ent.pos[0] = p.x0 + Math.sin(state.simTime * 0.9 + p.phase) * p.amp;
@@ -926,8 +880,8 @@ function stepSimulation(dt: number): void {
 function updateCamera(dt: number, snap = false): void {
   const cam = world.doc.camera;
   let wantTarget: Vec3 = [...state.camTarget];
-  let dist = clamp(state.zoomDist, 16, 125);
-  let elev = clamp(state.orbitPitch, 0.10, 1.12);
+  let dist = clamp(state.zoomDist, 16, 130);
+  let elev = clamp(state.orbitPitch, 0.08, 1.12);
   let yaw = state.orbitYaw;
 
   if (state.explodeT > 0.25) {
@@ -956,7 +910,7 @@ function updateCamera(dt: number, snap = false): void {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Lightweight 2D Horizontal Sprite-Stack PNG Exporter (Proves Sprite-Stack Parity!)
+// 2. Lightweight 2D Horizontal Sprite-Stack PNG Exporter
 // ---------------------------------------------------------------------------
 function exportHeroSpriteStackPng(): { width: number; height: number; slices: number; assetId: string } | null {
   const heroId = state.worldId === "rotunda" ? "bathysphere_hull" : "coastal_tower";
@@ -986,7 +940,6 @@ function syncUi(): void {
   setP("btnWorld_alpine", state.worldId === "alpine");
   setP("btnSplit", state.splitEnabled);
   setP("btnExploded", state.exploded);
-  for (const s of ART_STYLES) setP(`btnArt_${s}`, state.artStyle === s);
   setP("btnTod_auto", state.tod === "auto");
   setP("btnTod_day", state.tod === "day");
   setP("btnTod_golden", state.tod === "golden");
@@ -1025,14 +978,14 @@ function updateStatsHud(): void {
     ? "SUNKEN ROMAN ROTUNDA & SEA CAVE"
     : state.worldId === "coastal"
       ? "MEDITERRANEAN ARCH & COASTAL TOWER"
-      : "ALPINE MULTIFRACTAL GORGE & VIADUCT";
+      : "ALPINE MULTIFRACTAL VALLEY & VIADUCT";
   const lightCount = world.doc.lighting.pointLights?.length ?? 0;
   const modeLbl = state.exploded
     ? `EXPLODED ${EXPLODE_SLICES}-SLICE (1 DRAW)`
-    : `${ART_LABELS[state.artStyle]} (${lightCount} 3D LIGHTS)`;
+    : `WRAPPED-UV R16F SDF (${lightCount} 3D LIGHTS)`;
   el.textContent =
     `WORLD   ${wTitle}\n` +
-    `STYLE   ${modeLbl}\n` +
+    `MODE    ${modeLbl}\n` +
     `ENGINE  ${s.fps.toFixed(0).padStart(2, " ")} FPS  |  ${s.drawCalls} draws (${s.visibleEntities}/${s.totalEntities} ents)  |  ${s.activeSamples}x RGSS`;
 }
 
@@ -1042,13 +995,6 @@ document.getElementById("btnWorld_alpine")?.addEventListener("click", () => { st
 document.getElementById("btnSplit")?.addEventListener("click", () => { state.splitEnabled = !state.splitEnabled; applySplit(); syncUi(); });
 document.getElementById("btnExploded")?.addEventListener("click", () => { state.exploded = !state.exploded; syncUi(); });
 document.getElementById("btnExportSlices")?.addEventListener("click", () => { exportHeroSpriteStackPng(); });
-for (const s of ART_STYLES) {
-  document.getElementById(`btnArt_${s}`)?.addEventListener("click", () => {
-    state.artStyle = s;
-    applyLighting();
-    syncUi();
-  });
-}
 for (const t of ["auto", "day", "golden", "night"] as TodMode[]) {
   document.getElementById(`btnTod_${t}`)?.addEventListener("click", () => { state.tod = t; applyLighting(); syncUi(); });
 }
@@ -1089,14 +1035,6 @@ window.addEventListener("keydown", (e) => {
     loadWorld(nextW, true);
   }
   else if (e.code === "KeyH") { document.body.classList.toggle("nohud"); }
-  else if (e.code >= "Digit1" && e.code <= "Digit6") {
-    const idx = Number(e.code.slice(5)) - 1;
-    if (ART_STYLES[idx]) {
-      state.artStyle = ART_STYLES[idx];
-      applyLighting();
-      syncUi();
-    }
-  }
 });
 
 let dragOrbit = false, dragSplit = false, lastX = 0, lastY = 0;
@@ -1108,11 +1046,11 @@ window.addEventListener("pointermove", (e) => {
   const dx = e.clientX - lastX, dy = e.clientY - lastY;
   lastX = e.clientX; lastY = e.clientY;
   state.orbitYaw -= dx * 0.0065;
-  state.orbitPitch = clamp(state.orbitPitch + dy * 0.0055, 0.10, 1.12);
+  state.orbitPitch = clamp(state.orbitPitch + dy * 0.0055, 0.08, 1.12);
 });
 window.addEventListener("pointerup", () => { dragOrbit = false; dragSplit = false; });
 canvas.addEventListener("pointerdown", (e) => { dragOrbit = true; lastX = e.clientX; lastY = e.clientY; });
-canvas.addEventListener("wheel", (e) => { e.preventDefault(); state.zoomDist = clamp(state.zoomDist + e.deltaY * 0.05, 16, 125); }, { passive: false });
+canvas.addEventListener("wheel", (e) => { e.preventDefault(); state.zoomDist = clamp(state.zoomDist + e.deltaY * 0.05, 16, 130); }, { passive: false });
 
 loadWorld(state.worldId, true);
 stepSimulation(0.016);
@@ -1129,9 +1067,7 @@ declare global {
       renderer: AASpriteRenderer;
       set: (opts: Partial<{
         worldId: WorldId;
-        artStyle: ArtStyle;
         tod: TodMode;
-        styleDial: number;
         microRelief: number;
         weathering: number;
         drape: number;
@@ -1169,9 +1105,7 @@ window.geoDemo = {
     } else if (opts.weathering !== undefined || opts.drape !== undefined) {
       ensureParamAssets(state.worldId);
     }
-    if (opts.artStyle !== undefined) state.artStyle = opts.artStyle;
     if (opts.tod !== undefined) state.tod = opts.tod;
-    if (opts.styleDial !== undefined) state.styleDial = clamp(opts.styleDial, 0, 1);
     if (opts.microRelief !== undefined) state.microRelief = clamp(opts.microRelief, 0, 1);
     if (opts.splitEnabled !== undefined) state.splitEnabled = opts.splitEnabled;
     if (opts.splitX !== undefined) state.splitX = opts.splitX;
